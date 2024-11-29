@@ -44,10 +44,6 @@ public interface FolderMetadataRepository extends JpaRepository<FolderMetadata, 
 		""")
 	List<FolderMetadata> findByParentFolderIdForUpdate(Long parentFolderId);
 
-	@Modifying
-	@Query("DELETE FROM FolderMetadata f WHERE f.id IN :ids")
-	void deleteAllByIdInBatch(@Param("ids") Iterable<Long> ids);
-
 	// 부모 폴더에 락을 걸지 않고 하위 폴더를 조회하는 메소드
 	List<FolderMetadata> findByParentFolderId(Long parentFolderId);
 
