@@ -45,8 +45,6 @@ public interface FileMetadataRepository extends JpaRepository<FileMetadata, Long
 	@Query("DELETE FROM FileMetadata f WHERE f.id IN :ids")
 	void deleteAllByIdInBatch(@Param("ids") Iterable<Long> ids);
 
-	// 부모 폴더에 락을 걸지 않고 조회하는 메소드
-	List<FileMetadata> findByParentFolderIdAndUploadStatusNot(Long parentFolderId, UploadStatus uploadStatus);
 
 	@Modifying
 	@Query(value = """
@@ -56,14 +54,6 @@ public interface FileMetadataRepository extends JpaRepository<FileMetadata, Long
 		""")
 	int finalizeMetadata(@Param("fileId") long fileId, @Param("fileSize") long fileSize,
 		@Param("uploadStatus") UploadStatus uploadStatus);
-
-	@Modifying
-	@Query(value = """
-			update FileMetadata f
-			set f.parentFolderId = :newParentId
-			where f.parentFolderId in :ids
-		""")
-	int updateParentFolderIdForDelete(@Param("newParentId") long newParentId, @Param("ids") Iterable<Long> ids);
 
 	@Modifying
 	@Query(value = """
@@ -102,4 +92,6 @@ public interface FileMetadataRepository extends JpaRepository<FileMetadata, Long
 	Optional<FileMetadata> findByIdForShare(@Param("fileId") long fileId);
 
 	List<FileMetadata> findByOwnerId(Long ownerId);
+
+	List<FileMetadata> findByParentFolderId(Long parentId);
 }
