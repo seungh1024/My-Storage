@@ -2,7 +2,9 @@ package com.woowacamp.storage.domain.folder.background;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
@@ -19,19 +21,18 @@ import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 
 /**
- * 파일과 폴더를 큐잉하여 처리하는 클래스
+ * 파일과 폴더에 대한 백그라운드 작업을 처리하는 클래스
  * 현재 파일, 폴더의 삭제 작업과 용량 업데이트를 처리함
  */
 @Component
 @RequiredArgsConstructor
-public class BackgroundQueue {
+public class BackgroundJob {
 	// 멀티스레딩 환경을 고려해서 BlockingQueue 사용
 	private LinkedBlockingQueue<FolderMetadata> folderDeleteQueue;
 	private LinkedBlockingQueue<FileMetadata> fileDeleteQueue;
-	private LinkedBlockingQueue<FolderMetadata> folderUpdateQueue;
 	private final FolderMetadataRepository folderMetadataRepository;
 	private final FileMetadataRepository fileMetadataRepository;
-	private final static int DELETE_DELAY = 1000 * 30 * 5;
+	private final static int DELETE_DELAY = 1000 * 30;
 	private final static int BATCH_SIZE = 100;
 
 	@PostConstruct
@@ -65,6 +66,10 @@ public class BackgroundQueue {
 		}
 	}
 
+	public <T> void addForUpdateFile(T changeValue, List<Long> pkList, BiConsumer<T, List<Long>> consumer) {
+		doBatchJob(changeValue, pkList, consumer);
+	}
+
 	private void folderBatchDelete() {
 		this.<FolderMetadata>doBatchJob(folderDeleteQueue,
 			folderList -> folderList.stream().map(FolderMetadata::getId).toList(),
@@ -72,8 +77,7 @@ public class BackgroundQueue {
 	}
 
 	private void fileBatchDelete() {
-		this.<FileMetadata>doBatchJob(fileDeleteQueue,
-			fileList -> fileList.stream().map(FileMetadata::getId).toList(),
+		this.<FileMetadata>doBatchJob(fileDeleteQueue, fileList -> fileList.stream().map(FileMetadata::getId).toList(),
 			batchList -> fileMetadataRepository.deleteAllByIdInBatch(batchList));
 	}
 
@@ -84,12 +88,17 @@ public class BackgroundQueue {
 	 * @param consumer
 	 * @param <T>
 	 */
-	private <T> void doBatchJob(LinkedBlockingQueue<T> queue, Function<List<T>, List<Long>> function,
+	private <T> void doBatchJob(BlockingQueue<T> queue, Function<List<T>, List<Long>> function,
 		Consumer<List<Long>> consumer) {
 		List<T> metadataList = new ArrayList<>();
 		queue.drainTo(metadataList, BATCH_SIZE);
 		List<Long> batchList = function.apply(metadataList);
 		consumer.accept(batchList);
+	}
+
+	private <T> void doBatchJob(T changeValue, List<Long> pkList, BiConsumer<T, List<Long>> consumer) {
+		System.out.println("pkList = " + pkList);
+		consumer.accept(changeValue, pkList);
 	}
 
 	/**
