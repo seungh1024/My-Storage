@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
 
@@ -66,4 +67,11 @@ public interface FolderMetadataRepository extends JpaRepository<FolderMetadata, 
 			update FolderMetadata f set f.size = f.size + :fileSize, f.updatedAt = :now where f.id = :id
 		""")
 	void updateFolderInfo(@Param("fileSize") long fileSize, @Param("now") LocalDateTime now, @Param("id") Long id);
+
+	@Transactional
+	@Modifying
+	@Query("""
+		UPDATE FolderMetadata f set f.size = f.size + :size where f.id IN (:ids)
+	""")
+	void updateAllSizeByIdInBatch(@Param("size") long size, @Param("ids") List<Long> ids);
 }
