@@ -1,5 +1,6 @@
 package com.woowacamp.storage.domain.folder.utils;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Stack;
 import java.util.function.Consumer;
@@ -34,6 +35,32 @@ public class QueryExecuteTemplate {
 			stack.addAll(folderPkList);
 			resultConsumer.accept(selectList);
 
-		} while (!stack.isEmpty() && stack.size() < 10);
+		} while (!stack.isEmpty());
+	}
+
+	/**
+	 * select로 실행한 결과를 모아서 한 번만 비즈니스 로직을 수행
+	 * 용량 업데이트, 권한 수정 등 조회한 여러 값들을 하나의 값으로 변경하기 위해 사용
+	 *
+	 * @param selectFunction
+	 * @param addFunction
+	 * @param resultConsumer
+	 * @param <T>
+	 */
+	public static <T> void selectFilesAndBatchExecute(Function<Long, List<T>> selectFunction,
+		Function<List<T>, List<Long>> addFunction, Consumer<List<Long>> resultConsumer){
+		Stack<Long> stack = new Stack<>();
+		List<Long> idList = new ArrayList<>();
+		do {
+			log.info("[Stack] {}", stack);
+			List<T> selectList = selectFunction.apply(stack.size() > 0 ? stack.pop() : null);
+			log.info("[After Stack] {}", stack);
+			List<Long> folderPkList = addFunction.apply(selectList);
+			log.info("[FolderPkList] {}", folderPkList);
+			stack.addAll(folderPkList);
+			idList.addAll(folderPkList);
+
+		} while (!stack.isEmpty());
+		resultConsumer.accept(idList);
 	}
 }
