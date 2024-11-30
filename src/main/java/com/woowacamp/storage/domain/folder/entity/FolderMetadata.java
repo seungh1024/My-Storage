@@ -70,6 +70,11 @@ public class FolderMetadata {
 	@Enumerated(EnumType.STRING)
 	private PermissionType permissionType;
 
+	@Column(name = "is_deleted", columnDefinition = "BOOLEAN DEFAULT false")
+	@NotNull
+	private boolean isDeleted = false;
+
+
 	@Builder
 	public FolderMetadata(Long id, Long rootId, Long ownerId, Long creatorId, LocalDateTime createdAt,
 		LocalDateTime updatedAt, Long parentFolderId, String uploadFolderName, long size,
