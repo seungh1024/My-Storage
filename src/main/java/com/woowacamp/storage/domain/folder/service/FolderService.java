@@ -16,7 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.woowacamp.storage.domain.file.entity.FileMetadata;
 import com.woowacamp.storage.domain.file.repository.FileMetadataRepository;
-import com.woowacamp.storage.domain.folder.background.DeleteQueue;
+import com.woowacamp.storage.domain.folder.background.BackgroundJob;
 import com.woowacamp.storage.domain.folder.dto.CursorType;
 import com.woowacamp.storage.domain.folder.dto.FolderContentsDto;
 import com.woowacamp.storage.domain.folder.dto.FolderContentsSortField;
@@ -46,11 +46,12 @@ public class FolderService {
 	private static final long INITIAL_CURSOR_ID = 0L;
 	private final FileMetadataRepository fileMetadataRepository;
 	private final FolderMetadataRepository folderMetadataRepository;
+	private final MetadataService metadataService;
 	private final UserRepository userRepository;
 	private final FolderSearchUtil folderSearchUtil;
 	private final ApplicationEventPublisher eventPublisher;
 	private final Executor deleteThreadPoolExecutor;
-	private final DeleteQueue deleteQueue;
+	private final BackgroundJob backgroundJob;
 
 	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public void checkFolderOwnedBy(long folderId, long userId) {
@@ -263,8 +264,10 @@ public class FolderService {
 		// 삭제 요청이 들어온 폴더를 제거한다.
 		folderMetadataRepository.deleteById(folderMetadata.getId());
 
-		// 삭제는 스레드 풀이 처리하도록 한다
+		// 삭제는 스레드 풀이 처리하도록 한다.
 		deleteFileTree(folderMetadata);
+		// 삭제한 폴더의 용량 계산을 진행한다.
+		metadataService.calculateSize(folderMetadata.getId(), folderMetadata.getSize(), false);
 	}
 
 	private void deleteFileTree(FolderMetadata folderMetadata) {
@@ -275,7 +278,7 @@ public class FolderService {
 				findFolderId == null ? folderId : findFolderId),
 			folderMetadataList -> folderMetadataList.stream().map(FolderMetadata::getId).toList(),
 			folderMetadataList -> {
-				deleteQueue.addFolderList(folderMetadataList);
+				backgroundJob.addForDeleteFolder(folderMetadataList);
 				folderMetadataList.forEach(this::fileDeleteWithParentFolder); // 폴더당 하나씩 하위 파일들 제거
 			})
 		);
@@ -293,7 +296,7 @@ public class FolderService {
 			log.info("[File List] {}", list);
 			fileMetadataList.forEach(fileMetadata -> {
 				deleteBinaryFile(fileMetadata);
-				deleteQueue.addFile(fileMetadata);
+				backgroundJob.addForDeleteFile(fileMetadata);
 			});
 		});
 	}
