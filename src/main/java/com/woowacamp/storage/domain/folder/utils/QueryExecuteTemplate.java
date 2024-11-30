@@ -4,7 +4,6 @@ import java.util.List;
 import java.util.Stack;
 import java.util.function.Consumer;
 import java.util.function.Function;
-import java.util.function.Supplier;
 
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
@@ -23,21 +22,18 @@ public class QueryExecuteTemplate {
 	 * @param resultConsumer
 	 * @param <T>
 	 */
-	public static <T> void selectFilesAndExecute(
-		Function<Long ,List<T>> selectFunction,
-		Function<List<T>, List<Long>> addFunction,
-		Consumer<List<T>> resultConsumer
-	){
+	public static <T> void selectFilesAndExecute(Function<Long, List<T>> selectFunction,
+		Function<List<T>, List<Long>> addFunction, Consumer<List<T>> resultConsumer) {
 		Stack<Long> stack = new Stack<>();
-		do{
-			log.info("[Stack] {}",stack);
+		do {
+			log.info("[Stack] {}", stack);
 			List<T> selectList = selectFunction.apply(stack.size() > 0 ? stack.pop() : null);
-			log.info("[After Stack] {}",stack);
+			log.info("[After Stack] {}", stack);
 			List<Long> folderPkList = addFunction.apply(selectList);
-			log.info("[FolderPkList] {}",folderPkList);
+			log.info("[FolderPkList] {}", folderPkList);
 			stack.addAll(folderPkList);
 			resultConsumer.accept(selectList);
 
-		}while(!stack.isEmpty() && stack.size()<10);
+		} while (!stack.isEmpty() && stack.size() < 10);
 	}
 }

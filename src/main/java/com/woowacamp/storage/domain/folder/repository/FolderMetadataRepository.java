@@ -16,8 +16,6 @@ import jakarta.persistence.LockModeType;
 
 public interface FolderMetadataRepository extends JpaRepository<FolderMetadata, Long>, FolderCustomRepository {
 
-	boolean existsByIdAndCreatorId(Long id, Long creatorId);
-
 	@Lock(LockModeType.PESSIMISTIC_WRITE)
 	boolean existsByParentFolderIdAndUploadFolderName(Long parentFolderId, String uploadFolderName);
 
@@ -46,15 +44,6 @@ public interface FolderMetadataRepository extends JpaRepository<FolderMetadata, 
 
 	// 부모 폴더에 락을 걸지 않고 하위 폴더를 조회하는 메소드
 	List<FolderMetadata> findByParentFolderId(Long parentFolderId);
-
-	@Modifying
-	@Query(value = """
-			update FolderMetadata f
-			set f.parentFolderId = :newParentId
-			where f.parentFolderId in :ids
-		""")
-	void updateParentFolderIdForDelete(@Param("newParentId") int newParentId,
-		@Param("ids") Iterable<Long> folderIdListForDelete);
 
 	@Modifying
 	@Query(value = """

@@ -42,11 +42,6 @@ public interface FileMetadataRepository extends JpaRepository<FileMetadata, Long
 	List<FileMetadata> findByParentFolderIdForUpdate(Long parentFolderId);
 
 	@Modifying
-	@Query("DELETE FROM FileMetadata f WHERE f.id IN :ids")
-	void deleteAllByIdInBatch(@Param("ids") Iterable<Long> ids);
-
-
-	@Modifying
 	@Query(value = """
 			update FileMetadata f
 			set f.fileSize = :fileSize, f.uploadStatus = :uploadStatus, f.createdAt = NOW(), f.updatedAt = NOW()

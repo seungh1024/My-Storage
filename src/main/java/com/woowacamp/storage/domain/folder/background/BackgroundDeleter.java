@@ -1,7 +1,6 @@
 package com.woowacamp.storage.domain.folder.background;
 
 import java.util.concurrent.Executor;
-import java.util.concurrent.ThreadPoolExecutor;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -23,7 +22,7 @@ public class BackgroundDeleter {
 	private String threadName;
 
 	@Bean
-	public Executor deleteThreadPoolExecutor(){
+	public Executor deleteThreadPoolExecutor() {
 		ThreadPoolTaskExecutor threadPoolTaskExecutor = new ThreadPoolTaskExecutor();
 		threadPoolTaskExecutor.setCorePoolSize(threadCount);
 		threadPoolTaskExecutor.setMaxPoolSize(threadCount);
@@ -31,8 +30,8 @@ public class BackgroundDeleter {
 		threadPoolTaskExecutor.setThreadNamePrefix(threadName);
 
 		// 작업 중간에 예외 던져서 멈추지 않도록 처리
-		threadPoolTaskExecutor.setRejectedExecutionHandler((r,executor)->{
-			try{
+		threadPoolTaskExecutor.setRejectedExecutionHandler((r, executor) -> {
+			try {
 				executor.getQueue().put(r);
 			} catch (InterruptedException e) {
 				log.error(e.toString(), e);

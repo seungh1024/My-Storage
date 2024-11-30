@@ -8,14 +8,12 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.Executor;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.amazonaws.services.s3.AmazonS3;
 import com.woowacamp.storage.domain.file.entity.FileMetadata;
 import com.woowacamp.storage.domain.file.repository.FileMetadataRepository;
 import com.woowacamp.storage.domain.folder.background.DeleteQueue;
@@ -50,13 +48,9 @@ public class FolderService {
 	private final FolderMetadataRepository folderMetadataRepository;
 	private final UserRepository userRepository;
 	private final FolderSearchUtil folderSearchUtil;
-	private final AmazonS3 amazonS3;
 	private final ApplicationEventPublisher eventPublisher;
 	private final Executor deleteThreadPoolExecutor;
 	private final DeleteQueue deleteQueue;
-
-	@Value("${cloud.aws.credentials.bucketName}")
-	private String BUCKET_NAME;
 
 	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public void checkFolderOwnedBy(long folderId, long userId) {
@@ -276,16 +270,15 @@ public class FolderService {
 	private void deleteFileTree(FolderMetadata folderMetadata) {
 		long folderId = folderMetadata.getId();
 		log.info("[Delete Start Pk] {}", folderId);
-		deleteThreadPoolExecutor.execute(() -> {
-			QueryExecuteTemplate.<FolderMetadata>selectFilesAndExecute(
-				findFolderId -> folderMetadataRepository.findByParentFolderId(
-					findFolderId == null ? folderId : findFolderId),
-				folderMetadataList -> folderMetadataList.stream().map(FolderMetadata::getId).toList(),
-				folderMetadataList -> {
-					deleteQueue.addFolderList(folderMetadataList);
-					folderMetadataList.forEach(this::fileDeleteWithParentFolder); // 폴더당 하나씩 하위 파일들 제거
-				});
-		});
+		deleteThreadPoolExecutor.execute(() -> QueryExecuteTemplate.<FolderMetadata>selectFilesAndExecute(
+			findFolderId -> folderMetadataRepository.findByParentFolderId(
+				findFolderId == null ? folderId : findFolderId),
+			folderMetadataList -> folderMetadataList.stream().map(FolderMetadata::getId).toList(),
+			folderMetadataList -> {
+				deleteQueue.addFolderList(folderMetadataList);
+				folderMetadataList.forEach(this::fileDeleteWithParentFolder); // 폴더당 하나씩 하위 파일들 제거
+			})
+		);
 
 		// 삭제 시작한 폴더의 하위 파일 제거
 		deleteThreadPoolExecutor.execute(() -> {
@@ -299,10 +292,9 @@ public class FolderService {
 			List<Long> list = fileMetadataList.stream().map(file -> file.getId()).toList();
 			log.info("[File List] {}", list);
 			fileMetadataList.forEach(fileMetadata -> {
-					deleteBinaryFile(fileMetadata);
-					deleteQueue.addFile(fileMetadata);
-				}
-			);
+				deleteBinaryFile(fileMetadata);
+				deleteQueue.addFile(fileMetadata);
+			});
 		});
 	}
 
