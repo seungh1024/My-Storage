@@ -45,6 +45,9 @@ public class DeleteQueue {
 
 	public void addFolderList(List<FolderMetadata> folderMetadataList) {
 		folderDeleteQueue.addAll(folderMetadataList);
+		if (folderDeleteQueue.size() >= BATCH_SIZE) {
+			folderBatchDelete();
+		}
 	}
 
 	/**
@@ -53,6 +56,9 @@ public class DeleteQueue {
 	 */
 	public void addFile(FileMetadata fileMetadata) {
 		fileDeleteQueue.offer(fileMetadata);
+		if (fileDeleteQueue.size() >= BATCH_SIZE) {
+			fileBatchDelete();
+		}
 	}
 
 	/**
@@ -61,15 +67,13 @@ public class DeleteQueue {
 	 */
 	@Scheduled(fixedDelay = DELETE_DELAY)
 	private void deleteScheduling() {
-		do{
+		while (folderDeleteQueue.size() >= BATCH_SIZE){
 			folderBatchDelete();
 		}
-		while (folderDeleteQueue.size() >= BATCH_SIZE);
 
-		do{
+		while (fileDeleteQueue.size() >= BATCH_SIZE){
 			fileBatchDelete();
 		}
-		while (fileDeleteQueue.size() >= BATCH_SIZE);
 	}
 
 	private void folderBatchDelete() {
