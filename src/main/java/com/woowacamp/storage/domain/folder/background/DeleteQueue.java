@@ -61,13 +61,15 @@ public class DeleteQueue {
 	 */
 	@Scheduled(fixedDelay = DELETE_DELAY)
 	private void deleteScheduling() {
-		while (folderDeleteQueue.size() >= BATCH_SIZE) {
+		do{
 			folderBatchDelete();
 		}
+		while (folderDeleteQueue.size() >= BATCH_SIZE);
 
-		while (fileDeleteQueue.size() >= BATCH_SIZE) {
+		do{
 			fileBatchDelete();
 		}
+		while (fileDeleteQueue.size() >= BATCH_SIZE);
 	}
 
 	private void folderBatchDelete() {
