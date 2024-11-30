@@ -74,4 +74,11 @@ public interface FolderMetadataRepository extends JpaRepository<FolderMetadata, 
 		UPDATE FolderMetadata f set f.size = f.size + :size where f.id IN (:ids)
 	""")
 	void updateAllSizeByIdInBatch(@Param("size") long size, @Param("ids") List<Long> ids);
+
+	@Transactional
+	@Modifying
+	@Query("""
+		UPDATE FolderMetadata f set f.isDeleted = true where f.id IN (:ids)
+	""")
+	void softDeleteAllByIdInBatch(@Param("ids") List<Long> ids);
 }
