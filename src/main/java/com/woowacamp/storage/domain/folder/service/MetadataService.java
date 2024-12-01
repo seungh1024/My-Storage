@@ -1,5 +1,6 @@
 package com.woowacamp.storage.domain.folder.service;
 
+import java.util.Objects;
 import java.util.concurrent.Executor;
 
 import org.springframework.stereotype.Service;
@@ -23,10 +24,13 @@ public class MetadataService {
 
 	public void calculateSize(long folderId, long folderSize, boolean isPlus) {
 		metadataThreadPoolExecutor.execute(() -> QueryExecuteTemplate.<FolderMetadata, Long>selectFilesAndBatchExecute(
-			findFolder -> folderMetadataRepository.findById(findFolder == null ? folderId : findFolder.getId())
+			findFolderId -> folderMetadataRepository.findById(findFolderId == null ? folderId : findFolderId)
 				.stream()
 				.toList(),
-			folderMetadataList -> folderMetadataList.stream().map(FolderMetadata::getParentFolderId).toList(),
+			folderMetadataList -> folderMetadataList.stream()
+				.map(FolderMetadata::getParentFolderId)
+				.filter(Objects::nonNull)
+				.toList(),
 			folderMetadataList -> backgroundJob.addForUpdateFile(isPlus ? folderSize : -folderSize, folderMetadataList,
 				(changeValue, pkList) -> folderMetadataRepository.updateAllSizeByIdInBatch(changeValue, pkList))
 
