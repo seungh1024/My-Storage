@@ -7,6 +7,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.stream.IntStream;
 
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -48,10 +49,17 @@ public class BackgroundJob {
 		fileBatchDelete();
 	}
 
+	/**
+	 * 여러 스레드가 동시에 size()에 접근하면 불필요하게 DB 접근이 많아진다고 판단하여 synchronized 사용
+	 * @param folderMetadataList
+	 */
 	public void addForDeleteFolder(List<FolderMetadata> folderMetadataList) {
+		System.out.println("[ADD DELETE LIST] = " +folderMetadataList.stream().map(FolderMetadata::getId).toList());
 		folderDeleteQueue.addAll(folderMetadataList);
-		if (folderDeleteQueue.size() >= BATCH_SIZE) {
-			folderBatchDelete();
+		synchronized (folderDeleteQueue){
+			if (folderDeleteQueue.size() >= BATCH_SIZE) {
+				folderBatchDelete();
+			}
 		}
 	}
 
@@ -61,8 +69,10 @@ public class BackgroundJob {
 	 */
 	public void addForDeleteFile(FileMetadata fileMetadata) {
 		fileDeleteQueue.offer(fileMetadata);
-		if (fileDeleteQueue.size() >= BATCH_SIZE) {
-			fileBatchDelete();
+		synchronized (fileDeleteQueue){
+			if (fileDeleteQueue.size() >= BATCH_SIZE) {
+				fileBatchDelete();
+			}
 		}
 	}
 
@@ -73,7 +83,7 @@ public class BackgroundJob {
 	private void folderBatchDelete() {
 		this.<FolderMetadata>doBatchJob(folderDeleteQueue,
 			folderList -> folderList.stream().map(FolderMetadata::getId).toList(),
-			batchList -> folderMetadataRepository.deleteAllByIdInBatch(batchList));
+			batchList -> folderMetadataRepository.softDeleteAllByIdInBatch(batchList));
 	}
 
 	private void fileBatchDelete() {
@@ -97,7 +107,6 @@ public class BackgroundJob {
 	}
 
 	private <T> void doBatchJob(T changeValue, List<Long> pkList, BiConsumer<T, List<Long>> consumer) {
-		System.out.println("pkList = " + pkList);
 		consumer.accept(changeValue, pkList);
 	}
 
@@ -107,13 +116,10 @@ public class BackgroundJob {
 	 */
 	@Scheduled(fixedDelay = DELETE_DELAY)
 	private void deleteScheduling() {
-		while (folderDeleteQueue.size() >= BATCH_SIZE) {
-			folderBatchDelete();
-		}
-
-		while (fileDeleteQueue.size() >= BATCH_SIZE) {
-			fileBatchDelete();
-		}
+		IntStream.range(0, (folderDeleteQueue.size() + BATCH_SIZE - 1) / BATCH_SIZE)
+				.forEach(i->folderBatchDelete());
+		IntStream.range(0, (fileDeleteQueue.size() + BATCH_SIZE - 1) / BATCH_SIZE)
+			.forEach(i->fileBatchDelete());
 	}
 
 }
