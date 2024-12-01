@@ -21,9 +21,9 @@ public class MetadataService {
 	private final FolderMetadataRepository folderMetadataRepository;
 	private final BackgroundJob backgroundJob;
 
-	public void calculateSize(long parentId, long folderSize, boolean isPlus) {
-		metadataThreadPoolExecutor.execute(() -> QueryExecuteTemplate.<FolderMetadata>selectFilesAndBatchExecute(
-			findParentId -> folderMetadataRepository.findById(findParentId == null ? parentId : findParentId)
+	public void calculateSize(long folderId, long folderSize, boolean isPlus) {
+		metadataThreadPoolExecutor.execute(() -> QueryExecuteTemplate.<FolderMetadata, Long>selectFilesAndBatchExecute(
+			findFolder -> folderMetadataRepository.findById(findFolder == null ? folderId : findFolder.getId())
 				.stream()
 				.toList(),
 			folderMetadataList -> folderMetadataList.stream().map(FolderMetadata::getParentFolderId).toList(),

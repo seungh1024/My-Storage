@@ -44,7 +44,10 @@ public interface FolderMetadataRepository extends JpaRepository<FolderMetadata, 
 	List<FolderMetadata> findByParentFolderIdForUpdate(Long parentFolderId);
 
 	// 부모 폴더에 락을 걸지 않고 하위 폴더를 조회하는 메소드
-	List<FolderMetadata> findByParentFolderId(Long parentFolderId);
+	@Query(value = """
+		SELECT f from FolderMetadata  f WHERE f.parentFolderId = :parentFolderId AND f.isDeleted = FALSE
+	""")
+	List<FolderMetadata> findByParentFolderId(@Param("parentFolderId") Long parentFolderId);
 
 	@Modifying
 	@Query(value = """
@@ -74,6 +77,13 @@ public interface FolderMetadataRepository extends JpaRepository<FolderMetadata, 
 		UPDATE FolderMetadata f set f.size = f.size + :size where f.id IN (:ids)
 	""")
 	void updateAllSizeByIdInBatch(@Param("size") long size, @Param("ids") List<Long> ids);
+
+	@Transactional
+	@Modifying
+	@Query("""
+		UPDATE FolderMetadata f set f.isDeleted = true where f.id = :id
+	""")
+	void softDeleteById(@Param("id") Long id);
 
 	@Transactional
 	@Modifying

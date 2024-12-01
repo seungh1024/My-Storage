@@ -249,8 +249,12 @@ public class FolderService {
 	 */
 	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public void deleteFolder(Long folderId, Long userId) {
-		FolderMetadata folderMetadata = folderMetadataRepository.findByIdForUpdate(folderId)
+		FolderMetadata folderMetadata = folderMetadataRepository.findById(folderId)
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
+
+		if (folderMetadata.isDeleted()) {
+			throw ErrorCode.FOLDER_NOT_FOUND.baseException();
+		}
 
 		if (!folderMetadata.getOwnerId().equals(userId)) {
 			throw ErrorCode.ACCESS_DENIED.baseException();
@@ -262,26 +266,23 @@ public class FolderService {
 		}
 
 		// 삭제 요청이 들어온 폴더를 제거한다.
-		folderMetadataRepository.deleteById(folderMetadata.getId());
+		folderMetadataRepository.softDeleteById(folderMetadata.getId());
 
 		// 삭제는 스레드 풀이 처리하도록 한다.
-		deleteFileTree(folderMetadata);
+		deleteFolderTree(folderMetadata);
 		// 삭제한 폴더의 용량 계산을 진행한다.
 		metadataService.calculateSize(folderMetadata.getId(), folderMetadata.getSize(), false);
 	}
 
-	private void deleteFileTree(FolderMetadata folderMetadata) {
+	private void deleteFolderTree(FolderMetadata folderMetadata) {
 		long folderId = folderMetadata.getId();
 		log.info("[Delete Start Pk] {}", folderId);
 		deleteThreadPoolExecutor.execute(() -> QueryExecuteTemplate.<FolderMetadata>selectFilesAndExecute(
-			findFolderId -> folderMetadataRepository.findByParentFolderId(
-				findFolderId == null ? folderId : findFolderId),
-			folderMetadataList -> folderMetadataList.stream().map(FolderMetadata::getId).toList(),
+			findFolder -> folderMetadataRepository.findByParentFolderId(findFolder == null ? folderId : findFolder.getId()),
 			folderMetadataList -> {
 				backgroundJob.addForDeleteFolder(folderMetadataList);
 				folderMetadataList.forEach(this::fileDeleteWithParentFolder); // 폴더당 하나씩 하위 파일들 제거
-			})
-		);
+			}));
 
 		// 삭제 시작한 폴더의 하위 파일 제거
 		deleteThreadPoolExecutor.execute(() -> {
