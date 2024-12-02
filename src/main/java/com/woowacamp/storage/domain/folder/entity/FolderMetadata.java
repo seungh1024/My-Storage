@@ -24,7 +24,8 @@ import lombok.NoArgsConstructor;
 @Table(name = "folder_metadata", indexes = {
 	@Index(name = "folder_idx_parent_folder_id_created_at", columnList = "parent_folder_id, created_at"),
 	@Index(name = "folder_idx_parent_folder_id_size", columnList = "parent_folder_id, folder_size"),
-	@Index(name = "folder_idx_parent_folder_id_is_deleted", columnList = "parent_folder_id, is_deleted")
+	@Index(name = "folder_idx_parent_folder_id_is_deleted", columnList = "parent_folder_id, is_deleted"),
+	@Index(name = "folder_idx_find_folder_with_cursor", columnList = "parent_folder_id, is_deleted, folder_metadata_id")
 })
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
