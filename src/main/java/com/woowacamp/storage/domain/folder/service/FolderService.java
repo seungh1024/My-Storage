@@ -8,6 +8,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.Executor;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -54,6 +55,9 @@ public class FolderService {
 	private final ApplicationEventPublisher eventPublisher;
 	private final Executor deleteThreadPoolExecutor;
 	private final BackgroundJob backgroundJob;
+
+	@Value("${constant.batchSize}")
+	private int pageSize;
 
 	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public void checkFolderOwnedBy(long folderId, long userId) {
@@ -286,10 +290,10 @@ public class FolderService {
 		long folderId = folderMetadata.getId();
 		log.info("[Delete Start Pk] {}", folderId);
 		deleteThreadPoolExecutor.execute(
-			() -> QueryExecuteTemplate.<FolderMetadata>selectFilesAndExecuteWithCursor(PAGE_SIZE,
+			() -> QueryExecuteTemplate.<FolderMetadata>selectFilesAndExecuteWithCursor(pageSize,
 				findFolder -> folderMetadataRepository.findByParentFolderIdWithLastId(
 					folderId,
-					findFolder == null ? null : findFolder.getId(), PAGE_SIZE),
+					findFolder == null ? null : findFolder.getId(), pageSize),
 				folderMetadataList -> {
 					backgroundJob.addForDeleteFolder(folderMetadataList);
 					folderMetadataList.forEach(folder -> {

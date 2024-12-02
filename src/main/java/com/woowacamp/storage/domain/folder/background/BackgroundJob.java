@@ -4,11 +4,15 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.IntStream;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -28,18 +32,25 @@ import lombok.RequiredArgsConstructor;
 @Component
 @RequiredArgsConstructor
 public class BackgroundJob {
+	private static final Logger log = LoggerFactory.getLogger(BackgroundJob.class);
 	// 멀티스레딩 환경을 고려해서 BlockingQueue 사용
 	private LinkedBlockingQueue<FolderMetadata> folderDeleteQueue;
 	private LinkedBlockingQueue<FileMetadata> fileDeleteQueue;
 	private final FolderMetadataJpaRepository folderMetadataRepository;
 	private final FileMetadataRepository fileMetadataRepository;
 	private final static int DELETE_DELAY = 1000 * 30;
-	private final static int BATCH_SIZE = 100;
+	private AtomicLong folderJobCount;
+	private AtomicLong fileJobCount;
+
+	@Value("${constant.batchSize}")
+	private int batchSize;
 
 	@PostConstruct
 	public void init() {
 		folderDeleteQueue = new LinkedBlockingQueue<>();
 		fileDeleteQueue = new LinkedBlockingQueue<>();
+		folderJobCount = new AtomicLong();
+		fileJobCount = new AtomicLong();
 	}
 
 	@PreDestroy
@@ -56,10 +67,13 @@ public class BackgroundJob {
 	public void addForDeleteFolder(List<FolderMetadata> folderMetadataList) {
 		System.out.println("[ADD DELETE LIST] = " +folderMetadataList.stream().map(FolderMetadata::getId).toList());
 		folderDeleteQueue.addAll(folderMetadataList);
-		synchronized (folderDeleteQueue){
-			if (folderDeleteQueue.size() >= BATCH_SIZE) {
-				folderBatchDelete();
-			}
+		long l = folderJobCount.addAndGet(folderMetadataList.size());
+		log.info("[atomic result] {}",l);
+		if (folderJobCount.addAndGet(-batchSize) >= 0) {
+			log.info("[atomic success] {}", folderJobCount.get());
+			folderBatchDelete();
+		} else {
+			folderJobCount.addAndGet(batchSize);
 		}
 	}
 
@@ -69,10 +83,11 @@ public class BackgroundJob {
 	 */
 	public void addForDeleteFile(FileMetadata fileMetadata) {
 		fileDeleteQueue.offer(fileMetadata);
-		synchronized (fileDeleteQueue){
-			if (fileDeleteQueue.size() >= BATCH_SIZE) {
-				fileBatchDelete();
-			}
+		fileJobCount.incrementAndGet();
+		if (fileJobCount.addAndGet(-batchSize) >= 0) {
+			fileBatchDelete();
+		} else {
+			fileJobCount.addAndGet(batchSize);
 		}
 	}
 
@@ -101,7 +116,7 @@ public class BackgroundJob {
 	private <T> void doBatchJob(BlockingQueue<T> queue, Function<List<T>, List<Long>> function,
 		Consumer<List<Long>> consumer) {
 		List<T> metadataList = new ArrayList<>();
-		queue.drainTo(metadataList, BATCH_SIZE);
+		queue.drainTo(metadataList, batchSize);
 		List<Long> batchList = function.apply(metadataList);
 		consumer.accept(batchList);
 	}
@@ -116,9 +131,9 @@ public class BackgroundJob {
 	 */
 	@Scheduled(fixedDelay = DELETE_DELAY)
 	private void deleteScheduling() {
-		IntStream.range(0, (folderDeleteQueue.size() + BATCH_SIZE - 1) / BATCH_SIZE)
+		IntStream.range(0, (folderDeleteQueue.size() + batchSize - 1) / batchSize)
 				.forEach(i->folderBatchDelete());
-		IntStream.range(0, (fileDeleteQueue.size() + BATCH_SIZE - 1) / BATCH_SIZE)
+		IntStream.range(0, (fileDeleteQueue.size() + batchSize - 1) / batchSize)
 			.forEach(i->fileBatchDelete());
 	}
 
