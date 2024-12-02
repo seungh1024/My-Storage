@@ -24,7 +24,7 @@ import com.woowacamp.storage.domain.file.entity.FileMetadata;
 import com.woowacamp.storage.domain.file.entity.FileMetadataFactory;
 import com.woowacamp.storage.domain.file.repository.FileMetadataRepository;
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
-import com.woowacamp.storage.domain.folder.repository.FolderMetadataRepository;
+import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
 import com.woowacamp.storage.domain.user.entity.User;
 import com.woowacamp.storage.domain.user.repository.UserRepository;
 import com.woowacamp.storage.global.constant.CommonConstant;
@@ -38,7 +38,7 @@ import lombok.RequiredArgsConstructor;
 public class S3FileService {
 
 	private final FileMetadataRepository fileMetadataRepository;
-	private final FolderMetadataRepository folderMetadataRepository;
+	private final FolderMetadataJpaRepository folderMetadataRepository;
 	private final UserRepository userRepository;
 	private final AmazonS3 amazonS3;
 

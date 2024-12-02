@@ -7,7 +7,7 @@ import org.springframework.stereotype.Service;
 
 import com.woowacamp.storage.domain.folder.background.BackgroundJob;
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
-import com.woowacamp.storage.domain.folder.repository.FolderMetadataRepository;
+import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
 import com.woowacamp.storage.domain.folder.utils.QueryExecuteTemplate;
 
 import lombok.RequiredArgsConstructor;
@@ -19,7 +19,7 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class MetadataService {
 	private final Executor metadataThreadPoolExecutor;
-	private final FolderMetadataRepository folderMetadataRepository;
+	private final FolderMetadataJpaRepository folderMetadataRepository;
 	private final BackgroundJob backgroundJob;
 
 	public void calculateSize(long folderId, long folderSize, boolean isPlus) {

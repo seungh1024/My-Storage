@@ -15,7 +15,7 @@ import org.springframework.stereotype.Component;
 import com.woowacamp.storage.domain.file.entity.FileMetadata;
 import com.woowacamp.storage.domain.file.repository.FileMetadataRepository;
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
-import com.woowacamp.storage.domain.folder.repository.FolderMetadataRepository;
+import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
@@ -31,7 +31,7 @@ public class BackgroundJob {
 	// 멀티스레딩 환경을 고려해서 BlockingQueue 사용
 	private LinkedBlockingQueue<FolderMetadata> folderDeleteQueue;
 	private LinkedBlockingQueue<FileMetadata> fileDeleteQueue;
-	private final FolderMetadataRepository folderMetadataRepository;
+	private final FolderMetadataJpaRepository folderMetadataRepository;
 	private final FileMetadataRepository fileMetadataRepository;
 	private final static int DELETE_DELAY = 1000 * 30;
 	private final static int BATCH_SIZE = 100;

@@ -12,7 +12,7 @@ import com.amazonaws.services.s3.model.AmazonS3Exception;
 import com.amazonaws.services.s3.model.ObjectMetadata;
 import com.woowacamp.storage.domain.file.entity.FileMetadata;
 import com.woowacamp.storage.domain.file.repository.FileMetadataRepository;
-import com.woowacamp.storage.domain.folder.repository.FolderMetadataRepository;
+import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
 import com.woowacamp.storage.global.constant.CommonConstant;
 
 import jakarta.transaction.Transactional;
@@ -29,7 +29,7 @@ public class OrphanFileDeleteScheduler {
 	public static final int DELAY = 1000 * 30;
 	private final AmazonS3 amazonS3;
 	private final FileMetadataRepository fileMetadataRepository;
-	private final FolderMetadataRepository folderMetadataRepository;
+	private final FolderMetadataJpaRepository folderMetadataRepository;
 	@Value("${cloud.aws.credentials.bucketName}")
 	private String BUCKET_NAME;
 

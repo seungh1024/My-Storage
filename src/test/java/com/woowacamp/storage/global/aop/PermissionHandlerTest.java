@@ -17,7 +17,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import com.woowacamp.storage.domain.file.entity.FileMetadata;
 import com.woowacamp.storage.domain.file.repository.FileMetadataRepository;
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
-import com.woowacamp.storage.domain.folder.repository.FolderMetadataRepository;
+import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
 import com.woowacamp.storage.global.aop.type.FileType;
 import com.woowacamp.storage.global.constant.PermissionType;
 import com.woowacamp.storage.global.error.CustomException;
@@ -29,7 +29,7 @@ class PermissionHandlerTest {
 	@InjectMocks
 	PermissionHandler permissionHandler;
 	@Mock
-	FolderMetadataRepository folderMetadataRepository;
+	FolderMetadataJpaRepository folderMetadataRepository;
 	@Mock
 	FileMetadataRepository fileMetadataRepository;
 

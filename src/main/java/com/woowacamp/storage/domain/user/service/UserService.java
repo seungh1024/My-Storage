@@ -9,7 +9,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
-import com.woowacamp.storage.domain.folder.repository.FolderMetadataRepository;
+import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
 import com.woowacamp.storage.domain.user.dto.UserDto;
 import com.woowacamp.storage.domain.user.dto.request.CreateUserReqDto;
 import com.woowacamp.storage.domain.user.entity.User;
@@ -23,7 +23,7 @@ import lombok.RequiredArgsConstructor;
 public class UserService {
 	private static final String rootFolderName = "rootFolder";
 	private final UserRepository userRepository;
-	private final FolderMetadataRepository folderMetadataRepository;
+	private final FolderMetadataJpaRepository folderMetadataRepository;
 
 	@Transactional(readOnly = true)
 	public UserDto findById(long userId) {

@@ -22,7 +22,7 @@ import com.woowacamp.storage.domain.folder.dto.CursorType;
 import com.woowacamp.storage.domain.folder.dto.FolderContentsDto;
 import com.woowacamp.storage.domain.folder.dto.FolderContentsSortField;
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
-import com.woowacamp.storage.domain.folder.repository.FolderMetadataRepository;
+import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
 import com.woowacamp.storage.global.constant.UploadStatus;
 
 @SpringBootTest
@@ -30,7 +30,7 @@ import com.woowacamp.storage.global.constant.UploadStatus;
 class FolderServiceTest {
 
 	@Autowired
-	private FolderMetadataRepository folderMetadataRepository;
+	private FolderMetadataJpaRepository folderMetadataRepository;
 
 	@Autowired
 	private FileMetadataRepository fileMetadataRepository;
