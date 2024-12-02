@@ -24,6 +24,7 @@ import com.woowacamp.storage.domain.folder.dto.request.CreateFolderReqDto;
 import com.woowacamp.storage.domain.folder.dto.request.FolderMoveDto;
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
 import com.woowacamp.storage.domain.folder.event.FolderMoveEvent;
+import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataRepository;
 import com.woowacamp.storage.domain.folder.utils.FolderSearchUtil;
 import com.woowacamp.storage.domain.folder.utils.QueryExecuteTemplate;
@@ -45,6 +46,7 @@ import static com.woowacamp.storage.global.constant.CommonConstant.*;
 public class FolderService {
 	private static final long INITIAL_CURSOR_ID = 0L;
 	private final FileMetadataRepository fileMetadataRepository;
+	private final FolderMetadataJpaRepository folderMetadataJpaRepository;
 	private final FolderMetadataRepository folderMetadataRepository;
 	private final MetadataService metadataService;
 	private final UserRepository userRepository;
@@ -55,7 +57,7 @@ public class FolderService {
 
 	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public void checkFolderOwnedBy(long folderId, long userId) {
-		FolderMetadata folderMetadata = folderMetadataRepository.findByIdForUpdate(folderId)
+		FolderMetadata folderMetadata = folderMetadataJpaRepository.findByIdForUpdate(folderId)
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
 
 		if (!folderMetadata.getOwnerId().equals(userId)) {
@@ -85,7 +87,7 @@ public class FolderService {
 
 	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public void moveFolder(Long sourceFolderId, FolderMoveDto dto) {
-		FolderMetadata folderMetadata = folderMetadataRepository.findByIdForUpdate(sourceFolderId)
+		FolderMetadata folderMetadata = folderMetadataJpaRepository.findByIdForUpdate(sourceFolderId)
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
 		validateMoveFolder(sourceFolderId, dto, folderMetadata);
 
@@ -96,7 +98,8 @@ public class FolderService {
 		folderMetadata.updateParentFolderId(dto.targetFolderId());
 
 		eventPublisher.publishEvent(
-			new FolderMoveEvent(this, folderMetadata, folderMetadataRepository.findById(dto.targetFolderId()).get()));
+			new FolderMoveEvent(this, folderMetadata,
+				folderMetadataJpaRepository.findById(dto.targetFolderId()).get()));
 	}
 
 	private void validateMoveFolder(Long sourceFolderId, FolderMoveDto dto, FolderMetadata folderMetadata) {
@@ -137,7 +140,7 @@ public class FolderService {
 	 * 이 과정 중, targetFolderId가 포함돼 있으면 예외 발생
 	 */
 	private int getLeafDepth(long currentFolderId, int currentDepth, long targetFolderId) {
-		List<Long> childFolderIds = folderMetadataRepository.findIdsByParentFolderIdForUpdate(currentFolderId);
+		List<Long> childFolderIds = folderMetadataJpaRepository.findIdsByParentFolderIdForUpdate(currentFolderId);
 		if (isExistsPendingFile(currentFolderId)) {
 			throw ErrorCode.CANNOT_MOVE_FOLDER_WHEN_UPLOADING.baseException();
 		}
@@ -162,7 +165,7 @@ public class FolderService {
 	 * 같은 폴더 내에 동일한 이름의 폴더가 있는지 확인
 	 */
 	private void validateDuplicatedFolderName(FolderMoveDto dto, FolderMetadata folderMetadata) {
-		if (folderMetadataRepository.existsByParentFolderIdAndUploadFolderName(dto.targetFolderId(),
+		if (folderMetadataJpaRepository.existsByParentFolderIdAndUploadFolderName(dto.targetFolderId(),
 			folderMetadata.getUploadFolderName())) {
 			throw ErrorCode.FILE_NAME_DUPLICATE.baseException();
 		}
@@ -180,7 +183,8 @@ public class FolderService {
 
 	private List<FolderMetadata> fetchFolders(Long folderId, Long cursorId, int limit, FolderContentsSortField sortBy,
 		Sort.Direction direction, LocalDateTime dateTime, Long size, boolean ownerRequested) {
-		List<FolderMetadata> folders = folderMetadataRepository.selectFoldersWithPagination(folderId, cursorId, sortBy,
+		List<FolderMetadata> folders = folderMetadataJpaRepository.selectFoldersWithPagination(folderId, cursorId,
+			sortBy,
 			direction, limit, dateTime, size);
 		if (!ownerRequested) {
 			folders = folders.stream().filter(folder -> !folder.isSharingExpired()).toList();
@@ -198,13 +202,13 @@ public class FolderService {
 
 		long parentFolderId = req.parentFolderId();
 		long userId = req.userId();
-		FolderMetadata parentFolder = folderMetadataRepository.findByIdForUpdate(parentFolderId)
+		FolderMetadata parentFolder = folderMetadataJpaRepository.findByIdForUpdate(parentFolderId)
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
 
 		validatePermission(parentFolder, userId);
 		validateFolderName(req);
 		validateFolder(req);
-		FolderMetadata newFolder = folderMetadataRepository.save(createFolderMetadata(user, parentFolder, req));
+		FolderMetadata newFolder = folderMetadataJpaRepository.save(createFolderMetadata(user, parentFolder, req));
 		return newFolder.getId();
 	}
 
@@ -213,7 +217,7 @@ public class FolderService {
 	 * 최대 depth가 50 이하인지 확인
 	 */
 	private void validateFolder(CreateFolderReqDto req) {
-		if (folderMetadataRepository.existsByParentFolderIdAndUploadFolderName(req.parentFolderId(),
+		if (folderMetadataJpaRepository.existsByParentFolderIdAndUploadFolderName(req.parentFolderId(),
 			req.uploadFolderName())) {
 			throw ErrorCode.INVALID_FILE_NAME.baseException();
 		}
@@ -249,7 +253,7 @@ public class FolderService {
 	 */
 	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public void deleteFolder(Long folderId, Long userId) {
-		FolderMetadata folderMetadata = folderMetadataRepository.findById(folderId)
+		FolderMetadata folderMetadata = folderMetadataJpaRepository.findById(folderId)
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
 
 		if (folderMetadata.isDeleted()) {
@@ -266,7 +270,7 @@ public class FolderService {
 		}
 
 		// 삭제 요청이 들어온 폴더를 제거한다.
-		folderMetadataRepository.softDeleteById(folderMetadata.getId());
+		folderMetadataJpaRepository.softDeleteById(folderMetadata.getId());
 
 		// 삭제는 스레드 풀이 처리하도록 한다.
 		deleteFolderTree(folderMetadata);
@@ -274,15 +278,25 @@ public class FolderService {
 		metadataService.calculateSize(folderMetadata.getId(), folderMetadata.getSize(), false);
 	}
 
+	/**
+	 * 현재 폴더 기준으로 하위 파일 트리를 제거하는 메소드
+	 * 하위 폴더와 파일을 재귀 호출로 탐색
+	 */
 	private void deleteFolderTree(FolderMetadata folderMetadata) {
 		long folderId = folderMetadata.getId();
 		log.info("[Delete Start Pk] {}", folderId);
-		deleteThreadPoolExecutor.execute(() -> QueryExecuteTemplate.<FolderMetadata>selectFilesAndExecute(
-			findFolder -> folderMetadataRepository.findByParentFolderId(findFolder == null ? folderId : findFolder.getId()),
-			folderMetadataList -> {
-				backgroundJob.addForDeleteFolder(folderMetadataList);
-				folderMetadataList.forEach(this::fileDeleteWithParentFolder); // 폴더당 하나씩 하위 파일들 제거
-			}));
+		deleteThreadPoolExecutor.execute(
+			() -> QueryExecuteTemplate.<FolderMetadata>selectFilesAndExecuteWithCursor(PAGE_SIZE,
+				findFolder -> folderMetadataRepository.findByParentFolderIdWithLastId(
+					folderId,
+					findFolder == null ? null : findFolder.getId(), PAGE_SIZE),
+				folderMetadataList -> {
+					backgroundJob.addForDeleteFolder(folderMetadataList);
+					folderMetadataList.forEach(folder -> {
+						fileDeleteWithParentFolder(folder); // 하위 파일 제거
+						deleteFolderTree(folder); // 재귀적으로 탐색
+					});
+				}));
 
 		// 삭제 시작한 폴더의 하위 파일 제거
 		deleteThreadPoolExecutor.execute(() -> {

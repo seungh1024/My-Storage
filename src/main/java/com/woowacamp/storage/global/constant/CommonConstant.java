@@ -20,4 +20,7 @@ public class CommonConstant {
 	public static final String SHARED_LINK_URI = "/api/v1/share?sharedId=";
 	public static final String FOLDER_READ_URI = "/api/v1/folders/";
 	public static final String FILE_READ_URI = "/api/v1/files/";
+
+	// 페이지 사이즈
+	public static final int PAGE_SIZE = 2;
 }
