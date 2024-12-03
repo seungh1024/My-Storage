@@ -19,7 +19,10 @@ public class BackgroundDeleter {
 	private int queueSize;
 
 	@Value("${folder.delete.threadName}")
-	private String threadName;
+	private String deleteThreadName;
+
+	@Value("${folder.search.threadName}")
+	private String searchThreadName;
 
 	@Bean
 	public Executor deleteThreadPoolExecutor() {
@@ -27,9 +30,30 @@ public class BackgroundDeleter {
 		threadPoolTaskExecutor.setCorePoolSize(threadCount);
 		threadPoolTaskExecutor.setMaxPoolSize(threadCount);
 		threadPoolTaskExecutor.setQueueCapacity(queueSize);
-		threadPoolTaskExecutor.setThreadNamePrefix(threadName);
+		threadPoolTaskExecutor.setThreadNamePrefix(deleteThreadName);
 
 		// 작업 중간에 예외 던져서 멈추지 않도록 처리
+		threadPoolTaskExecutor.setRejectedExecutionHandler((r, executor) -> {
+			try {
+				executor.getQueue().put(r);
+			} catch (InterruptedException e) {
+				log.error(e.toString(), e);
+				Thread.currentThread().interrupt();
+			}
+		});
+		threadPoolTaskExecutor.initialize();
+
+		return threadPoolTaskExecutor;
+	}
+
+	@Bean
+	public Executor searchThreadPoolExecutor() {
+		ThreadPoolTaskExecutor threadPoolTaskExecutor = new ThreadPoolTaskExecutor();
+		threadPoolTaskExecutor.setCorePoolSize(threadCount);
+		threadPoolTaskExecutor.setMaxPoolSize(threadCount);
+		threadPoolTaskExecutor.setQueueCapacity(queueSize);
+		threadPoolTaskExecutor.setThreadNamePrefix(searchThreadName);
+
 		threadPoolTaskExecutor.setRejectedExecutionHandler((r, executor) -> {
 			try {
 				executor.getQueue().put(r);

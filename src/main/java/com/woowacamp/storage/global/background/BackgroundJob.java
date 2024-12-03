@@ -3,12 +3,11 @@ package com.woowacamp.storage.global.background;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.Executor;
 import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
-import java.util.stream.IntStream;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,11 +35,13 @@ public class BackgroundJob {
 	// 멀티스레딩 환경을 고려해서 BlockingQueue 사용
 	private LinkedBlockingQueue<FolderMetadata> folderDeleteQueue;
 	private LinkedBlockingQueue<FileMetadata> fileDeleteQueue;
-	private final FolderMetadataJpaRepository folderMetadataRepository;
+	private final FolderMetadataJpaRepository folderMetadataJpaRepository;
 	private final FileMetadataJpaRepository fileMetadataJpaRepository;
-	private final static int DELETE_DELAY = 1000 * 30;
-	private AtomicLong folderJobCount;
-	private AtomicLong fileJobCount;
+	private final Executor deleteThreadPoolExecutor;
+	private final static int DELETE_DELAY = 1000;
+	private int folderCount = 0;
+	private int fileCount = 0;
+	private final int maxCount = 5;
 
 	@Value("${constant.batchSize}")
 	private int batchSize;
@@ -49,8 +50,6 @@ public class BackgroundJob {
 	public void init() {
 		folderDeleteQueue = new LinkedBlockingQueue<>();
 		fileDeleteQueue = new LinkedBlockingQueue<>();
-		folderJobCount = new AtomicLong();
-		fileJobCount = new AtomicLong();
 	}
 
 	@PreDestroy
@@ -65,16 +64,7 @@ public class BackgroundJob {
 	 * @param folderMetadataList
 	 */
 	public void addForDeleteFolder(List<FolderMetadata> folderMetadataList) {
-		System.out.println("[ADD DELETE LIST] = " +folderMetadataList.stream().map(FolderMetadata::getId).toList());
 		folderDeleteQueue.addAll(folderMetadataList);
-		long l = folderJobCount.addAndGet(folderMetadataList.size());
-		log.info("[atomic result] {}",l);
-		if (folderJobCount.addAndGet(-batchSize) >= 0) {
-			log.info("[atomic success] {}", folderJobCount.get());
-			folderBatchDelete();
-		} else {
-			folderJobCount.addAndGet(batchSize);
-		}
 	}
 
 	/**
@@ -83,22 +73,10 @@ public class BackgroundJob {
 	 */
 	public void addForDeleteFile(FileMetadata fileMetadata) {
 		fileDeleteQueue.offer(fileMetadata);
-		fileJobCount.incrementAndGet();
-		if (fileJobCount.addAndGet(-batchSize) >= 0) {
-			fileBatchDelete();
-		} else {
-			fileJobCount.addAndGet(batchSize);
-		}
 	}
 
 	public void addForDeleteFile(List<FileMetadata> fileMetadataList) {
 		fileDeleteQueue.addAll(fileMetadataList);
-		fileJobCount.addAndGet(fileMetadataList.size());
-		if (fileJobCount.addAndGet(-batchSize) >= 0) {
-			fileBatchDelete();
-		} else {
-			fileJobCount.addAndGet(batchSize);
-		}
 	}
 
 	public <T> void addForUpdateFile(T changeValue, List<Long> pkList, BiConsumer<T, List<Long>> consumer) {
@@ -108,7 +86,7 @@ public class BackgroundJob {
 	private void folderBatchDelete() {
 		this.<FolderMetadata>doBatchJob(folderDeleteQueue,
 			folderList -> folderList.stream().map(FolderMetadata::getId).toList(),
-			batchList -> folderMetadataRepository.softDeleteAllByIdInBatch(batchList));
+			batchList -> folderMetadataJpaRepository.softDeleteAllByIdInBatch(batchList));
 	}
 
 	private void fileBatchDelete() {
@@ -141,10 +119,27 @@ public class BackgroundJob {
 	 */
 	@Scheduled(fixedDelay = DELETE_DELAY)
 	private void deleteScheduling() {
-		IntStream.range(0, (folderDeleteQueue.size() + batchSize - 1) / batchSize)
-				.forEach(i->folderBatchDelete());
-		IntStream.range(0, (fileDeleteQueue.size() + batchSize - 1) / batchSize)
-			.forEach(i->fileBatchDelete());
+		folderCount++;
+		fileCount++;
+		if (folderDeleteQueue.size() >= batchSize) {
+			folderCount = 0;
+			do {
+				deleteThreadPoolExecutor.execute(() -> folderBatchDelete());
+			} while (folderDeleteQueue.size() >= batchSize);
+		} else if (folderCount >= maxCount) {
+			folderCount = 0;
+			folderBatchDelete();
+		}
+
+		if (fileDeleteQueue.size() >= batchSize) {
+			fileCount = 0;
+			do {
+				deleteThreadPoolExecutor.execute(() -> fileBatchDelete());
+			} while (fileDeleteQueue.size() >= batchSize);
+		} else if (fileCount >= maxCount) {
+			fileCount = 0;
+			fileBatchDelete();
+		}
 	}
 
 }
