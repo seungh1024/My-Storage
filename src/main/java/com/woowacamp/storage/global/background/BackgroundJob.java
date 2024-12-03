@@ -91,6 +91,16 @@ public class BackgroundJob {
 		}
 	}
 
+	public void addForDeleteFile(List<FileMetadata> fileMetadataList) {
+		fileDeleteQueue.addAll(fileMetadataList);
+		fileJobCount.addAndGet(fileMetadataList.size());
+		if (fileJobCount.addAndGet(-batchSize) >= 0) {
+			fileBatchDelete();
+		} else {
+			fileJobCount.addAndGet(batchSize);
+		}
+	}
+
 	public <T> void addForUpdateFile(T changeValue, List<Long> pkList, BiConsumer<T, List<Long>> consumer) {
 		doBatchJob(changeValue, pkList, consumer);
 	}

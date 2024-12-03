@@ -16,7 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.woowacamp.storage.domain.file.entity.FileMetadata;
 import com.woowacamp.storage.domain.file.repository.FileMetadataJpaRepository;
-import com.woowacamp.storage.global.background.BackgroundJob;
+import com.woowacamp.storage.domain.file.repository.FileMetadataRepository;
 import com.woowacamp.storage.domain.folder.dto.CursorType;
 import com.woowacamp.storage.domain.folder.dto.FolderContentsDto;
 import com.woowacamp.storage.domain.folder.dto.FolderContentsSortField;
@@ -29,6 +29,7 @@ import com.woowacamp.storage.domain.folder.utils.FolderSearchUtil;
 import com.woowacamp.storage.domain.folder.utils.QueryExecuteTemplate;
 import com.woowacamp.storage.domain.user.entity.User;
 import com.woowacamp.storage.domain.user.repository.UserRepository;
+import com.woowacamp.storage.global.background.BackgroundJob;
 import com.woowacamp.storage.global.constant.CommonConstant;
 import com.woowacamp.storage.global.constant.UploadStatus;
 import com.woowacamp.storage.global.error.ErrorCode;
@@ -45,13 +46,14 @@ import static com.woowacamp.storage.global.constant.CommonConstant.*;
 public class FolderService {
 	private static final long INITIAL_CURSOR_ID = 0L;
 	private final FileMetadataJpaRepository fileMetadataJpaRepository;
+	private final FileMetadataRepository fileMetadataRepository;
 	private final FolderMetadataJpaRepository folderMetadataJpaRepository;
 	private final FolderMetadataRepository folderMetadataRepository;
 	private final MetadataService metadataService;
 	private final UserRepository userRepository;
 	private final FolderSearchUtil folderSearchUtil;
 	private final ApplicationEventPublisher eventPublisher;
-	private final Executor deleteThreadPoolExecutor;
+	private final Executor searchThreadPoolExecutor;
 	private final BackgroundJob backgroundJob;
 
 	@Value("${constant.batchSize}")
@@ -191,8 +193,7 @@ public class FolderService {
 	private List<FolderMetadata> fetchFolders(Long folderId, Long cursorId, int limit, FolderContentsSortField sortBy,
 		Sort.Direction direction, LocalDateTime dateTime, Long size, boolean ownerRequested) {
 		List<FolderMetadata> folders = folderMetadataJpaRepository.selectFoldersWithPagination(folderId, cursorId,
-			sortBy,
-			direction, limit, dateTime, size);
+			sortBy, direction, limit, dateTime, size);
 		if (!ownerRequested) {
 			folders = folders.stream().filter(folder -> !folder.isSharingExpired()).toList();
 		}
@@ -292,12 +293,10 @@ public class FolderService {
 	private void deleteFolderTree(FolderMetadata folderMetadata) {
 		long folderId = folderMetadata.getId();
 		log.info("[Delete Start Pk] {}", folderId);
-		deleteThreadPoolExecutor.execute(
+		searchThreadPoolExecutor.execute(
 			() -> QueryExecuteTemplate.<FolderMetadata>selectFilesAndExecuteWithCursor(pageSize,
-				findFolder -> folderMetadataRepository.findByParentFolderIdWithLastId(
-					folderId,
-					findFolder == null ? null : findFolder.getId(), pageSize),
-				folderMetadataList -> {
+				findFolder -> folderMetadataRepository.findByParentFolderIdWithLastId(folderId,
+					findFolder == null ? null : findFolder.getId(), pageSize), folderMetadataList -> {
 					backgroundJob.addForDeleteFolder(folderMetadataList);
 					folderMetadataList.forEach(folder -> {
 						fileDeleteWithParentFolder(folder); // 하위 파일 제거
@@ -306,20 +305,19 @@ public class FolderService {
 				}));
 
 		// 삭제 시작한 폴더의 하위 파일 제거
-		deleteThreadPoolExecutor.execute(() -> {
+		searchThreadPoolExecutor.execute(() -> {
 			fileDeleteWithParentFolder(folderMetadata);
 		});
 	}
 
+	// 부모 폴더 조건까지 포함해서 file 리스트 페이징 조회. 그리고 여기서 바로 삭제 쿼리 날리면 BackgroundJob은 필요 없지 않나?
+	// 만약 하위 폴더 수가 적은데 트리 깊이가 깊은 경우에는 BackgroundJob이 도움은 될듯. DB 접근 횟수를 줄여주니까
 	private void fileDeleteWithParentFolder(FolderMetadata folderMetadata) {
-		deleteThreadPoolExecutor.execute(() -> {
-			List<FileMetadata> fileMetadataList = fileMetadataJpaRepository.findByParentFolderId(folderMetadata.getId());
-			List<Long> list = fileMetadataList.stream().map(file -> file.getId()).toList();
-			log.info("[File List] {}", list);
-			fileMetadataList.forEach(fileMetadata -> {
-				deleteBinaryFile(fileMetadata);
-				backgroundJob.addForDeleteFile(fileMetadata);
-			});
+		searchThreadPoolExecutor.execute(() -> {
+			QueryExecuteTemplate.<FileMetadata>selectFilesAndExecuteWithCursor(pageSize,
+				findFile -> fileMetadataRepository.findFileMetadataByLastId(folderMetadata.getId(),
+					findFile == null ? null : findFile.getId(), pageSize),
+				fileMetadataList -> backgroundJob.addForDeleteFile(fileMetadataList));
 		});
 	}
 

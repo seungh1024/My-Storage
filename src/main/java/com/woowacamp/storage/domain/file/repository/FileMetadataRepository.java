@@ -13,11 +13,11 @@ import lombok.RequiredArgsConstructor;
 public class FileMetadataRepository {
 	private final FileMetadataJpaRepository fileMetadataJpaRepository;
 
-	public List<FileMetadata> findSoftDeletedFile(Long lastId, int size) {
+	public List<FileMetadata> findFileMetadataByLastId(long parentFolderId, Long lastId, int size) {
 		if (lastId == null) {
-			return fileMetadataJpaRepository.findSoftDeletedFile(size);
+			return fileMetadataJpaRepository.findByParentFolderId(parentFolderId, size);
 		}
-		return fileMetadataJpaRepository.findSoftDeletedFileWithLastId(lastId, size);
+		return fileMetadataJpaRepository.findByParentFolderIdWithLastId(parentFolderId, lastId, size);
 	}
 	public void deleteAll(List<FileMetadata> fileMetadataList) {
 		fileMetadataJpaRepository.deleteAllByIdInBatch(fileMetadataList.stream().map(FileMetadata::getId).toList());

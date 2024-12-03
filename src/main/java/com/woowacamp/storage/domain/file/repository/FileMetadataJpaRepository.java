@@ -91,19 +91,21 @@ public interface FileMetadataJpaRepository extends JpaRepository<FileMetadata, L
 	List<FileMetadata> findByParentFolderId(Long parentId);
 
 	@Query("""
-		SELECT f
-		FROM FileMetadata f
-		ORDER BY f.id
-		LIMIT :size
-	""")
-	List<FileMetadata> findSoftDeletedFile(@Param("size") int size);
+			SELECT f
+			FROM FileMetadata f
+			WHERE f.parentFolderId = :parentId
+			ORDER BY f.id
+			LIMIT :size
+		""")
+	List<FileMetadata> findByParentFolderId(@Param("parentId") long parentId, @Param("size") int size);
 
 	@Query("""
-		SELECT f
-		FROM FileMetadata f
-		WHERE f.id > :lastId
-		ORDER BY f.id
-		LIMIT :size
-	""")
-	List<FileMetadata> findSoftDeletedFileWithLastId(@Param("lastId") Long lastId, @Param("size") int size);
+			SELECT f
+			FROM FileMetadata f
+			WHERE f.parentFolderId = :parentId AND f.id > :lastId
+			ORDER BY f.id
+			LIMIT :size
+		""")
+	List<FileMetadata> findByParentFolderIdWithLastId(@Param("parentId") long parentId, @Param("lastId") Long lastId,
+		@Param("size") int size);
 }
