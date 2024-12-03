@@ -1,4 +1,4 @@
-package com.woowacamp.storage.domain.folder.background;
+package com.woowacamp.storage.global.background;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -17,7 +17,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import com.woowacamp.storage.domain.file.entity.FileMetadata;
-import com.woowacamp.storage.domain.file.repository.FileMetadataRepository;
+import com.woowacamp.storage.domain.file.repository.FileMetadataJpaRepository;
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
 
@@ -37,7 +37,7 @@ public class BackgroundJob {
 	private LinkedBlockingQueue<FolderMetadata> folderDeleteQueue;
 	private LinkedBlockingQueue<FileMetadata> fileDeleteQueue;
 	private final FolderMetadataJpaRepository folderMetadataRepository;
-	private final FileMetadataRepository fileMetadataRepository;
+	private final FileMetadataJpaRepository fileMetadataJpaRepository;
 	private final static int DELETE_DELAY = 1000 * 30;
 	private AtomicLong folderJobCount;
 	private AtomicLong fileJobCount;
@@ -103,7 +103,7 @@ public class BackgroundJob {
 
 	private void fileBatchDelete() {
 		this.<FileMetadata>doBatchJob(fileDeleteQueue, fileList -> fileList.stream().map(FileMetadata::getId).toList(),
-			batchList -> fileMetadataRepository.deleteAllByIdInBatch(batchList));
+			batchList -> fileMetadataJpaRepository.deleteAllByIdInBatch(batchList));
 	}
 
 	/**

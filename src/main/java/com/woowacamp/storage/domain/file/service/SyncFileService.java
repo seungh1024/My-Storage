@@ -15,7 +15,7 @@ import com.amazonaws.services.s3.model.InitiateMultipartUploadResult;
 import com.amazonaws.services.s3.model.PartETag;
 import com.amazonaws.services.s3.model.UploadPartRequest;
 import com.amazonaws.services.s3.model.UploadPartResult;
-import com.woowacamp.storage.domain.file.repository.FileMetadataRepository;
+import com.woowacamp.storage.domain.file.repository.FileMetadataJpaRepository;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -27,12 +27,12 @@ public class SyncFileService {
 
 	private final Map<String, Integer> maxPartCountMap;
 	private final AmazonS3 amazonS3;
-	private final FileMetadataRepository fileMetadataRepository;
+	private final FileMetadataJpaRepository fileMetadataJpaRepository;
 
-	public SyncFileService(AmazonS3 amazonS3, FileMetadataRepository fileMetadataRepository) {
+	public SyncFileService(AmazonS3 amazonS3, FileMetadataJpaRepository fileMetadataJpaRepository) {
 		this.amazonS3 = amazonS3;
 		this.maxPartCountMap = new HashMap<>();
-		this.fileMetadataRepository = fileMetadataRepository;
+		this.fileMetadataJpaRepository = fileMetadataJpaRepository;
 	}
 
 	public void produce(InitiateMultipartUploadResult initResponse, String currentFileName, int partNumber,
@@ -62,7 +62,7 @@ public class SyncFileService {
 			uploadResult = amazonS3.uploadPart(uploadRequest);
 		} catch (AmazonClientException e) {
 			log.error("partNumber: {}, part upload가 정상적으로 동작하지 않습니다.", partNumber);
-			fileMetadataRepository.deleteByUuidFileName(key);
+			fileMetadataJpaRepository.deleteByUuidFileName(key);
 			return;
 		}
 		partETags.add(uploadResult.getPartETag());
@@ -75,7 +75,7 @@ public class SyncFileService {
 			amazonS3.completeMultipartUpload(completeRequest);
 		} catch (AmazonClientException e) {
 			log.error("[Error Occurred] completeFileUpload가 정상적으로 동작하지 않습니다.");
-			fileMetadataRepository.updateUploadStatusByUuid(currentFileName);
+			fileMetadataJpaRepository.updateUploadStatusByUuid(currentFileName);
 		}
 	}
 }

@@ -22,7 +22,7 @@ import com.amazonaws.services.s3.model.PartETag;
 import com.amazonaws.services.s3.model.UploadPartRequest;
 import com.amazonaws.services.s3.model.UploadPartResult;
 import com.woowacamp.storage.domain.file.dto.PartContext;
-import com.woowacamp.storage.domain.file.repository.FileMetadataRepository;
+import com.woowacamp.storage.domain.file.repository.FileMetadataJpaRepository;
 import com.woowacamp.storage.domain.file.util.CustomS3BlockingQueuePolicy;
 import com.woowacamp.storage.global.error.ErrorCode;
 
@@ -38,10 +38,10 @@ public class FileWriterThreadPool {
 	private final Map<String, AtomicInteger> currentPartCountMap;
 	private final AmazonS3 amazonS3;
 	private final ThreadPoolExecutor executorService;
-	private final FileMetadataRepository fileMetadataRepository;
+	private final FileMetadataJpaRepository fileMetadataJpaRepository;
 	public final ArrayBlockingQueue<Runnable> workQueue = new ArrayBlockingQueue<>(FILE_WRITER_QUEUE_SIZE);
 
-	public FileWriterThreadPool(AmazonS3 amazonS3, FileMetadataRepository fileMetadataRepository) {
+	public FileWriterThreadPool(AmazonS3 amazonS3, FileMetadataJpaRepository fileMetadataJpaRepository) {
 		this.amazonS3 = amazonS3;
 		this.maxPartCountMap = new HashMap<>();
 		this.currentPartCountMap = new HashMap<>();
@@ -54,7 +54,7 @@ public class FileWriterThreadPool {
 			new CustomS3BlockingQueuePolicy()
 		);
 		// this.executorService.prestartAllCoreThreads();
-		this.fileMetadataRepository = fileMetadataRepository;
+		this.fileMetadataJpaRepository = fileMetadataJpaRepository;
 		log.info("file writer queue size: {}", FILE_WRITER_QUEUE_SIZE);
 		// log.info("initial thread count: {}", ((ThreadPoolExecutor)executorService).getActiveCount());
 		// log.info("initial queue size: {}", ((ThreadPoolExecutor)executorService).getQueue().size());
@@ -65,7 +65,7 @@ public class FileWriterThreadPool {
 
 		if (!currentPartCountMap.containsKey(currentFileName)) {
 			log.info("[Error Occurred] 이미 중단된 작업입니다. partNumber: {} ", partNumber);
-			fileMetadataRepository.deleteByUuidFileName(currentFileName);
+			fileMetadataJpaRepository.deleteByUuidFileName(currentFileName);
 			throw ErrorCode.FILE_UPLOAD_FAILED.baseException();
 		}
 		// log.info("current thread count: {}", ((ThreadPoolExecutor)executorService).getActiveCount());
@@ -109,7 +109,7 @@ public class FileWriterThreadPool {
 		} catch (AmazonClientException e) {
 			log.error("partNumber: {}, part upload가 정상적으로 동작하지 않습니다.", partNumber);
 			currentPartCountMap.remove(key);
-			fileMetadataRepository.deleteByUuidFileName(key);
+			fileMetadataJpaRepository.deleteByUuidFileName(key);
 			return;
 		}
 		partETags.add(uploadResult.getPartETag());
@@ -125,7 +125,7 @@ public class FileWriterThreadPool {
 			amazonS3.completeMultipartUpload(completeRequest);
 		} catch (AmazonClientException e) {
 			log.error("[Error Occurred] completeFileUpload가 정상적으로 동작하지 않습니다.");
-			fileMetadataRepository.updateUploadStatusByUuid(currentFileName);
+			fileMetadataJpaRepository.updateUploadStatusByUuid(currentFileName);
 		}
 	}
 

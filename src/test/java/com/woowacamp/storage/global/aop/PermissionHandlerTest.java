@@ -15,7 +15,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.woowacamp.storage.domain.file.entity.FileMetadata;
-import com.woowacamp.storage.domain.file.repository.FileMetadataRepository;
+import com.woowacamp.storage.domain.file.repository.FileMetadataJpaRepository;
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
 import com.woowacamp.storage.global.aop.type.FileType;
@@ -31,7 +31,7 @@ class PermissionHandlerTest {
 	@Mock
 	FolderMetadataJpaRepository folderMetadataRepository;
 	@Mock
-	FileMetadataRepository fileMetadataRepository;
+	FileMetadataJpaRepository fileMetadataJpaRepository;
 
 	long userId = 1;
 	long fileId = 1;
@@ -93,7 +93,7 @@ class PermissionHandlerTest {
 			PermissionFieldsDto permissionFieldsDto = getPermissionFieldsDto();
 			permissionFieldsDto.setUserId(2L);
 			permissionFieldsDto.setMoveFolderId(null);
-			given(fileMetadataRepository.findById(fileId)).willReturn(Optional.of(getWriteFileMetadata()));
+			given(fileMetadataJpaRepository.findById(fileId)).willReturn(Optional.of(getWriteFileMetadata()));
 
 			// When
 			permissionHandler.hasPermission(PermissionType.READ, FileType.FILE, permissionFieldsDto);
@@ -105,7 +105,7 @@ class PermissionHandlerTest {
 			// Given
 			PermissionFieldsDto permissionFieldsDto = getPermissionFieldsDto();
 			permissionFieldsDto.setUserId(2L);
-			given(fileMetadataRepository.findByIdForShare(fileId)).willReturn(Optional.of(getReadFileMetadata()));
+			given(fileMetadataJpaRepository.findByIdForShare(fileId)).willReturn(Optional.of(getReadFileMetadata()));
 
 			// When
 			CustomException customException = assertThrows(CustomException.class, () -> {
@@ -122,7 +122,7 @@ class PermissionHandlerTest {
 			//Given
 			PermissionFieldsDto permissionFieldsDto = getPermissionFieldsDto();
 			permissionFieldsDto.setUserId(2L);
-			given(fileMetadataRepository.findByIdForShare(fileId)).willReturn(Optional.of(getExpiredFileMetadata()));
+			given(fileMetadataJpaRepository.findByIdForShare(fileId)).willReturn(Optional.of(getExpiredFileMetadata()));
 
 			// When
 			CustomException customException = assertThrows(CustomException.class, () -> {
@@ -139,7 +139,7 @@ class PermissionHandlerTest {
 			//Given
 			PermissionFieldsDto permissionFieldsDto = getPermissionFieldsDto();
 			permissionFieldsDto.setMoveFolderId(null);
-			given(fileMetadataRepository.findByIdForShare(fileId)).willReturn(Optional.of(getExpiredFileMetadata()));
+			given(fileMetadataJpaRepository.findByIdForShare(fileId)).willReturn(Optional.of(getExpiredFileMetadata()));
 
 			// When
 			permissionHandler.hasPermission(PermissionType.WRITE, FileType.FILE, permissionFieldsDto);
@@ -150,7 +150,7 @@ class PermissionHandlerTest {
 		void request_with_not_exist_file() {
 			//Given
 			PermissionFieldsDto permissionFieldsDto = getPermissionFieldsDto();
-			given(fileMetadataRepository.findByIdForShare(fileId)).willReturn(Optional.empty());
+			given(fileMetadataJpaRepository.findByIdForShare(fileId)).willReturn(Optional.empty());
 
 			// When
 			CustomException customException = assertThrows(CustomException.class, () -> {

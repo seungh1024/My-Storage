@@ -11,7 +11,7 @@ import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.model.AmazonS3Exception;
 import com.amazonaws.services.s3.model.ObjectMetadata;
 import com.woowacamp.storage.domain.file.entity.FileMetadata;
-import com.woowacamp.storage.domain.file.repository.FileMetadataRepository;
+import com.woowacamp.storage.domain.file.repository.FileMetadataJpaRepository;
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
 import com.woowacamp.storage.global.constant.CommonConstant;
 
@@ -28,7 +28,7 @@ import lombok.extern.slf4j.Slf4j;
 public class OrphanFileDeleteScheduler {
 	public static final int DELAY = 1000 * 30;
 	private final AmazonS3 amazonS3;
-	private final FileMetadataRepository fileMetadataRepository;
+	private final FileMetadataJpaRepository fileMetadataJpaRepository;
 	private final FolderMetadataJpaRepository folderMetadataRepository;
 	@Value("${cloud.aws.credentials.bucketName}")
 	private String BUCKET_NAME;
@@ -42,7 +42,7 @@ public class OrphanFileDeleteScheduler {
 	 */
 	@Scheduled(fixedDelay = DELAY)
 	public void deleteOrphanFile() {
-		List<FileMetadata> orphanFiles = fileMetadataRepository.findOrphanFiles(CommonConstant.ORPHAN_PARENT_ID);
+		List<FileMetadata> orphanFiles = fileMetadataJpaRepository.findOrphanFiles(CommonConstant.ORPHAN_PARENT_ID);
 		if (orphanFiles.isEmpty()) {
 			return;
 		}
@@ -56,7 +56,7 @@ public class OrphanFileDeleteScheduler {
 					if (fileMetadata.getThumbnailUUID() != null) {
 						amazonS3.deleteObject(BUCKET_NAME, fileMetadata.getThumbnailUUID());
 					}
-					fileMetadataRepository.deleteById(fileMetadata.getId());
+					fileMetadataJpaRepository.deleteById(fileMetadata.getId());
 				}
 			} catch (AmazonS3Exception e) {
 				log.error("[Amazon S3 Exception] cannot find orphan file in S3, file metadata id = {}",

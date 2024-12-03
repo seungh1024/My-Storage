@@ -16,7 +16,7 @@ import com.amazonaws.services.s3.model.AbortMultipartUploadRequest;
 import com.amazonaws.services.s3.model.ListMultipartUploadsRequest;
 import com.amazonaws.services.s3.model.MultipartUpload;
 import com.amazonaws.services.s3.model.MultipartUploadListing;
-import com.woowacamp.storage.domain.file.repository.FileMetadataRepository;
+import com.woowacamp.storage.domain.file.repository.FileMetadataJpaRepository;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -34,7 +34,7 @@ public class AbortedUploadDeleteScheduler {
 	public static final int DELAY = 1000 * 30;
 
 	private final AmazonS3 amazonS3;
-	private final FileMetadataRepository fileMetadataRepository;
+	private final FileMetadataJpaRepository fileMetadataJpaRepository;
 	@Value("${cloud.aws.credentials.bucketName}")
 	private String BUCKET_NAME;
 
@@ -57,7 +57,7 @@ public class AbortedUploadDeleteScheduler {
 					amazonS3.abortMultipartUpload(new AbortMultipartUploadRequest(BUCKET_NAME, abortedUpload.getKey(),
 						abortedUpload.getUploadId()));
 					amazonS3.deleteObject(BUCKET_NAME, "thumb_" + abortedUpload.getKey());
-					fileMetadataRepository.deleteByUuidFileName(abortedUpload.getKey());
+					fileMetadataJpaRepository.deleteByUuidFileName(abortedUpload.getKey());
 				});
 	}
 

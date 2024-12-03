@@ -23,7 +23,7 @@ import com.woowacamp.storage.domain.file.dto.FormMetadataDto;
 import com.woowacamp.storage.domain.file.dto.PartContext;
 import com.woowacamp.storage.domain.file.dto.UploadContext;
 import com.woowacamp.storage.domain.file.dto.UploadState;
-import com.woowacamp.storage.domain.file.repository.FileMetadataRepository;
+import com.woowacamp.storage.domain.file.repository.FileMetadataJpaRepository;
 import com.woowacamp.storage.domain.file.service.FileService;
 import com.woowacamp.storage.domain.file.service.S3FileService;
 import com.woowacamp.storage.domain.file.service.SyncFileService;
@@ -48,7 +48,7 @@ public class SyncFileControllerV2 {
 	private final AmazonS3 amazonS3;
 	private final S3FileService s3FileService;
 	private final SyncFileService syncFileService;
-	private final FileMetadataRepository fileMetadataRepository;
+	private final FileMetadataJpaRepository fileMetadataJpaRepository;
 	private final FileService fileService;
 	private final ThumbnailWriterThreadPool thumbnailWriterThreadPool;
 	private final PermissionHandler permissionHandler;
@@ -101,7 +101,7 @@ public class SyncFileControllerV2 {
 			if (context.getFileMetadata() == null) {
 				throw ErrorCode.INVALID_MULTIPART_FORM_DATA.baseException();
 			}
-			fileMetadataRepository.updateUploadStatusById(context.getFileMetadata().metadataId());
+			fileMetadataJpaRepository.updateUploadStatusById(context.getFileMetadata().metadataId());
 		} catch (AmazonS3Exception e) {
 			log.error("[AmazonS3Exception] 입력 예외로 완성되지 않은 S3 파일 제거 중 예외 발생. ERROR MESSAGE = {}", e.getMessage());
 		} finally {

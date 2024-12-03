@@ -17,7 +17,7 @@ import com.amazonaws.services.s3.model.AmazonS3Exception;
 import com.woowacamp.storage.domain.file.dto.FileMoveDto;
 import com.woowacamp.storage.domain.file.entity.FileMetadata;
 import com.woowacamp.storage.domain.file.event.FileMoveEvent;
-import com.woowacamp.storage.domain.file.repository.FileMetadataRepository;
+import com.woowacamp.storage.domain.file.repository.FileMetadataJpaRepository;
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
 import com.woowacamp.storage.domain.folder.utils.FolderSearchUtil;
@@ -30,7 +30,7 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class FileService {
 
-	private final FileMetadataRepository fileMetadataRepository;
+	private final FileMetadataJpaRepository fileMetadataJpaRepository;
 	private final FolderMetadataJpaRepository folderMetadataRepository;
 	private final FolderSearchUtil folderSearchUtil;
 	private final AmazonS3 amazonS3;
@@ -49,7 +49,7 @@ public class FileService {
 		if (!folderMetadata.getOwnerId().equals(dto.userId())) {
 			throw ErrorCode.ACCESS_DENIED.baseException();
 		}
-		FileMetadata fileMetadata = fileMetadataRepository.findByIdForUpdate(fileId)
+		FileMetadata fileMetadata = fileMetadataJpaRepository.findByIdForUpdate(fileId)
 			.orElseThrow(ErrorCode.FILE_NOT_FOUND::baseException);
 		validateMetadata(dto, fileMetadata);
 
@@ -66,14 +66,14 @@ public class FileService {
 		if (fileMetadata.getUploadStatus() != UploadStatus.SUCCESS) {
 			throw ErrorCode.FILE_NOT_FOUND.baseException();
 		}
-		if (fileMetadataRepository.existsByParentFolderIdAndUploadFileNameAndUploadStatusNot(dto.targetFolderId(),
+		if (fileMetadataJpaRepository.existsByParentFolderIdAndUploadFileNameAndUploadStatusNot(dto.targetFolderId(),
 			fileMetadata.getUploadFileName(), UploadStatus.FAIL)) {
 			throw ErrorCode.FILE_NAME_DUPLICATE.baseException();
 		}
 	}
 
 	public FileMetadata getFileMetadataBy(Long fileId, Long userId) {
-		FileMetadata fileMetadata = fileMetadataRepository.findById(fileId)
+		FileMetadata fileMetadata = fileMetadataJpaRepository.findById(fileId)
 			.orElseThrow(ErrorCode.FILE_NOT_FOUND::baseException);
 
 		if (!Objects.equals(fileMetadata.getOwnerId(), userId)) {
@@ -85,11 +85,11 @@ public class FileService {
 	// private String BUCKET_NAME
 	@Transactional
 	public void deleteFile(Long fileId, Long userId) {
-		FileMetadata fileMetadata = fileMetadataRepository.findByIdAndOwnerIdAndUploadStatusNot(fileId, userId,
+		FileMetadata fileMetadata = fileMetadataJpaRepository.findByIdAndOwnerIdAndUploadStatusNot(fileId, userId,
 				UploadStatus.FAIL)
 			.orElseThrow(ACCESS_DENIED::baseException);
 
-		fileMetadataRepository.delete(fileMetadata);
+		fileMetadataJpaRepository.delete(fileMetadata);
 
 		try {
 			amazonS3.deleteObject(BUCKET_NAME, fileMetadata.getUuidFileName());

@@ -17,7 +17,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.test.context.ActiveProfiles;
 
 import com.woowacamp.storage.domain.file.entity.FileMetadata;
-import com.woowacamp.storage.domain.file.repository.FileMetadataRepository;
+import com.woowacamp.storage.domain.file.repository.FileMetadataJpaRepository;
 import com.woowacamp.storage.domain.folder.dto.CursorType;
 import com.woowacamp.storage.domain.folder.dto.FolderContentsDto;
 import com.woowacamp.storage.domain.folder.dto.FolderContentsSortField;
@@ -33,7 +33,7 @@ class FolderServiceTest {
 	private FolderMetadataJpaRepository folderMetadataRepository;
 
 	@Autowired
-	private FileMetadataRepository fileMetadataRepository;
+	private FileMetadataJpaRepository fileMetadataJpaRepository;
 
 	@Autowired
 	private FolderService folderService;
@@ -44,14 +44,14 @@ class FolderServiceTest {
 
 	@AfterEach
 	void afterEach() {
-		fileMetadataRepository.deleteAllInBatch();
+		fileMetadataJpaRepository.deleteAllInBatch();
 		folderMetadataRepository.deleteAllInBatch();
 	}
 
 	@BeforeEach
 	void setUp() {
 		now = LocalDateTime.now();
-		fileMetadataRepository.deleteAll();
+		fileMetadataJpaRepository.deleteAll();
 		folderMetadataRepository.deleteAll();
 
 		parentFolder = folderMetadataRepository.save(
@@ -74,7 +74,7 @@ class FolderServiceTest {
 		}
 
 		for (int i = 0; i < 7; i++) {
-			FileMetadata fileMetadata = fileMetadataRepository.save(FileMetadata.builder()
+			FileMetadata fileMetadata = fileMetadataJpaRepository.save(FileMetadata.builder()
 				.rootId(1L)
 				.uuidFileName("uuidFileName" + i)
 				.creatorId(1L)

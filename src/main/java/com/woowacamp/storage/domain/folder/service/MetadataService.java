@@ -5,7 +5,7 @@ import java.util.concurrent.Executor;
 
 import org.springframework.stereotype.Service;
 
-import com.woowacamp.storage.domain.folder.background.BackgroundJob;
+import com.woowacamp.storage.global.background.BackgroundJob;
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
 import com.woowacamp.storage.domain.folder.utils.QueryExecuteTemplate;

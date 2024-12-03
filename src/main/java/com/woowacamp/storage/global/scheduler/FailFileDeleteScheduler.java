@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.model.AmazonS3Exception;
 import com.woowacamp.storage.domain.file.entity.FileMetadata;
-import com.woowacamp.storage.domain.file.repository.FileMetadataRepository;
+import com.woowacamp.storage.domain.file.repository.FileMetadataJpaRepository;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -23,7 +23,7 @@ import lombok.extern.slf4j.Slf4j;
 public class FailFileDeleteScheduler {
 	public static final int DELAY = 1000 * 30;
 	private final AmazonS3 amazonS3;
-	private final FileMetadataRepository fileMetadataRepository;
+	private final FileMetadataJpaRepository fileMetadataJpaRepository;
 	@Value("${cloud.aws.credentials.bucketName}")
 	private String BUCKET_NAME;
 
@@ -32,7 +32,7 @@ public class FailFileDeleteScheduler {
 	 */
 	@Scheduled(fixedDelay = DELAY)
 	public void deleteFailFiles() {
-		List<FileMetadata> failFiles = fileMetadataRepository.findFailedFileMetadata();
+		List<FileMetadata> failFiles = fileMetadataJpaRepository.findFailedFileMetadata();
 		if (failFiles.isEmpty()) {
 			return;
 		}
@@ -47,7 +47,7 @@ public class FailFileDeleteScheduler {
 					amazonS3.deleteObject(BUCKET_NAME, thumbnailUUID);
 				}
 				// 삭제가 된 경우 db 에서 메타데이터를 삭제합니다.
-				fileMetadataRepository.deleteById(fileMetadata.getId());
+				fileMetadataJpaRepository.deleteById(fileMetadata.getId());
 			} catch (AmazonS3Exception e) {
 				log.error("[Amazon S3 Exception] cannot find fail file in S3, file metadata id = {}",
 					fileMetadata.getId());

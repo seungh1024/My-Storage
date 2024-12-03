@@ -1,4 +1,4 @@
-package com.woowacamp.storage.domain.folder.background;
+package com.woowacamp.storage.global.background;
 
 import java.util.concurrent.Executor;
 

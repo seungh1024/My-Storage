@@ -5,7 +5,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
-import java.util.Set;
 import java.util.concurrent.Executor;
 
 import org.springframework.beans.factory.annotation.Value;
@@ -16,15 +15,14 @@ import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.woowacamp.storage.domain.file.entity.FileMetadata;
-import com.woowacamp.storage.domain.file.repository.FileMetadataRepository;
-import com.woowacamp.storage.domain.folder.background.BackgroundJob;
+import com.woowacamp.storage.domain.file.repository.FileMetadataJpaRepository;
+import com.woowacamp.storage.global.background.BackgroundJob;
 import com.woowacamp.storage.domain.folder.dto.CursorType;
 import com.woowacamp.storage.domain.folder.dto.FolderContentsDto;
 import com.woowacamp.storage.domain.folder.dto.FolderContentsSortField;
 import com.woowacamp.storage.domain.folder.dto.request.CreateFolderReqDto;
 import com.woowacamp.storage.domain.folder.dto.request.FolderMoveDto;
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
-import com.woowacamp.storage.domain.folder.event.FolderMoveEvent;
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataRepository;
 import com.woowacamp.storage.domain.folder.utils.FolderSearchUtil;
@@ -46,7 +44,7 @@ import static com.woowacamp.storage.global.constant.CommonConstant.*;
 @RequiredArgsConstructor
 public class FolderService {
 	private static final long INITIAL_CURSOR_ID = 0L;
-	private final FileMetadataRepository fileMetadataRepository;
+	private final FileMetadataJpaRepository fileMetadataJpaRepository;
 	private final FolderMetadataJpaRepository folderMetadataJpaRepository;
 	private final FolderMetadataRepository folderMetadataRepository;
 	private final MetadataService metadataService;
@@ -167,7 +165,7 @@ public class FolderService {
 	}
 
 	private boolean isExistsPendingFile(long currentFolderId) {
-		return fileMetadataRepository.existsByParentFolderIdAndUploadStatus(currentFolderId, UploadStatus.PENDING);
+		return fileMetadataJpaRepository.existsByParentFolderIdAndUploadStatus(currentFolderId, UploadStatus.PENDING);
 	}
 
 	/**
@@ -182,7 +180,7 @@ public class FolderService {
 
 	private List<FileMetadata> fetchFiles(Long folderId, Long cursorId, int limit, FolderContentsSortField sortBy,
 		Sort.Direction direction, LocalDateTime dateTime, Long size, boolean ownerRequested) {
-		List<FileMetadata> files = fileMetadataRepository.selectFilesWithPagination(folderId, cursorId, sortBy,
+		List<FileMetadata> files = fileMetadataJpaRepository.selectFilesWithPagination(folderId, cursorId, sortBy,
 			direction, limit, dateTime, size);
 		if (!ownerRequested) {
 			files = files.stream().filter(file -> !file.isSharingExpired()).toList();
@@ -315,7 +313,7 @@ public class FolderService {
 
 	private void fileDeleteWithParentFolder(FolderMetadata folderMetadata) {
 		deleteThreadPoolExecutor.execute(() -> {
-			List<FileMetadata> fileMetadataList = fileMetadataRepository.findByParentFolderId(folderMetadata.getId());
+			List<FileMetadata> fileMetadataList = fileMetadataJpaRepository.findByParentFolderId(folderMetadata.getId());
 			List<Long> list = fileMetadataList.stream().map(file -> file.getId()).toList();
 			log.info("[File List] {}", list);
 			fileMetadataList.forEach(fileMetadata -> {
