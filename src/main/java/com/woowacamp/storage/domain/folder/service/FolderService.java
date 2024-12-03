@@ -91,11 +91,11 @@ public class FolderService {
 
 	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public void moveFolder(Long sourceFolderId, FolderMoveDto dto) {
-		FolderMetadata folderMetadata = folderMetadataJpaRepository.findByIdForUpdate(sourceFolderId)
+		FolderMetadata folderMetadata = folderMetadataJpaRepository.findById(sourceFolderId)
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
 		validateMoveFolder(sourceFolderId, dto, folderMetadata);
 
-		FolderMetadata moveFolderMetadata = folderMetadataJpaRepository.findByIdForUpdate(dto.targetFolderId())
+		FolderMetadata moveFolderMetadata = folderMetadataJpaRepository.findById(dto.targetFolderId())
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
 
 		long originParentId = folderMetadata.getParentFolderId();
