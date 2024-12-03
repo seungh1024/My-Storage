@@ -23,4 +23,15 @@ public class FolderMetadataRepository {
 
 		return folderMetadataJpaRepository.findByParentFolderIdWithLastId(parentFolderId, lastId, size);
 	}
+
+	public List<FolderMetadata> findSoftDeletedFolder(Long lastId, int size) {
+		if (lastId == null) {
+			return folderMetadataJpaRepository.findSoftDeletedFolder(size);
+		}
+		return folderMetadataJpaRepository.findSoftDeletedFolderWithLastId(lastId, size);
+	}
+
+	public void deleteAll(List<FolderMetadata> folderMetadataList) {
+		folderMetadataJpaRepository.deleteAllByIdInBatch(folderMetadataList.stream().map(FolderMetadata::getId).toList());
+	}
 }
