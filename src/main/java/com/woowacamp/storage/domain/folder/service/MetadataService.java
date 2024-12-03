@@ -23,7 +23,7 @@ public class MetadataService {
 	private final BackgroundJob backgroundJob;
 
 	public void calculateSize(long folderId, long folderSize, boolean isPlus) {
-		metadataThreadPoolExecutor.execute(() -> QueryExecuteTemplate.<FolderMetadata, Long>selectFilesAndBatchExecute(
+		metadataThreadPoolExecutor.execute(() -> QueryExecuteTemplate.<FolderMetadata, Long>selectFilesAndBatchExecute(folderId,
 			findFolderId -> folderMetadataRepository.findById(findFolderId == null ? folderId : findFolderId)
 				.stream()
 				.toList(),

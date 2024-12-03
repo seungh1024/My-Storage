@@ -35,11 +35,12 @@ public class QueryExecuteTemplate {
 	 *
 	 * parentId의 null 이슈로 ID로 가공하여 ID 기반으로 탐색을 진행
 	 */
-	public static <T, ID> void selectFilesAndBatchExecute(Function<ID, List<T>> selectFunction,
+	public static <T, ID> void selectFilesAndBatchExecute(ID startFolderId, Function<ID, List<T>> selectFunction,
 		Function<List<T>, List<ID>> addFunction, Consumer<List<ID>> resultConsumer) {
 
 		Stack<ID> stack = new Stack<>();
 		List<ID> idList = new ArrayList<>();
+		idList.add(startFolderId);
 
 		do {
 			log.info("[Stack] {}", stack);
