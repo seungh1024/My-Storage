@@ -95,15 +95,20 @@ public class FolderService {
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
 		validateMoveFolder(sourceFolderId, dto, folderMetadata);
 
-		Set<FolderMetadata> sourcePath = folderSearchUtil.getPathToRoot(sourceFolderId);
-		Set<FolderMetadata> targetPath = folderSearchUtil.getPathToRoot(dto.targetFolderId());
-		FolderMetadata commonAncestor = folderSearchUtil.getCommonAncestor(sourcePath, targetPath);
-		folderSearchUtil.updateFolderPath(sourcePath, targetPath, commonAncestor, folderMetadata.getSize());
+		FolderMetadata moveFolderMetadata = folderMetadataJpaRepository.findByIdForUpdate(dto.targetFolderId())
+			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
+
+		long originParentId = folderMetadata.getParentFolderId();
 		folderMetadata.updateParentFolderId(dto.targetFolderId());
 
-		eventPublisher.publishEvent(
-			new FolderMoveEvent(this, folderMetadata,
-				folderMetadataJpaRepository.findById(dto.targetFolderId()).get()));
+		// 현재 폴더의 부모들은 사이즈만큼 감소시키고, 이동할 폴더부터는 사이즈만큼 증가한다
+		metadataService.calculateSize(originParentId, folderMetadata.getSize(), false);
+		metadataService.calculateSize(moveFolderMetadata.getId(), folderMetadata.getSize(), true);
+
+		// TODO 하위 경로 공유 상태 변경 필요
+		// eventPublisher.publishEvent(
+		// 	new FolderMoveEvent(this, folderMetadata,
+		// 		folderMetadataJpaRepository.findById(dto.targetFolderId()).get()));
 	}
 
 	private void validateMoveFolder(Long sourceFolderId, FolderMoveDto dto, FolderMetadata folderMetadata) {
@@ -279,7 +284,7 @@ public class FolderService {
 		// 삭제는 스레드 풀이 처리하도록 한다.
 		deleteFolderTree(folderMetadata);
 		// 삭제한 폴더의 용량 계산을 진행한다.
-		metadataService.calculateSize(folderMetadata.getId(), folderMetadata.getSize(), false);
+		metadataService.calculateSize(folderMetadata.getParentFolderId(), folderMetadata.getSize(), false);
 	}
 
 	/**
