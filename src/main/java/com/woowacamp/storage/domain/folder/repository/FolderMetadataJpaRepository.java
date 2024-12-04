@@ -75,14 +75,14 @@ public interface FolderMetadataJpaRepository extends JpaRepository<FolderMetadat
 	@Transactional
 	@Modifying
 	@Query("""
-		UPDATE FolderMetadata f set f.isDeleted = true where f.id = :id
+		UPDATE FolderMetadata f set f.isDeleted = true, f.updatedAt = NOW() where f.id = :id
 	""")
 	void softDeleteById(@Param("id") Long id);
 
 	@Transactional
 	@Modifying
 	@Query("""
-		UPDATE FolderMetadata f set f.isDeleted = true where f.id IN (:ids)
+		UPDATE FolderMetadata f SET f.isDeleted = true, f.updatedAt = NOW() WHERE f.id IN (:ids)
 	""")
 	void softDeleteAllByIdInBatch(@Param("ids") List<Long> ids);
 
