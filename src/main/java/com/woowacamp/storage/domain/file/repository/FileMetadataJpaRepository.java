@@ -88,7 +88,6 @@ public interface FileMetadataJpaRepository extends JpaRepository<FileMetadata, L
 
 	List<FileMetadata> findByOwnerId(Long ownerId);
 
-	List<FileMetadata> findByParentFolderId(Long parentId);
 
 	@Query("""
 			SELECT f
@@ -108,4 +107,29 @@ public interface FileMetadataJpaRepository extends JpaRepository<FileMetadata, L
 		""")
 	List<FileMetadata> findByParentFolderIdWithLastId(@Param("parentId") long parentId, @Param("lastId") Long lastId,
 		@Param("size") int size);
+
+	@Query("""
+		SELECT file
+		FROM FileMetadata file
+		JOIN FolderMetadata folder
+		ON file.parentFolderId = folder.id
+		AND folder.isDeleted = true
+		ORDER BY file.id
+		LIMIT :size
+	""")
+	List<FileMetadata> findOrphanFileList(@Param("size") int size);
+
+	@Query("""
+			SELECT file
+			FROM FileMetadata file
+			JOIN FolderMetadata folder
+			ON file.parentFolderId = folder.id
+			AND folder.isDeleted = true
+			AND file.parentFolderId >= :lastParentId
+			AND file.id > :lastId
+			ORDER BY file.parentFolderId, file.id
+			LIMIT :size
+		""")
+	List<FileMetadata> findOrhanFileListWithLastId(@Param("lastParentId") long lastParentId,
+		@Param("lastId") Long lastId, int size);
 }

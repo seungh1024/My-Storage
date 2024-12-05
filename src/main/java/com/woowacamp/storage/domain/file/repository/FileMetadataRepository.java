@@ -22,4 +22,11 @@ public class FileMetadataRepository {
 	public void deleteAll(List<FileMetadata> fileMetadataList) {
 		fileMetadataJpaRepository.deleteAllByIdInBatch(fileMetadataList.stream().map(FileMetadata::getId).toList());
 	}
+
+	public List<FileMetadata> findOrphanFileByLastId(long lastParentId, Long lastId, int size) {
+		if (lastId == null) {
+			fileMetadataJpaRepository.findOrphanFileList(size);
+		}
+		return fileMetadataJpaRepository.findOrhanFileListWithLastId(lastParentId, lastId, size);
+	}
 }
