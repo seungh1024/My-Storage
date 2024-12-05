@@ -4,8 +4,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-import com.woowacamp.storage.domain.file.entity.FileMetadata;
-import com.woowacamp.storage.domain.file.repository.FileMetadataRepository;
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataRepository;
 import com.woowacamp.storage.domain.folder.utils.QueryExecuteTemplate;
@@ -19,16 +17,16 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class HardDeleteManager {
 	private final FolderMetadataRepository folderMetadataRepository;
-	private final FileMetadataRepository fileMetadataRepository;
 	private static final int FIND_DELAY = 1000 * 60 * 60 * 60;
 
 	@Value("${constant.batchSize}")
 	private int pageSize;
 
+	// TODO 나중에 일정 시간이 지난 것만 제거하도록 변경. 현재는 테스트학 ㅣ번거로움
 	@Scheduled(fixedDelay = FIND_DELAY)
 	private void folderDeleteScheduler() {
 		QueryExecuteTemplate.<FolderMetadata>selectFilesAndExecuteWithCursor(pageSize,
-			findFolder -> folderMetadataRepository.findSoftDeletedFolder(findFolder == null ? null : findFolder.getId(),
+			findFolder -> folderMetadataRepository.findSoftDeletedFolderWithLastId(findFolder == null ? null : findFolder.getId(),
 				pageSize), folderMetadataList -> folderMetadataRepository.deleteAll(folderMetadataList));
 	}
 

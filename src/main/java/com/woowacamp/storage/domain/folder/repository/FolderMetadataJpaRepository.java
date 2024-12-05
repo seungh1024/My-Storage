@@ -122,7 +122,8 @@ public interface FolderMetadataJpaRepository extends JpaRepository<FolderMetadat
 	@Query("""
 		SELECT f
 		FROM FolderMetadata f
-		WHERE f.isDeleted = true AND f.id > :lastId
+		WHERE f.isDeleted = true 
+		AND f.id > :lastId
 		ORDER BY f.id
 		LIMIT :size
 	""")
