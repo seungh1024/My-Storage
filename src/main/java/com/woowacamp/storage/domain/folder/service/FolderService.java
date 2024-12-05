@@ -290,7 +290,7 @@ public class FolderService {
 	 * 현재 폴더 기준으로 하위 파일 트리를 제거하는 메소드
 	 * 하위 폴더와 파일을 재귀 호출로 탐색
 	 */
-	private void deleteFolderTree(FolderMetadata folderMetadata) {
+	public void deleteFolderTree(FolderMetadata folderMetadata) {
 		long folderId = folderMetadata.getId();
 		log.info("[Delete Start Pk] {}", folderId);
 		searchThreadPoolExecutor.execute(
