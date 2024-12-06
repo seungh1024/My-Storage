@@ -2,11 +2,7 @@ spring:
   config:
     activate:
       on-profile: test  # 테스트 프로파일을 활성화
-  datasource:
-    driver-class-name: org.h2.Driver
-    url: jdbc:h2:mem:testdb;MODE=MySQL;DB_CLOSE_DELAY=-1
-    username: sa
-    password:
+
   jpa:
     hibernate:
       ddl-auto: create-drop
