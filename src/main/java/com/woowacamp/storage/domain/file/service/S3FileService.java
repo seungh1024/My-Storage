@@ -40,7 +40,6 @@ public class S3FileService {
 	private final FileMetadataJpaRepository fileMetadataJpaRepository;
 	private final FolderMetadataJpaRepository folderMetadataRepository;
 	private final UserRepository userRepository;
-	private final AmazonS3 amazonS3;
 
 	@Value("${file.request.maxFileSize}")
 	private long MAX_FILE_SIZE;
@@ -86,19 +85,10 @@ public class S3FileService {
 		// 파일 메타데이터를 먼저 쓴다.
 		fileMetadataJpaRepository.finalizeMetadata(fileMetadata.getId(), fileSize, UploadStatus.SUCCESS);
 
-		// 1차 메타데이터가 업데이트 되지 않았다면 0을 반환한다.
-		// 0이면 부모 폴더가 삭제된 것이므로 폴더 상태 업데이트 없이 바로 예외를 던진다.
-		// if (updatedRecordCount == 0) {
-		// 	throw UNABLE_TO_CREATE_FILE.baseException();
-		// }
 
 		LocalDateTime now = LocalDateTime.now();
 		updateFolderMetadataStatus(fileMetadataDto, fileSize, now);
 
-		// fileMetadata.updateFileSize(fileSize);
-		// fileMetadata.updateFinishUploadStatus();
-		// fileMetadata.updateCreatedAt(now);
-		// fileMetadata.updateUpdatedAt(now);
 	}
 
 	/**
@@ -204,17 +194,5 @@ public class S3FileService {
 			fileType = fileName.substring(index);
 		}
 		return fileType;
-	}
-
-	public FileDataDto downloadByS3(Long fileId, String bucketName, String uuidFileName) {
-		FileMetadata fileMetadata = fileMetadataJpaRepository.findById(fileId).orElseThrow(FILE_NOT_FOUND::baseException);
-		S3Object s3Object;
-		try {
-			s3Object = amazonS3.getObject(new GetObjectRequest(bucketName, uuidFileName));
-		} catch (Exception e) {
-			throw FILE_NOT_FOUND.baseException();
-		}
-
-		return new FileDataDto(FileMetadataDto.of(fileMetadata), s3Object.getObjectContent());
 	}
 }

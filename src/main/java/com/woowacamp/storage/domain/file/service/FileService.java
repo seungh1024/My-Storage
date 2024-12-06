@@ -35,7 +35,6 @@ public class FileService {
 	private final FileMetadataJpaRepository fileMetadataJpaRepository;
 	private final FolderMetadataJpaRepository folderMetadataRepository;
 	private final FolderSearchUtil folderSearchUtil;
-	private final AmazonS3 amazonS3;
 	private final ApplicationEventPublisher eventPublisher;
 
 	@Value("${cloud.aws.credentials.bucketName}")
@@ -95,12 +94,6 @@ public class FileService {
 			.orElseThrow(ACCESS_DENIED::baseException);
 
 		fileMetadataJpaRepository.delete(fileMetadata);
-
-		try {
-			amazonS3.deleteObject(BUCKET_NAME, fileMetadata.getUuidFileName());
-		} catch (AmazonS3Exception e) {
-			throw ErrorCode.FILE_DELETE_FAILED.baseException();
-		}
 
 		Long currentFolderId = fileMetadata.getParentFolderId();
 		long fileSize = fileMetadata.getFileSize();
