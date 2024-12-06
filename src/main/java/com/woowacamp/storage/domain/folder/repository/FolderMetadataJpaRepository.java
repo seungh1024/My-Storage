@@ -68,22 +68,22 @@ public interface FolderMetadataJpaRepository extends JpaRepository<FolderMetadat
 	@Transactional
 	@Modifying
 	@Query("""
-		UPDATE FolderMetadata f set f.size = f.size + :size where f.id IN (:ids)
-	""")
+			UPDATE FolderMetadata f set f.size = f.size + :size where f.id IN (:ids)
+		""")
 	void updateAllSizeByIdInBatch(@Param("size") long size, @Param("ids") List<Long> ids);
 
 	@Transactional
 	@Modifying
 	@Query("""
-		UPDATE FolderMetadata f set f.isDeleted = true, f.updatedAt = NOW() where f.id = :id
-	""")
+			UPDATE FolderMetadata f set f.isDeleted = true, f.updatedAt = NOW() where f.id = :id
+		""")
 	void softDeleteById(@Param("id") Long id);
 
 	@Transactional
 	@Modifying
 	@Query("""
-		UPDATE FolderMetadata f SET f.isDeleted = true, f.updatedAt = NOW() WHERE f.id IN (:ids)
-	""")
+			UPDATE FolderMetadata f SET f.isDeleted = true, f.updatedAt = NOW() WHERE f.id IN (:ids)
+		""")
 	void softDeleteAllByIdInBatch(@Param("ids") List<Long> ids);
 
 	/**
@@ -108,24 +108,28 @@ public interface FolderMetadataJpaRepository extends JpaRepository<FolderMetadat
 			ORDER BY f.id
 			LIMIT :size
 		""")
-	List<FolderMetadata> findByParentFolderIdWithLastId(@Param("parentFolderId") Long parentFolderId, @Param("lastId") Long lastId, @Param("size") int size);
+	List<FolderMetadata> findByParentFolderIdWithLastId(@Param("parentFolderId") Long parentFolderId,
+		@Param("lastId") Long lastId, @Param("size") int size);
 
 	@Query("""
-		SELECT f
-		FROM FolderMetadata f
-		WHERE f.isDeleted = true
-		ORDER BY f.id
-		LIMIT :size
-	""")
-	List<FolderMetadata> findSoftDeletedFolder(@Param("size") int size);
+			SELECT f
+			FROM FolderMetadata f
+			WHERE f.isDeleted = true
+			AND f.updatedAt < :duration
+			ORDER BY f.id
+			LIMIT :size
+		""")
+	List<FolderMetadata> findSoftDeletedFolder(@Param("size") int size, @Param("duration") LocalDateTime duration);
 
 	@Query("""
-		SELECT f
-		FROM FolderMetadata f
-		WHERE f.isDeleted = true 
-		AND f.id > :lastId
-		ORDER BY f.id
-		LIMIT :size
-	""")
-	List<FolderMetadata> findSoftDeletedFolderWithLastId(@Param("lastId") Long lastId, @Param("size") int size);
+			SELECT f
+			FROM FolderMetadata f
+			WHERE f.isDeleted = true 
+			AND f.id > :lastId
+			AND f.updatedAt < :duration
+			ORDER BY f.id
+			LIMIT :size
+		""")
+	List<FolderMetadata> findSoftDeletedFolderWithLastId(@Param("lastId") Long lastId, @Param("size") int size,
+		@Param("duration") LocalDateTime duration);
 }

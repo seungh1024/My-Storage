@@ -21,8 +21,7 @@ public class HardDeleteManager {
 
 	@Value("${constant.batchSize}")
 	private int pageSize;
-
-	// TODO 나중에 일정 시간이 지난 것만 제거하도록 변경. 현재는 테스트학 ㅣ번거로움
+	
 	@Scheduled(fixedDelay = FIND_DELAY)
 	private void folderDeleteScheduler() {
 		QueryExecuteTemplate.<FolderMetadata>selectFilesAndExecuteWithCursor(pageSize,

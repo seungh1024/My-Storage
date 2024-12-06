@@ -38,7 +38,7 @@ public class BackgroundJob {
 	private final FolderMetadataJpaRepository folderMetadataJpaRepository;
 	private final FileMetadataJpaRepository fileMetadataJpaRepository;
 	private final Executor deleteThreadPoolExecutor;
-	private final static int DELETE_DELAY = 1000;
+	private final static int DELETE_DELAY = 1000*5;
 	private int folderCount = 0;
 	private int fileCount = 0;
 	private final int maxCount = 5;
@@ -103,6 +103,7 @@ public class BackgroundJob {
 	 */
 	private <T> void doBatchJob(BlockingQueue<T> queue, Function<List<T>, List<Long>> function,
 		Consumer<List<Long>> consumer) {
+		log.info("[Queue Info] = {}", queue);
 		List<T> metadataList = new ArrayList<>();
 		queue.drainTo(metadataList, batchSize);
 		List<Long> batchList = function.apply(metadataList);
