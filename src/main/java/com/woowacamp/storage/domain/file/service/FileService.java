@@ -10,8 +10,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.model.AmazonS3Exception;
 import com.woowacamp.storage.domain.file.dto.FileMoveDto;
 import com.woowacamp.storage.domain.file.entity.FileMetadata;
 import com.woowacamp.storage.domain.file.event.FileMoveEvent;
