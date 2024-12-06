@@ -4,12 +4,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-import com.woowacamp.storage.domain.file.entity.FileMetadata;
-import com.woowacamp.storage.domain.file.repository.FileMetadataRepository;
-import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
-import com.woowacamp.storage.domain.folder.repository.FolderMetadataRepository;
+import com.woowacamp.storage.domain.file.service.FileService;
 import com.woowacamp.storage.domain.folder.service.FolderService;
-import com.woowacamp.storage.domain.folder.utils.QueryExecuteTemplate;
 
 import lombok.RequiredArgsConstructor;
 
@@ -19,8 +15,7 @@ import lombok.RequiredArgsConstructor;
 @Component
 @RequiredArgsConstructor
 public class OrphanFileManager {
-	private final FolderMetadataRepository folderMetadataRepository;
-	private final FileMetadataRepository fileMetadataRepository;
+	private final FileService fileService;
 	private final FolderService folderService;
 
 	private static final int FIND_DELAY = 1000 * 60;
@@ -35,9 +30,7 @@ public class OrphanFileManager {
 	@Scheduled(fixedDelay = FIND_DELAY)
 	private void orphanFolderFinder() {
 		System.out.println("Orphan Find Start");
-		QueryExecuteTemplate.<FolderMetadata>selectFilesAndExecuteWithCursor(pageSize,
-			findFolder -> folderMetadataRepository.findSoftDeletedFolderWithLastId(findFolder == null ? null : findFolder.getId(), pageSize),
-			folderMetadataList -> folderMetadataList.forEach(folder->folderService.deleteFolderTree(folder)));
+		folderService.findOrphanFolderAndSoftDelete();
 	}
 
 	/**
@@ -45,9 +38,6 @@ public class OrphanFileManager {
 	 */
 	@Scheduled(fixedDelay = FIND_DELAY)
 	private void orphanFileFinder() {
-		QueryExecuteTemplate.<FileMetadata>selectFilesAndExecuteWithCursor(pageSize,
-			findFile -> fileMetadataRepository.findFileMetadataByLastId(
-				findFile == null ? 0 : findFile.getParentFolderId(), findFile == null ? null : findFile.getId(), pageSize),
-			fileMetadataList -> fileMetadataRepository.deleteAll(fileMetadataList));
+		fileService.findOrphanFileAndHardDelete();
 	}
 }

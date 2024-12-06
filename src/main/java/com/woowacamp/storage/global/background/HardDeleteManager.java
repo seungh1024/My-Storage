@@ -4,9 +4,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
-import com.woowacamp.storage.domain.folder.repository.FolderMetadataRepository;
-import com.woowacamp.storage.domain.folder.utils.QueryExecuteTemplate;
+import com.woowacamp.storage.domain.folder.service.FolderService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -16,7 +14,7 @@ import lombok.RequiredArgsConstructor;
 @Component
 @RequiredArgsConstructor
 public class HardDeleteManager {
-	private final FolderMetadataRepository folderMetadataRepository;
+	private final FolderService folderService;
 	private static final int FIND_DELAY = 1000 * 60 * 60 * 60;
 
 	@Value("${constant.batchSize}")
@@ -24,9 +22,7 @@ public class HardDeleteManager {
 
 	@Scheduled(fixedDelay = FIND_DELAY)
 	private void folderDeleteScheduler() {
-		QueryExecuteTemplate.<FolderMetadata>selectFilesAndExecuteWithCursor(pageSize,
-			findFolder -> folderMetadataRepository.findSoftDeletedFolderWithLastIdAndDuration(findFolder == null ? null : findFolder.getId(),
-				pageSize), folderMetadataList -> folderMetadataRepository.deleteAll(folderMetadataList));
+		folderService.doHardDelete();
 	}
 
 }

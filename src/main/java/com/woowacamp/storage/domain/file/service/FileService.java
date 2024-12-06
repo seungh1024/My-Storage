@@ -1,7 +1,5 @@
 package com.woowacamp.storage.domain.file.service;
 
-import static com.woowacamp.storage.global.error.ErrorCode.*;
-
 import java.time.LocalDateTime;
 import java.util.Objects;
 import java.util.Set;
@@ -18,25 +16,32 @@ import com.woowacamp.storage.domain.file.dto.FileMoveDto;
 import com.woowacamp.storage.domain.file.entity.FileMetadata;
 import com.woowacamp.storage.domain.file.event.FileMoveEvent;
 import com.woowacamp.storage.domain.file.repository.FileMetadataJpaRepository;
+import com.woowacamp.storage.domain.file.repository.FileMetadataRepository;
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
 import com.woowacamp.storage.domain.folder.utils.FolderSearchUtil;
+import com.woowacamp.storage.domain.folder.utils.QueryExecuteTemplate;
 import com.woowacamp.storage.global.constant.UploadStatus;
 import com.woowacamp.storage.global.error.ErrorCode;
 
 import lombok.RequiredArgsConstructor;
 
+import static com.woowacamp.storage.global.error.ErrorCode.*;
+
 @Service
 @RequiredArgsConstructor
 public class FileService {
-
+	private final FileMetadataRepository fileMetadataRepository;
 	private final FileMetadataJpaRepository fileMetadataJpaRepository;
 	private final FolderMetadataJpaRepository folderMetadataRepository;
 	private final FolderSearchUtil folderSearchUtil;
 	private final AmazonS3 amazonS3;
 	private final ApplicationEventPublisher eventPublisher;
+
 	@Value("${cloud.aws.credentials.bucketName}")
 	private String BUCKET_NAME;
+	@Value("${constant.batchSize}")
+	private int pageSize;
 
 	/**
 	 * FileMetadata의 parentFolderId를 변경한다.
@@ -107,6 +112,14 @@ public class FileService {
 			currentFolderMetadata.updateUpdatedAt(now);
 			currentFolderId = currentFolderMetadata.getParentFolderId();
 		}
+	}
+
+	public void findOrphanFileAndHardDelete() {
+		QueryExecuteTemplate.<FileMetadata>selectFilesAndExecuteWithCursor(pageSize,
+			findFile -> fileMetadataRepository.findFileMetadataByLastId(
+				findFile == null ? 0 : findFile.getParentFolderId(), findFile == null ? null : findFile.getId(),
+				pageSize),
+			fileMetadataList -> fileMetadataRepository.deleteAll(fileMetadataList));
 	}
 
 }
