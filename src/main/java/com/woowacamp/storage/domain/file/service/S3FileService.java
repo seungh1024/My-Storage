@@ -1,7 +1,5 @@
 package com.woowacamp.storage.domain.file.service;
 
-import static com.woowacamp.storage.global.error.ErrorCode.*;
-
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.Objects;
@@ -12,14 +10,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.model.GetObjectRequest;
-import com.amazonaws.services.s3.model.S3Object;
-import com.woowacamp.storage.domain.file.dto.FileDataDto;
 import com.woowacamp.storage.domain.file.dto.FileMetadataDto;
 import com.woowacamp.storage.domain.file.dto.FormMetadataDto;
 import com.woowacamp.storage.domain.file.dto.PartContext;
-import com.woowacamp.storage.domain.file.dto.UploadState;
 import com.woowacamp.storage.domain.file.entity.FileMetadata;
 import com.woowacamp.storage.domain.file.entity.FileMetadataFactory;
 import com.woowacamp.storage.domain.file.repository.FileMetadataJpaRepository;
@@ -32,6 +25,8 @@ import com.woowacamp.storage.global.constant.UploadStatus;
 import com.woowacamp.storage.global.error.ErrorCode;
 
 import lombok.RequiredArgsConstructor;
+
+import static com.woowacamp.storage.global.error.ErrorCode.*;
 
 @Service
 @RequiredArgsConstructor
@@ -85,21 +80,9 @@ public class S3FileService {
 		// 파일 메타데이터를 먼저 쓴다.
 		fileMetadataJpaRepository.finalizeMetadata(fileMetadata.getId(), fileSize, UploadStatus.SUCCESS);
 
-
 		LocalDateTime now = LocalDateTime.now();
 		updateFolderMetadataStatus(fileMetadataDto, fileSize, now);
 
-	}
-
-	/**
-	 * 요청 폼 데이터의 fieldFileSize와 실제 파일 크기인 uploadFileSize가 치일한 지 확인하는 메소드
-	 */
-	public void checkMetadata(UploadState state) {
-		long fieldFileSize = state.getFileMetadataDto().fileSize();
-		long uploadedFileSize = state.getFileSize();
-		if (fieldFileSize != uploadedFileSize) {
-			throw ErrorCode.INVALID_FILE_SIZE.baseException();
-		}
 	}
 
 	/**
@@ -181,7 +164,8 @@ public class S3FileService {
 			throw ErrorCode.INVALID_FILE_NAME.baseException();
 		}
 		// 이미 해당 폴더에 같은 이름의 파일이 존재하는지 확인
-		if (fileMetadataJpaRepository.existsByParentFolderIdAndUploadFileNameAndUploadStatusNot(parentFolderId, fileName,
+		if (fileMetadataJpaRepository.existsByParentFolderIdAndUploadFileNameAndUploadStatusNot(parentFolderId,
+			fileName,
 			UploadStatus.FAIL)) {
 			throw ErrorCode.FILE_NAME_DUPLICATE.baseException();
 		}
