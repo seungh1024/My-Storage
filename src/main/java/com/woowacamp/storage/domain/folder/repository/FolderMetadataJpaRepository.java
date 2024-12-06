@@ -151,4 +151,12 @@ public interface FolderMetadataJpaRepository extends JpaRepository<FolderMetadat
 		""")
 	List<FolderMetadata> findSoftDeletedFolderWithLastId(@Param("lastId") Long lastId, @Param("size") int size,
 		@Param("duration") LocalDateTime duration);
+
+	@Query("""
+		SELECT f
+		FROM FolderMetadata f
+		WHERE f.id = :id
+		AND f.isDeleted = false
+	""")
+	Optional<FolderMetadata> findByIdNotDeleted(@Param("id") long id);
 }
