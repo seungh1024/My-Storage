@@ -29,6 +29,13 @@ public class FolderMetadataRepository {
 
 	public List<FolderMetadata> findSoftDeletedFolderWithLastId(Long lastId, int size) {
 		if (lastId == null) {
+			return folderMetadataJpaRepository.findSoftDeletedFolder(size);
+		}
+		return folderMetadataJpaRepository.findSoftDeletedFolderWithLastId(lastId, size);
+	}
+
+	public List<FolderMetadata> findSoftDeletedFolderWithLastIdAndDuration(Long lastId, int size) {
+		if (lastId == null) {
 			return folderMetadataJpaRepository.findSoftDeletedFolder(size, LocalDateTime.now().minusDays(CommonConstant.hardDeleteDuration));
 		}
 		return folderMetadataJpaRepository.findSoftDeletedFolderWithLastId(lastId, size, LocalDateTime.now().minusDays(CommonConstant.hardDeleteDuration));

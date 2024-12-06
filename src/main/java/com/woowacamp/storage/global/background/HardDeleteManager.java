@@ -21,11 +21,11 @@ public class HardDeleteManager {
 
 	@Value("${constant.batchSize}")
 	private int pageSize;
-	
+
 	@Scheduled(fixedDelay = FIND_DELAY)
 	private void folderDeleteScheduler() {
 		QueryExecuteTemplate.<FolderMetadata>selectFilesAndExecuteWithCursor(pageSize,
-			findFolder -> folderMetadataRepository.findSoftDeletedFolderWithLastId(findFolder == null ? null : findFolder.getId(),
+			findFolder -> folderMetadataRepository.findSoftDeletedFolderWithLastIdAndDuration(findFolder == null ? null : findFolder.getId(),
 				pageSize), folderMetadataList -> folderMetadataRepository.deleteAll(folderMetadataList));
 	}
 

@@ -103,7 +103,6 @@ public class BackgroundJob {
 	 */
 	private <T> void doBatchJob(BlockingQueue<T> queue, Function<List<T>, List<Long>> function,
 		Consumer<List<Long>> consumer) {
-		log.info("[Queue Info] = {}", queue);
 		List<T> metadataList = new ArrayList<>();
 		queue.drainTo(metadataList, batchSize);
 		List<Long> batchList = function.apply(metadataList);

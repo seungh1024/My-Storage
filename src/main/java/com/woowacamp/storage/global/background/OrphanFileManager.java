@@ -23,7 +23,7 @@ public class OrphanFileManager {
 	private final FileMetadataRepository fileMetadataRepository;
 	private final FolderService folderService;
 
-	private static final int FIND_DELAY = 1000 * 60 * 10;
+	private static final int FIND_DELAY = 1000 * 60;
 
 	@Value("${constant.batchSize}")
 	private int pageSize;
@@ -34,6 +34,7 @@ public class OrphanFileManager {
 	 */
 	@Scheduled(fixedDelay = FIND_DELAY)
 	private void orphanFolderFinder() {
+		System.out.println("Orphan Find Start");
 		QueryExecuteTemplate.<FolderMetadata>selectFilesAndExecuteWithCursor(pageSize,
 			findFolder -> folderMetadataRepository.findSoftDeletedFolderWithLastId(findFolder == null ? null : findFolder.getId(), pageSize),
 			folderMetadataList -> folderMetadataList.forEach(folder->folderService.deleteFolderTree(folder)));
