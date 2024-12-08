@@ -91,10 +91,11 @@ public class FolderService {
 	public void moveFolder(Long sourceFolderId, FolderMoveDto dto) {
 		FolderMetadata folderMetadata = folderMetadataJpaRepository.findById(sourceFolderId)
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
-		validateMoveFolder(sourceFolderId, dto, folderMetadata);
 
 		FolderMetadata moveFolderMetadata = folderMetadataJpaRepository.findById(dto.targetFolderId())
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
+
+		validateMoveFolder(sourceFolderId, dto, folderMetadata);
 
 		long originParentId = folderMetadata.getParentFolderId();
 		folderMetadata.updateParentFolderId(dto.targetFolderId());
@@ -129,6 +130,19 @@ public class FolderService {
 		if (Objects.equals(folderMetadata.getParentFolderId(), dto.targetFolderId())) {
 			throw ErrorCode.FOLDER_MOVE_NOT_AVAILABLE.baseException();
 		}
+
+		// 이동 목적지가 자신의 하위 폴더인지 확인
+		QueryExecuteTemplate.<FolderMetadata>selectFilesAndExecuteWithCursor(pageSize,
+			findFolder -> folderMetadataJpaRepository.findParentByParentFolderId(
+				findFolder == null ? dto.targetFolderId() : findFolder.getParentFolderId()).stream().toList(),
+			findFolderList -> {
+				findFolderList.forEach(folder -> {
+					if (folder.getId() == folderMetadata.getId()) {
+						throw ErrorCode.FOLDER_MOVE_NOT_AVAILABLE.baseException("현재 폴더의 하위 폴더로 이동할 수 없습니다.");
+					}
+				});
+			}
+		);
 	}
 
 	/**

@@ -108,6 +108,23 @@ class FolderServiceTest {
 			assertEquals(moveSize + targetSize, targetFolder.getSize());
 			assertEquals(targetId, sourceFolder.getParentFolderId());
 		}
+
+		@Test
+		@DisplayName("자신의 하위 폴더 트리로 이동하면 FOLDER_MOVE_NOT_AVAILABLE 예외를 발생한다.")
+		void folder_move_to_child_folder_test(){
+			FolderMetadata targetFolder = folderTreeSetUp.getSubSubFolder();
+			long targetId = targetFolder.getId();
+			FolderMetadata sourceFolder = folderMetadataRepository.findParentByParentFolderId(
+				targetFolder.getParentFolderId()).get();
+			long sourceId = folderMetadataRepository.findById(sourceFolder.getId()).get().getId();
+			FolderMoveDto dto = new FolderMoveDto(userId, targetId);
+
+			CustomException customException = assertThrows(CustomException.class,
+				() -> folderService.moveFolder(sourceId, dto));
+
+			assertEquals(ErrorCode.FOLDER_MOVE_NOT_AVAILABLE.getMessage(), customException.getMessage());
+
+		}
 	}
 
 	@Nested

@@ -4,6 +4,8 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
+import javax.swing.text.html.Option;
+
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
@@ -151,4 +153,11 @@ public interface FolderMetadataJpaRepository extends JpaRepository<FolderMetadat
 		""")
 	List<FolderMetadata> findSoftDeletedFolderWithLastId(@Param("lastId") Long lastId, @Param("size") int size,
 		@Param("duration") LocalDateTime duration);
+
+	@Query("""
+		SELECT f
+		FROM FolderMetadata f
+		WHERE f.id = :parentId
+	""")
+	Optional<FolderMetadata> findParentByParentFolderId(@Param("parentId") long parentId);
 }
