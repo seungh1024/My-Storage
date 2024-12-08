@@ -52,7 +52,6 @@ public class FolderService {
 	private final MetadataService metadataService;
 	private final UserRepository userRepository;
 	private final FolderSearchUtil folderSearchUtil;
-	private final ApplicationEventPublisher eventPublisher;
 	private final Executor searchThreadPoolExecutor;
 	private final BackgroundJob backgroundJob;
 
@@ -326,16 +325,18 @@ public class FolderService {
 
 	}
 
-	public void doHardDelete(){
+	public void doHardDelete() {
 		QueryExecuteTemplate.<FolderMetadata>selectFilesAndExecuteWithCursor(pageSize,
-			findFolder -> folderMetadataRepository.findSoftDeletedFolderWithLastIdAndDuration(findFolder == null ? null : findFolder.getId(),
+			findFolder -> folderMetadataRepository.findSoftDeletedFolderWithLastIdAndDuration(
+				findFolder == null ? null : findFolder.getId(),
 				pageSize), folderMetadataList -> folderMetadataRepository.deleteAll(folderMetadataList));
 	}
 
-	public void findOrphanFolderAndSoftDelete(){
+	public void findOrphanFolderAndSoftDelete() {
 		QueryExecuteTemplate.<FolderMetadata>selectFilesAndExecuteWithCursor(pageSize,
-			findFolder -> folderMetadataRepository.findSoftDeletedFolderWithLastId(findFolder == null ? null : findFolder.getId(), pageSize),
-			folderMetadataList -> folderMetadataList.forEach(folder->deleteFolderTree(folder)));
+			findFolder -> folderMetadataRepository.findSoftDeletedFolderWithLastId(
+				findFolder == null ? null : findFolder.getId(), pageSize),
+			folderMetadataList -> folderMetadataList.forEach(folder -> deleteFolderTree(folder)));
 	}
 
 }
