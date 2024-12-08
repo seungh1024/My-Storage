@@ -38,7 +38,7 @@ public class BackgroundJob {
 	private final FolderMetadataJpaRepository folderMetadataJpaRepository;
 	private final FileMetadataJpaRepository fileMetadataJpaRepository;
 	private final Executor deleteThreadPoolExecutor;
-	private final static int DELETE_DELAY = 1000*5;
+	private final static int DELETE_DELAY = 1000;
 	private int folderCount = 0;
 	private int fileCount = 0;
 	private final int maxCount = 5;

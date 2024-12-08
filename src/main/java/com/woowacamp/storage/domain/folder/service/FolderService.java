@@ -261,7 +261,7 @@ public class FolderService {
 	 */
 	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public void deleteFolder(Long folderId, Long userId) {
-		FolderMetadata folderMetadata = folderMetadataJpaRepository.findByIdNotDeleted(folderId)
+		FolderMetadata folderMetadata = folderMetadataJpaRepository.findById(folderId)
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
 
 		if (folderMetadata.isDeleted()) {
