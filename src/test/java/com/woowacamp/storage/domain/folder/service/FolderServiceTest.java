@@ -240,4 +240,6 @@ class FolderServiceTest {
 			assertTrue(folderMetadata.isDeleted());
 		}
 	}
+
+	@Te
 }
