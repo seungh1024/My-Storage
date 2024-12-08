@@ -28,7 +28,6 @@ import lombok.RequiredArgsConstructor;
 public class FileController {
 
 	private final FileService fileService;
-	private final FolderService folderService;
 
 	@RequestType(permission = PermissionType.WRITE, fileType = FileType.FILE)
 	@PatchMapping("/{fileId}")
