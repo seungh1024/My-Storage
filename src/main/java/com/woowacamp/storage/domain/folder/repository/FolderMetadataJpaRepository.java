@@ -68,7 +68,7 @@ public interface FolderMetadataJpaRepository extends JpaRepository<FolderMetadat
 	@Transactional
 	@Modifying
 	@Query("""
-			UPDATE FolderMetadata f set f.size = f.size + :size where f.id IN (:ids)
+			UPDATE FolderMetadata f set f.size = f.size + :size, f.updatedAt = NOW() WHERE f.id IN (:ids)
 		""")
 	void updateAllSizeByIdInBatch(@Param("size") long size, @Param("ids") List<Long> ids);
 

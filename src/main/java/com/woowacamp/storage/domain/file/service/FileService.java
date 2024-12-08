@@ -2,7 +2,6 @@ package com.woowacamp.storage.domain.file.service;
 
 import java.time.LocalDateTime;
 import java.util.Objects;
-import java.util.Set;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
@@ -17,7 +16,7 @@ import com.woowacamp.storage.domain.file.repository.FileMetadataJpaRepository;
 import com.woowacamp.storage.domain.file.repository.FileMetadataRepository;
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
-import com.woowacamp.storage.domain.folder.utils.FolderSearchUtil;
+import com.woowacamp.storage.domain.folder.service.MetadataService;
 import com.woowacamp.storage.domain.folder.utils.QueryExecuteTemplate;
 import com.woowacamp.storage.global.constant.UploadStatus;
 import com.woowacamp.storage.global.error.ErrorCode;
@@ -32,11 +31,9 @@ public class FileService {
 	private final FileMetadataRepository fileMetadataRepository;
 	private final FileMetadataJpaRepository fileMetadataJpaRepository;
 	private final FolderMetadataJpaRepository folderMetadataRepository;
-	private final FolderSearchUtil folderSearchUtil;
 	private final ApplicationEventPublisher eventPublisher;
+	private final MetadataService metadataService;
 
-	@Value("${cloud.aws.credentials.bucketName}")
-	private String BUCKET_NAME;
 	@Value("${constant.batchSize}")
 	private int pageSize;
 
@@ -55,11 +52,9 @@ public class FileService {
 			.orElseThrow(ErrorCode.FILE_NOT_FOUND::baseException);
 		validateMetadata(dto, fileMetadata);
 
-		Set<FolderMetadata> sourcePath = folderSearchUtil.getPathToRoot(fileMetadata.getParentFolderId());
-		Set<FolderMetadata> targetPath = folderSearchUtil.getPathToRoot(dto.targetFolderId());
-		FolderMetadata commonAncestor = folderSearchUtil.getCommonAncestor(sourcePath, targetPath);
-		folderSearchUtil.updateFolderPath(sourcePath, targetPath, commonAncestor, fileMetadata.getFileSize());
 		fileMetadata.updateParentFolderId(dto.targetFolderId());
+		metadataService.calculateSize(fileMetadata.getParentFolderId(), fileMetadata.getFileSize(), false);
+		metadataService.calculateSize(dto.targetFolderId(), fileMetadata.getFileSize(), true);
 
 		eventPublisher.publishEvent(new FileMoveEvent(this, fileMetadata, folderMetadata));
 	}
@@ -93,16 +88,11 @@ public class FileService {
 
 		fileMetadataJpaRepository.delete(fileMetadata);
 
-		Long currentFolderId = fileMetadata.getParentFolderId();
+		Long parentFolderId = fileMetadata.getParentFolderId();
 		long fileSize = fileMetadata.getFileSize();
 		LocalDateTime now = LocalDateTime.now();
-		while (currentFolderId != null) {
-			FolderMetadata currentFolderMetadata = folderMetadataRepository.findByIdForUpdate(currentFolderId)
-				.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
-			currentFolderMetadata.addSize(-fileSize);
-			currentFolderMetadata.updateUpdatedAt(now);
-			currentFolderId = currentFolderMetadata.getParentFolderId();
-		}
+
+		metadataService.calculateSize(parentFolderId, fileSize, false);
 	}
 
 	public void findOrphanFileAndHardDelete() {
