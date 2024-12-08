@@ -52,8 +52,10 @@ public class FileService {
 			.orElseThrow(ErrorCode.FILE_NOT_FOUND::baseException);
 		validateMetadata(dto, fileMetadata);
 
+		long originParentId = fileMetadata.getParentFolderId();
 		fileMetadata.updateParentFolderId(dto.targetFolderId());
-		metadataService.calculateSize(fileMetadata.getParentFolderId(), fileMetadata.getFileSize(), false);
+
+		metadataService.calculateSize(originParentId, fileMetadata.getFileSize(), false);
 		metadataService.calculateSize(dto.targetFolderId(), fileMetadata.getFileSize(), true);
 
 		eventPublisher.publishEvent(new FileMoveEvent(this, fileMetadata, folderMetadata));
@@ -79,7 +81,6 @@ public class FileService {
 		return fileMetadata;
 	}
 
-	// private String BUCKET_NAME
 	@Transactional
 	public void deleteFile(Long fileId, Long userId) {
 		FileMetadata fileMetadata = fileMetadataJpaRepository.findByIdAndOwnerIdAndUploadStatusNot(fileId, userId,
@@ -90,7 +91,6 @@ public class FileService {
 
 		Long parentFolderId = fileMetadata.getParentFolderId();
 		long fileSize = fileMetadata.getFileSize();
-		LocalDateTime now = LocalDateTime.now();
 
 		metadataService.calculateSize(parentFolderId, fileSize, false);
 	}
