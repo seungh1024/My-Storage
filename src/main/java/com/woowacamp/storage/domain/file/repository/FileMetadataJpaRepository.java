@@ -22,9 +22,6 @@ public interface FileMetadataJpaRepository extends JpaRepository<FileMetadata, L
 	boolean existsByParentFolderIdAndUploadFileNameAndUploadStatusNot(Long parentFolderId, String uploadFileName,
 		UploadStatus uploadStatus);
 
-	@Transactional
-	void deleteByUuidFileName(String uuidFileName);
-
 	@Lock(LockModeType.PESSIMISTIC_WRITE)
 	@Query(value = """
 			select f from FileMetadata f where f.id = :id and f.uploadStatus != 'FAIL'
@@ -50,34 +47,8 @@ public interface FileMetadataJpaRepository extends JpaRepository<FileMetadata, L
 	int finalizeMetadata(@Param("fileId") long fileId, @Param("fileSize") long fileSize,
 		@Param("uploadStatus") UploadStatus uploadStatus);
 
-	@Modifying
-	@Query(value = """
-			select * from file_metadata f
-			where f.parent_folder_id = :orphanParentId limit 50;
-		""", nativeQuery = true)
-	List<FileMetadata> findOrphanFiles(@Param("orphanParentId") int orphanParentId);
-
 	boolean existsByParentFolderIdAndUploadStatus(Long parentFolderId, UploadStatus uploadStatus);
 
-	@Transactional
-	@Modifying
-	@Query("""
-			update FileMetadata f set f.uploadStatus = 'FAIL', f.updatedAt = NOW() where f.id = :fileMetadataId
-		""")
-	void updateUploadStatusById(@Param("fileMetadataId") Long fileMetadataId);
-
-	@Transactional
-	@Modifying
-	@Query("""
-			update FileMetadata f set f.uploadStatus = 'FAIL', f.updatedAt = NOW() where f.uuidFileName = :uuid
-		""")
-	void updateUploadStatusByUuid(@Param("uuid") String uuid);
-
-	@Transactional
-	@Query(value = """
-			select * from file_metadata f where f.upload_status = 'FAIL' limit 50;
-		""", nativeQuery = true)
-	List<FileMetadata> findFailedFileMetadata();
 
 	@Lock(LockModeType.PESSIMISTIC_READ)
 	@Query(value = """
