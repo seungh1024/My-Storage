@@ -1,6 +1,8 @@
 package com.woowacamp.storage.domain.folder.service;
 
+import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
@@ -188,7 +190,8 @@ class FolderServiceTest {
 
 			Thread.sleep(5000);
 
-			FolderMetadata findRootFolder = folderMetadataRepository.findById(folderTreeSetUp.getRootFolder().getId()).get();
+			FolderMetadata findRootFolder = folderMetadataRepository.findById(folderTreeSetUp.getRootFolder().getId())
+				.get();
 			long findRootSize = findRootFolder.getSize();
 			List<FolderMetadata> byParentFolderId = folderMetadataRepository.findByParentFolderId(deleteFolderId, 10);
 			byParentFolderId.forEach(f -> System.out.println(f.getId()));
@@ -202,6 +205,39 @@ class FolderServiceTest {
 			assertTrue(deletedParentFileList.isEmpty());
 			assertTrue(deletedParentFileList.isEmpty());
 			assertTrue(deletedSubParentFileList.isEmpty());
+		}
+
+		@Test
+		@DisplayName("폴더 hard delete를 하면 조회되지 않는다.")
+		void hard_delete_test(){
+			FolderMetadata targetFolder = folderTreeSetUp.getSubSubFolder();
+			folderMetadataRepository.softDeleteById(targetFolder.getId());
+			FolderMetadata softDeletedFolder = folderMetadataRepository.findById(targetFolder.getId()).get();
+			softDeletedFolder.updateUpdatedAt(softDeletedFolder.getUpdatedAt().minusYears(1));
+			folderMetadataRepository.save(softDeletedFolder);
+			folderMetadataRepository.flush();
+
+			// when
+			folderService.doHardDelete();
+
+			// then
+			Optional<FolderMetadata> findFolder = folderMetadataRepository.findById(targetFolder.getId());
+
+			assertTrue(findFolder.isEmpty());
+		}
+
+		@Test
+		@DisplayName("고아 파일은 제거된다")
+		void orphan_folder_find_test() throws InterruptedException {
+			FolderMetadata childFolder = folderTreeSetUp.getSubSubFolder();
+			FolderMetadata parentFolder = folderMetadataRepository.findParentByParentFolderId(childFolder.getId()).get();
+			folderMetadataRepository.softDeleteById(parentFolder.getId());
+
+			folderService.findOrphanFolderAndSoftDelete();
+			Thread.sleep(5000);
+
+			FolderMetadata folderMetadata = folderMetadataRepository.findById(childFolder.getId()).get();
+			assertTrue(folderMetadata.isDeleted());
 		}
 	}
 }
