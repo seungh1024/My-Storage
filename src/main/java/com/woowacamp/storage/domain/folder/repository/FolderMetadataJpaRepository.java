@@ -160,4 +160,12 @@ public interface FolderMetadataJpaRepository extends JpaRepository<FolderMetadat
 		WHERE f.id = :parentId
 	""")
 	Optional<FolderMetadata> findParentByParentFolderId(@Param("parentId") long parentId);
+
+	@Query("""
+		SELECT f
+		FROM FolderMetadata f
+		WHERE f.id = :id
+		AND f.isDeleted = false
+	""")
+	Optional<FolderMetadata> findByIdNotDeleted(@Param("id") long id);
 }

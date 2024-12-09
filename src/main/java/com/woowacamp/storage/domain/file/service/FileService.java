@@ -43,7 +43,7 @@ public class FileService {
 	 */
 	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public void moveFile(Long fileId, FileMoveDto dto) {
-		FolderMetadata folderMetadata = folderMetadataRepository.findByIdForUpdate(dto.targetFolderId())
+		FolderMetadata folderMetadata = folderMetadataRepository.findByIdNotDeleted(dto.targetFolderId())
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
 		if (!folderMetadata.getOwnerId().equals(dto.userId())) {
 			throw ErrorCode.ACCESS_DENIED.baseException();
