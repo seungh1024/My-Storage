@@ -41,7 +41,8 @@ public enum ErrorCode {
 	// 500,
 	FILE_UPLOAD_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "파일 업로드에 실패했습니다."),
 	FILE_DELETE_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "파일 삭제에 실패했습니다."),
-	PERMISSION_CHECK_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "권한 확인 중 예외가 발생했습니다.");
+	PERMISSION_CHECK_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "권한 확인 중 예외가 발생했습니다."),
+	TOO_MUCH_REQUEST(HttpStatus.INTERNAL_SERVER_ERROR, "요청이 많습니다. 잠시 후에 다시 시도해주세요.");
 	private final HttpStatus status;
 	private final String message;
 

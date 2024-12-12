@@ -1,6 +1,5 @@
 package com.woowacamp.storage.domain.file.service;
 
-import java.time.LocalDateTime;
 import java.util.Objects;
 
 import org.springframework.beans.factory.annotation.Value;
@@ -54,9 +53,10 @@ public class FileService {
 
 		long originParentId = fileMetadata.getParentFolderId();
 		fileMetadata.updateParentFolderId(dto.targetFolderId());
+		fileMetadataJpaRepository.save(fileMetadata);
 
-		metadataService.calculateSize(originParentId, fileMetadata.getFileSize(), false);
-		metadataService.calculateSize(dto.targetFolderId(), fileMetadata.getFileSize(), true);
+		metadataService.calculateSize(originParentId);
+		metadataService.calculateSize(dto.targetFolderId());
 
 		eventPublisher.publishEvent(new FileMoveEvent(this, fileMetadata, folderMetadata));
 	}
@@ -92,7 +92,7 @@ public class FileService {
 		Long parentFolderId = fileMetadata.getParentFolderId();
 		long fileSize = fileMetadata.getFileSize();
 
-		metadataService.calculateSize(parentFolderId, fileSize, false);
+		metadataService.calculateSize(parentFolderId);
 	}
 
 	public void findOrphanFileAndHardDelete() {

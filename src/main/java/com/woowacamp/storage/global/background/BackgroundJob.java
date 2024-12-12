@@ -1,11 +1,11 @@
 package com.woowacamp.storage.global.background;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Executor;
 import java.util.concurrent.LinkedBlockingQueue;
-import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
@@ -17,27 +17,30 @@ import org.springframework.stereotype.Component;
 
 import com.woowacamp.storage.domain.file.entity.FileMetadata;
 import com.woowacamp.storage.domain.file.repository.FileMetadataJpaRepository;
+import com.woowacamp.storage.domain.folder.dto.SizeUpdateDto;
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * 파일과 폴더에 대한 백그라운드 작업을 처리하는 클래스
  * 현재 파일, 폴더의 삭제 작업과 용량 업데이트를 처리함
  */
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class BackgroundJob {
-	private static final Logger log = LoggerFactory.getLogger(BackgroundJob.class);
 	// 멀티스레딩 환경을 고려해서 BlockingQueue 사용
 	private LinkedBlockingQueue<FolderMetadata> folderDeleteQueue;
 	private LinkedBlockingQueue<FileMetadata> fileDeleteQueue;
 	private final FolderMetadataJpaRepository folderMetadataJpaRepository;
 	private final FileMetadataJpaRepository fileMetadataJpaRepository;
 	private final Executor deleteThreadPoolExecutor;
+	private final Executor metadataThreadPoolExecutor;
 	private final static int DELETE_DELAY = 1000;
 	private int folderCount = 0;
 	private int fileCount = 0;
@@ -54,7 +57,8 @@ public class BackgroundJob {
 
 	@PreDestroy
 	public void cleanUp() {
-		deleteScheduling();
+		folderDeleteScheduler();
+		fileDeleteScheduler();
 		folderBatchDelete();
 		fileBatchDelete();
 	}
@@ -79,8 +83,9 @@ public class BackgroundJob {
 		fileDeleteQueue.addAll(fileMetadataList);
 	}
 
-	public <T> void addForUpdateFile(T changeValue, List<Long> pkList, BiConsumer<T, List<Long>> consumer) {
-		doBatchJob(changeValue, pkList, consumer);
+
+	public boolean isEmpty() {
+		return folderDeleteQueue.isEmpty() && fileDeleteQueue.isEmpty();
 	}
 
 	private void folderBatchDelete() {
@@ -109,18 +114,13 @@ public class BackgroundJob {
 		consumer.accept(batchList);
 	}
 
-	private <T> void doBatchJob(T changeValue, List<Long> pkList, BiConsumer<T, List<Long>> consumer) {
-		consumer.accept(changeValue, pkList);
-	}
-
 	/**
 	 * 큐잉된 파일 및 폴더를 배치 쿼리로 삭제하는 스케줄러
 	 * 멀티스레드 환경에서 큐에 작업을 추가할 때마다 확인을 하는 것 보다 단일 스레드로 처리하는 것이 더 효율적이어서 스케줄러로 처리
 	 */
 	@Scheduled(fixedDelay = DELETE_DELAY)
-	private void deleteScheduling() {
+	private void folderDeleteScheduler() {
 		folderCount++;
-		fileCount++;
 		if (folderDeleteQueue.size() >= batchSize) {
 			folderCount = 0;
 			do {
@@ -130,7 +130,11 @@ public class BackgroundJob {
 			folderCount = 0;
 			folderBatchDelete();
 		}
+	}
 
+	@Scheduled(fixedDelay = DELETE_DELAY)
+	private void fileDeleteScheduler() {
+		fileCount++;
 		if (fileDeleteQueue.size() >= batchSize) {
 			fileCount = 0;
 			do {
@@ -141,5 +145,4 @@ public class BackgroundJob {
 			fileBatchDelete();
 		}
 	}
-
 }
