@@ -4,8 +4,6 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
-import javax.swing.text.html.Option;
-
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
@@ -19,10 +17,8 @@ import jakarta.persistence.LockModeType;
 
 public interface FolderMetadataJpaRepository extends JpaRepository<FolderMetadata, Long>, FolderCustomRepository {
 
-	@Lock(LockModeType.PESSIMISTIC_WRITE)
 	boolean existsByParentFolderIdAndUploadFolderName(Long parentFolderId, String uploadFolderName);
 
-	@Lock(LockModeType.PESSIMISTIC_WRITE)
 	@Query(value = """
 			select f.parentFolderId from FolderMetadata f where f.id = :id
 		""")
@@ -32,11 +28,10 @@ public interface FolderMetadataJpaRepository extends JpaRepository<FolderMetadat
 	@Query("SELECT f FROM FolderMetadata f WHERE f.id = :id")
 	Optional<FolderMetadata> findByIdForUpdate(long id);
 
-	@Lock(LockModeType.PESSIMISTIC_WRITE)
 	@Query(value = """
 			select f.id from FolderMetadata f where f.parentFolderId = :parentFolderId
 		""")
-	List<Long> findIdsByParentFolderIdForUpdate(@Param("parentFolderId") Long parentFolderId);
+	List<Long> findIdsByParentFolderId(@Param("parentFolderId") Long parentFolderId);
 
 	// 부모 폴더에 락을 걸고 하위 폴더를 조회하는 메소드
 	@Lock(LockModeType.PESSIMISTIC_WRITE)
@@ -52,7 +47,7 @@ public interface FolderMetadataJpaRepository extends JpaRepository<FolderMetadat
 		""")
 	void deleteOrphanFolders(@Param("parentFolderId") long parentFolderId);
 
-	@Lock(LockModeType.PESSIMISTIC_READ)
+	// @Lock(LockModeType.PESSIMISTIC_READ)
 	@Query(value = """
 			select f from FolderMetadata f
 			where f.id = :folderId
@@ -168,4 +163,28 @@ public interface FolderMetadataJpaRepository extends JpaRepository<FolderMetadat
 		AND f.isDeleted = false
 	""")
 	Optional<FolderMetadata> findByIdNotDeleted(@Param("id") long id);
+
+	@Query("""
+		SELECT f
+		FROM FolderMetadata f
+		WHERE f.id = :parentId
+	""")
+	Optional<FolderMetadata> findByParentId(@Param("parentId") long parentId);
+
+	@Query("""
+		SELECT SUM(f.size)
+		FROM FolderMetadata f
+		WHERE f.parentFolderId = :parentId
+		AND f.isDeleted = false
+	""")
+	Optional<Long> sumChildFolderSize(@Param("parentId") long parentId);
+
+	@Transactional
+	@Modifying
+	@Query("""
+		UPDATE FolderMetadata f
+		SET f.size = :size, f.updatedAt = NOW()
+		WHERE f.id = :id
+	""")
+	void updateFolderSize(@Param("size") long size, @Param("id") long id);
 }

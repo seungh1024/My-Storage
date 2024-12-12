@@ -8,7 +8,6 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
-import org.springframework.transaction.annotation.Transactional;
 
 import com.woowacamp.storage.domain.file.entity.FileMetadata;
 import com.woowacamp.storage.global.constant.UploadStatus;
@@ -49,7 +48,6 @@ public interface FileMetadataJpaRepository extends JpaRepository<FileMetadata, L
 
 	boolean existsByParentFolderIdAndUploadStatus(Long parentFolderId, UploadStatus uploadStatus);
 
-
 	@Lock(LockModeType.PESSIMISTIC_READ)
 	@Query(value = """
 			select f from FileMetadata f
@@ -58,7 +56,6 @@ public interface FileMetadataJpaRepository extends JpaRepository<FileMetadata, L
 	Optional<FileMetadata> findByIdForShare(@Param("fileId") long fileId);
 
 	List<FileMetadata> findByOwnerId(Long ownerId);
-
 
 	@Query("""
 			SELECT f
@@ -80,14 +77,14 @@ public interface FileMetadataJpaRepository extends JpaRepository<FileMetadata, L
 		@Param("size") int size);
 
 	@Query("""
-		SELECT file
-		FROM FileMetadata file
-		JOIN FolderMetadata folder
-		ON file.parentFolderId = folder.id
-		AND folder.isDeleted = true
-		ORDER BY file.id
-		LIMIT :size
-	""")
+			SELECT file
+			FROM FileMetadata file
+			JOIN FolderMetadata folder
+			ON file.parentFolderId = folder.id
+			AND folder.isDeleted = true
+			ORDER BY file.id
+			LIMIT :size
+		""")
 	List<FileMetadata> findOrphanFileList(@Param("size") int size);
 
 	@Query("""
@@ -103,4 +100,11 @@ public interface FileMetadataJpaRepository extends JpaRepository<FileMetadata, L
 		""")
 	List<FileMetadata> findOrhanFileListWithLastId(@Param("lastParentId") long lastParentId,
 		@Param("lastId") Long lastId, int size);
+
+	@Query("""
+			SELECT SUM(f.fileSize)
+			FROM FileMetadata f
+			WHERE f.parentFolderId = :parentId
+		""")
+	Optional<Long> sumChildFileSize(@Param("parentId") long parentId);
 }
