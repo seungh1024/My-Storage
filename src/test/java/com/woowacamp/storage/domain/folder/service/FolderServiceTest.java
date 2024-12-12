@@ -1,21 +1,29 @@
 package com.woowacamp.storage.domain.folder.service;
 
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import com.woowacamp.storage.config.FolderTreeSetUp;
+import com.woowacamp.storage.container.ContainerBaseConfig;
 import com.woowacamp.storage.domain.file.entity.FileMetadata;
 import com.woowacamp.storage.domain.file.repository.FileMetadataJpaRepository;
 import com.woowacamp.storage.domain.folder.dto.request.FolderMoveDto;
@@ -31,7 +39,7 @@ import static org.junit.jupiter.api.Assertions.*;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-class FolderServiceTest {
+class FolderServiceTest extends ContainerBaseConfig {
 
 	@Autowired
 	private FolderMetadataJpaRepository folderMetadataRepository;
@@ -44,7 +52,19 @@ class FolderServiceTest {
 
 	@Autowired
 	private FolderService folderService;
+
+	@Autowired
+	MetadataService metadataService;
+
+	@Autowired
+	Executor metadataThreadPoolExecutor;
+
 	private long userId = 1L;
+
+	@BeforeEach
+	void setUp() {
+		folderTreeSetUp.folderTreeSetUp();
+	}
 
 	@AfterEach
 	void afterEach() {
@@ -102,10 +122,12 @@ class FolderServiceTest {
 			long moveSize = folderTreeSetUp.getSubFolders().get(1).getSize();
 			long targetSize = folderTreeSetUp.getSubFolders().get(2).getSize();
 			folderService.moveFolder(sourceId, dto);
-			Thread.sleep(1000);
+			Thread.sleep(5000);
 
 			FolderMetadata targetFolder = folderMetadataRepository.findById(targetId).get();
 			FolderMetadata sourceFolder = folderMetadataRepository.findById(sourceId).get();
+
+			List<FolderMetadata> byParentFolderId = folderMetadataRepository.findByParentFolderId(targetId, 10);
 
 			assertEquals(moveSize + targetSize, targetFolder.getSize());
 			assertEquals(targetId, sourceFolder.getParentFolderId());
@@ -113,7 +135,7 @@ class FolderServiceTest {
 
 		@Test
 		@DisplayName("자신의 하위 폴더 트리로 이동하면 FOLDER_MOVE_NOT_AVAILABLE 예외를 발생한다.")
-		void folder_move_to_child_folder_test(){
+		void folder_move_to_child_folder_test() {
 			FolderMetadata targetFolder = folderTreeSetUp.getSubSubFolder();
 			long targetId = targetFolder.getId();
 			FolderMetadata sourceFolder = folderMetadataRepository.findParentByParentFolderId(
@@ -193,8 +215,6 @@ class FolderServiceTest {
 			FolderMetadata findRootFolder = folderMetadataRepository.findById(folderTreeSetUp.getRootFolder().getId())
 				.get();
 			long findRootSize = findRootFolder.getSize();
-			List<FolderMetadata> byParentFolderId = folderMetadataRepository.findByParentFolderId(deleteFolderId, 10);
-			byParentFolderId.forEach(f -> System.out.println(f.getId()));
 			List<FileMetadata> deletedParentFileList = fileMetadataJpaRepository.findByParentFolderId(deleteFolderId,
 				10);
 			List<FileMetadata> deletedSubParentFileList = fileMetadataJpaRepository.findByParentFolderId(
@@ -209,7 +229,7 @@ class FolderServiceTest {
 
 		@Test
 		@DisplayName("폴더 hard delete를 하면 조회되지 않는다.")
-		void hard_delete_test(){
+		void hard_delete_test() {
 			FolderMetadata targetFolder = folderTreeSetUp.getSubSubFolder();
 			folderMetadataRepository.softDeleteById(targetFolder.getId());
 			FolderMetadata softDeletedFolder = folderMetadataRepository.findById(targetFolder.getId()).get();
@@ -230,7 +250,8 @@ class FolderServiceTest {
 		@DisplayName("고아 파일은 제거된다")
 		void orphan_folder_find_test() throws InterruptedException {
 			FolderMetadata childFolder = folderTreeSetUp.getSubSubFolder();
-			FolderMetadata parentFolder = folderMetadataRepository.findParentByParentFolderId(childFolder.getId()).get();
+			FolderMetadata parentFolder = folderMetadataRepository.findParentByParentFolderId(childFolder.getId())
+				.get();
 			folderMetadataRepository.softDeleteById(parentFolder.getId());
 
 			folderService.findOrphanFolderAndSoftDelete();
@@ -241,5 +262,133 @@ class FolderServiceTest {
 		}
 	}
 
-	@Te
+	@Nested
+	@DisplayName("동시성 테스트")
+	class ConcurrentFolderMoveTest {
+
+		@Test
+		@DisplayName("폴더 이동 동시성 테스트")
+		void concurrent_folder_move_test() throws InterruptedException {
+			FolderMetadata folderA = folderTreeSetUp.getSubSubFolder();
+			FolderMetadata folderB = folderMetadataRepository.findById(folderA.getParentFolderId()).get();
+			long aId = folderA.getId();
+			long bId = folderB.getId();
+			long targetFolderId = folderTreeSetUp.getSubFolders().get(5).getId();
+
+			long aParent = folderA.getParentFolderId();
+			long bParent = folderB.getParentFolderId();
+
+			long rootId = folderTreeSetUp.getRootFolder().getId();
+			long rootSize = folderTreeSetUp.getRootFolder().getSize();
+
+			int threadCount = 10;
+			ExecutorService executorService = Executors.newFixedThreadPool(threadCount);
+			CountDownLatch countDownLatch = new CountDownLatch(threadCount);
+			AtomicInteger successCount = new AtomicInteger(0);
+			AtomicInteger failedCount = new AtomicInteger(0);
+
+			long startTime = System.currentTimeMillis();
+			for (int i = 0; i < threadCount; i++) {
+				executorService.submit(() -> {
+					try {
+						folderService.moveFolder(aId, new FolderMoveDto(userId, targetFolderId));
+						successCount.incrementAndGet();
+					} catch (Exception e) {
+						System.out.println("id = " + aId + ", error occured = " + e.getMessage());
+						failedCount.incrementAndGet();
+					} finally {
+						countDownLatch.countDown();
+					}
+				});
+				executorService.submit(() -> {
+					try {
+						folderService.moveFolder(bId, new FolderMoveDto(userId, targetFolderId));
+						successCount.incrementAndGet();
+					} catch (Exception e) {
+						System.out.println("id = " + bId + ", error occured = " + e.getMessage());
+						failedCount.incrementAndGet();
+					} finally {
+						countDownLatch.countDown();
+					}
+				});
+				executorService.submit(() -> {
+					try {
+						folderService.moveFolder(aId, new FolderMoveDto(userId, aParent));
+						successCount.incrementAndGet();
+					} catch (Exception e) {
+						System.out.println("id = " + aId + ", error occured = " + e.getMessage());
+						failedCount.incrementAndGet();
+					} finally {
+						countDownLatch.countDown();
+					}
+				});
+				executorService.submit(() -> {
+					try {
+						folderService.moveFolder(bId, new FolderMoveDto(userId, bParent));
+						successCount.incrementAndGet();
+					} catch (Exception e) {
+						System.out.println("id = " + bId + ", error occured = " + e.getMessage());
+						failedCount.incrementAndGet();
+					} finally {
+						countDownLatch.countDown();
+					}
+				});
+			}
+
+			countDownLatch.await();
+			Thread.sleep(10000);
+			ThreadPoolTaskExecutor taskExecutor = (ThreadPoolTaskExecutor) metadataThreadPoolExecutor;
+
+			// 실제 ThreadPoolExecutor를 가져옴
+			ThreadPoolExecutor executor = taskExecutor.getThreadPoolExecutor();
+			System.out.println("queue size = "+executor.getQueue().size());
+			System.out.println("queue size = "+executor.getQueue().size());
+			System.out.println("queue size = "+executor.getQueue().size());
+
+
+			long endTime = System.currentTimeMillis();
+
+			System.out.println("total time = " + (endTime - startTime));
+
+			System.out.println("success count = " + successCount.get());
+			System.out.println("fail count = " + failedCount.get());
+			FolderMetadata findA = folderMetadataRepository.findById(aId).get();
+			FolderMetadata findB = folderMetadataRepository.findById(bId).get();
+			System.out.println("findA id = " + findA.getId() +
+				"findA parent = " + findA.getParentFolderId() + ", aSize = " + findA.getSize() + ", start size = "
+				+ folderA.getSize());
+			System.out.println("findB id = " + findB.getId() +
+				"findB parent = " + findB.getParentFolderId() + ", bSize = " + findB.getSize() + ", start size = "
+				+ folderB.getSize());
+			FolderMetadata findRootFolder = folderMetadataRepository.findById(rootId).get();
+			List<FolderMetadata> byParentFolderId = folderMetadataRepository.findByParentFolderId(rootId, 10);
+			byParentFolderId.forEach(f -> System.out.println("id = " + f.getId() + ", size = " + f.getSize()));
+			Long l = folderMetadataRepository.sumChildFolderSize(rootId).get();
+			System.out.println("total size = " + l);
+
+
+			System.out.println("==========");
+
+			long time = System.currentTimeMillis();
+			long end = time+3000;
+			while (true) {
+				int size = executor.getQueue().size();
+				if (size != 0 || System.currentTimeMillis() > end) {
+					System.out.println("size = "+size);
+					break;
+				}
+			}
+
+			metadataService.calculateSize(aId);
+			metadataService.calculateSize(bId);
+			Thread.sleep(3000);
+			byParentFolderId = folderMetadataRepository.findByParentFolderId(rootId, 10);
+			byParentFolderId.forEach(f -> System.out.println("id = " + f.getId() + ", size = " + f.getSize()));
+			l = folderMetadataRepository.sumChildFolderSize(rootId).get();
+			System.out.println("total size = " + l);
+
+			assertEquals(rootSize, findRootFolder.getSize());
+
+		}
+	}
 }

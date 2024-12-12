@@ -2,6 +2,7 @@ package com.woowacamp.storage.domain.file.service;
 
 import java.util.List;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -13,6 +14,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import com.woowacamp.storage.config.FolderTreeSetUp;
+import com.woowacamp.storage.container.ContainerBaseConfig;
 import com.woowacamp.storage.domain.file.dto.FileMoveDto;
 import com.woowacamp.storage.domain.file.entity.FileMetadata;
 import com.woowacamp.storage.domain.file.repository.FileMetadataJpaRepository;
@@ -30,7 +32,7 @@ import static org.junit.jupiter.api.Assertions.*;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-class FileServiceTest {
+class FileServiceTest extends ContainerBaseConfig {
 
 	@Autowired
 	private FolderTreeSetUp folderTreeSetUp;
@@ -40,6 +42,11 @@ class FileServiceTest {
 	private FolderMetadataJpaRepository folderMetadataJpaRepository;
 	@Autowired
 	private FileService fileService;
+
+	@BeforeEach
+	void setUp(){
+		folderTreeSetUp.folderTreeSetUp();
+	}
 
 	@Nested
 	@DisplayName("파일 이동 테스트")
@@ -111,10 +118,17 @@ class FileServiceTest {
 			List<FolderMetadata> subFolders = folderTreeSetUp.getSubFolders();
 			FileMetadata sourceFile = files.get(0);
 			long parentId = sourceFile.getParentFolderId();
+			long targetIdx = 0;
+			for (FolderMetadata f : subFolders) {
+				if (parentId != f.getId()) {
+					break;
+				}
+				targetIdx++;
+			}
 			long sourceFileSize = sourceFile.getFileSize();
 			FolderMetadata sourceFolder = folderMetadataJpaRepository.findById(sourceFile.getParentFolderId()).get();
 			long sourceSize = sourceFolder.getSize();
-			FolderMetadata targetFolder =  subFolders.get((int)(parentId+1));
+			FolderMetadata targetFolder =  subFolders.get((int)(targetIdx));
 			long targetSize = targetFolder.getSize();
 			FileMoveDto fileMoveDto = new FileMoveDto(targetFolder.getId(), folderTreeSetUp.getUserId());
 

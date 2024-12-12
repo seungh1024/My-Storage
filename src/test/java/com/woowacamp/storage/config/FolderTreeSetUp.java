@@ -20,7 +20,6 @@ import lombok.Getter;
 
 @Getter
 @Component
-@Scope("prototype")
 public class FolderTreeSetUp {
 	@Autowired
 	private FolderMetadataJpaRepository folderMetadataRepository;
@@ -35,7 +34,7 @@ public class FolderTreeSetUp {
 	private FolderMetadata subSubFolder;
 	private long userId = 1L;
 
-	@PostConstruct
+	// @PostConstruct
 	public void folderTreeSetUp() {
 		now = LocalDateTime.now();
 		fileMetadataJpaRepository.deleteAll();
@@ -48,6 +47,7 @@ public class FolderTreeSetUp {
 				.uploadFolderName("Parent Folder")
 				.sharingExpiredAt(now)
 				.ownerId(userId)
+				.size(8000)
 				.permissionType(
 					PermissionType.WRITE)
 				.build());
