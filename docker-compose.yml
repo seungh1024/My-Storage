@@ -7,7 +7,7 @@ services:
     ports:
       - "8080:8080"
     environment:
-      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/test
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/test?connectTimeout=3000&socketTimeout=3000
       - SPRING_DATASOURCE_USERNAME=root
       - SPRING_DATASOURCE_PASSWORD=root
       - SPRING_REDIS_URL=redis://redisson:6379

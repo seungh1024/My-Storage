@@ -25,6 +25,10 @@ spring:
       enabled: false
       resolve-lazily: true
 
+  sql:
+    init:
+      mode: always
+
 management:
   endpoints:
     web:
