@@ -1,7 +1,6 @@
 package com.woowacamp.storage.global.background;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Executor;
@@ -9,15 +8,12 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import com.woowacamp.storage.domain.file.entity.FileMetadata;
 import com.woowacamp.storage.domain.file.repository.FileMetadataJpaRepository;
-import com.woowacamp.storage.domain.folder.dto.SizeUpdateDto;
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
 
@@ -40,8 +36,7 @@ public class BackgroundJob {
 	private final FolderMetadataJpaRepository folderMetadataJpaRepository;
 	private final FileMetadataJpaRepository fileMetadataJpaRepository;
 	private final Executor deleteThreadPoolExecutor;
-	private final Executor metadataThreadPoolExecutor;
-	private final static int DELETE_DELAY = 1000;
+	private final static int DELETE_DELAY = 5000;
 	private int folderCount = 0;
 	private int fileCount = 0;
 	private final int maxCount = 5;
@@ -82,7 +77,6 @@ public class BackgroundJob {
 	public void addForDeleteFile(List<FileMetadata> fileMetadataList) {
 		fileDeleteQueue.addAll(fileMetadataList);
 	}
-
 
 	public boolean isEmpty() {
 		return folderDeleteQueue.isEmpty() && fileDeleteQueue.isEmpty();
