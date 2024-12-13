@@ -1,5 +1,4 @@
 singleServerConfig:
-  address: "redis://127.0.0.1:11111"  # Redis 서버 주소
   database: 1  # 사용할 Redis 데이터베이스 (0~15, 기본값: 0, 여러 애플리케이션이 같은 Redis 사용하면 이 번호 분리하여 사용)
   connectionPoolSize: 64  # 연결 풀 크기(기본값)
   connectionMinimumIdleSize: 10  # 최소 유휴 연결 수 (기본값 = 24)
