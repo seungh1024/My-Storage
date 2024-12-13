@@ -31,6 +31,7 @@ import com.woowacamp.storage.domain.user.entity.User;
 import com.woowacamp.storage.domain.user.repository.UserRepository;
 import com.woowacamp.storage.global.background.BackgroundJob;
 import com.woowacamp.storage.global.constant.CommonConstant;
+import com.woowacamp.storage.global.constant.PermissionType;
 import com.woowacamp.storage.global.constant.UploadStatus;
 import com.woowacamp.storage.global.error.ErrorCode;
 
@@ -223,22 +224,27 @@ public class FolderService {
 	}
 
 	/**
-	 * 부모 폴더를 삭제중인 경우가 있어서 for update로 부모 폴더를 조회합니다.
-	 * 이미 제거되어 Null을 리턴한 경우 폴더가 생성되지 않습니다.
+	 *
 	 */
-	@Transactional
 	public Long createFolder(CreateFolderReqDto req) {
 		User user = userRepository.findById(req.userId()).orElseThrow(ErrorCode.USER_NOT_FOUND::baseException);
-
-		long parentFolderId = req.parentFolderId();
-		long userId = req.userId();
-		FolderMetadata parentFolder = folderMetadataJpaRepository.findByIdForUpdate(parentFolderId)
-			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
-
-		validatePermission(parentFolder, userId);
 		validateFolderName(req);
+
+		String lockName = req.parentFolderId() + "/" + req.uploadFolderName();
+		return redisLockService.<Long>handleUserRequest(lockName, () -> randomCreateFolder(req, user),
+			ErrorCode.TOO_MUCH_REQUEST.baseException());
+	}
+
+	@Transactional
+	protected Long randomCreateFolder(CreateFolderReqDto req, User user) {
+		long parentFolderId = req.parentFolderId();
+		FolderMetadata parentFolder = folderMetadataJpaRepository.findById(parentFolderId)
+			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
 		validateFolder(req);
-		FolderMetadata newFolder = folderMetadataJpaRepository.save(createFolderMetadata(user, parentFolder, req));
+		FolderMetadata folderMetadata = createFolderMetadata(user, parentFolder, req);
+		folderMetadata.updateShareStatus(PermissionType.WRITE, LocalDateTime.now().plusYears(1));
+		FolderMetadata newFolder = folderMetadataJpaRepository.save(folderMetadata);
+
 		return newFolder.getId();
 	}
 
