@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.woowacamp.storage.domain.folder.dto.FolderContentsDto;
+import com.woowacamp.storage.domain.folder.dto.FolderCreateResponseDto;
 import com.woowacamp.storage.domain.folder.dto.GetFolderContentsRequestParams;
 import com.woowacamp.storage.domain.folder.dto.request.CreateFolderReqDto;
 import com.woowacamp.storage.domain.folder.dto.request.FolderMoveDto;
@@ -26,7 +27,6 @@ import com.woowacamp.storage.global.annotation.RequestType;
 import com.woowacamp.storage.global.aop.type.FieldType;
 import com.woowacamp.storage.global.aop.type.FileType;
 import com.woowacamp.storage.global.constant.PermissionType;
-import com.woowacamp.storage.global.util.UrlUtil;
 
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
@@ -42,9 +42,11 @@ public class FolderController {
 	@RequestType(permission = PermissionType.WRITE, fileType = FileType.FOLDER)
 	@ResponseStatus(HttpStatus.CREATED)
 	@PostMapping
-	public void createFolder(@CheckDto @Valid @RequestBody CreateFolderReqDto req, HttpServletResponse response) {
+	public FolderCreateResponseDto createFolder(@CheckDto @Valid @RequestBody CreateFolderReqDto req,
+		HttpServletResponse response) {
 		Long folder = folderService.createFolder(req);
-		response.setHeader("Location", UrlUtil.getAbsoluteUrl("/api/v1/folders/" + folder));
+		return new FolderCreateResponseDto(folder);
+		// response.setHeader("Location", UrlUtil.getAbsoluteUrl("/api/v1/folders/" + folder));
 	}
 
 	@RequestType(permission = PermissionType.READ, fileType = FileType.FOLDER)
