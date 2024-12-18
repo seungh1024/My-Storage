@@ -9,15 +9,17 @@ spring:
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     hikari:
-      maximum-pool-size: 5
+      maximum-pool-size: 10
+      connection-timeout: 3000
+      leak-detection-threshold: 2000
   jpa:
-    show-sql: true
+#    show-sql: true
     hibernate:
       dialect: org.hibernate.dialect.MySQL8Dialect
       ddl-auto: update
-      properties:
-        hibernate:
-          format_sql: true
+#      properties:
+#        hibernate:
+#          format_sql: true
     open-in-view: false
 
   servlet:
@@ -44,13 +46,16 @@ server:
   tomcat:
     threads:
       min-spare: 50
-      max: 20
+      max: 200
     accept-count: 100
-    max-connections: 100
+    max-connections: 200
+    connection-timeout: 5000
+
 
 share:
   server-domain: localhost:8080
 
 logging:
   level:
-    root: INFO
+    root: info
+    com.zaxxer.hikari: error

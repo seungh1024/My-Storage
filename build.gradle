@@ -53,6 +53,8 @@ dependencies {
 	testImplementation 'org.testcontainers:mongodb:1.16.3'
 	testCompileOnly 'org.projectlombok:lombok'
 	testAnnotationProcessor 'org.projectlombok:lombok'
+
+	implementation 'org.springframework.boot:spring-boot-starter-logging'
 }
 
 tasks.named('test') {

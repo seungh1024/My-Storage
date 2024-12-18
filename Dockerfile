@@ -22,5 +22,8 @@ WORKDIR /app
 # 7. 빌드한 JAR 파일 복사
 COPY --from=build /app/build/libs/*.jar app.jar
 
-# 8. 애플리케이션 실행
+# 8. 로그 디렉토리 만들기 및 권한 부여
+RUN mkdir -p /app/logs && chmod -R 777 /app/logs
+
+# 9. 애플리케이션 실행
 ENTRYPOINT ["java", "-jar", "app.jar"]
