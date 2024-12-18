@@ -357,8 +357,8 @@ public class FolderService {
 	public void doHardDelete() {
 		QueryExecuteTemplate.<FolderMetadata>selectFilesAndExecuteWithCursor(pageSize,
 			findFolder -> folderMetadataRepository.findSoftDeletedFolderWithLastIdAndDuration(
-				findFolder == null ? null : findFolder.getId(),
-				pageSize), folderMetadataList -> folderMetadataRepository.deleteAll(folderMetadataList));
+				findFolder == null ? null : findFolder.getId(), pageSize),
+			folderMetadataList -> folderMetadataRepository.deleteAll(folderMetadataList));
 	}
 
 	public void findOrphanFolderAndSoftDelete() {

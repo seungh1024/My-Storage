@@ -20,7 +20,6 @@ public class QueryExecuteTemplate {
 		List<T> selectList = null;
 		do {
 			selectList = selectFunction.apply(selectList != null ? selectList.get(selectList.size() - 1) : null);
-			log.info("[Select List] {}", selectList);
 			if (!selectList.isEmpty()) {
 				resultConsumer.accept(selectList);
 			}

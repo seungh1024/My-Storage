@@ -29,7 +29,6 @@ public class OrphanFileManager {
 	 */
 	@Scheduled(fixedDelay = FIND_DELAY)
 	private void orphanFolderFinder() {
-		System.out.println("Orphan Find Start");
 		folderService.findOrphanFolderAndSoftDelete();
 	}
 
