@@ -1,5 +1,7 @@
 package com.woowacamp.storage.global.constant;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDateTime;
 
 public class CommonConstant {
@@ -20,4 +22,7 @@ public class CommonConstant {
 	public static final String SHARED_LINK_URI = "/api/v1/share?sharedId=";
 	public static final String FOLDER_READ_URI = "/api/v1/folders/";
 	public static final String FILE_READ_URI = "/api/v1/files/";
+
+	// hard delete 날짜 조건
+	public static final long hardDeleteDuration = 30;
 }

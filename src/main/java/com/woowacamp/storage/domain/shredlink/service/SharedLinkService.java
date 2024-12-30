@@ -14,9 +14,9 @@ import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.woowacamp.storage.domain.file.entity.FileMetadata;
-import com.woowacamp.storage.domain.file.repository.FileMetadataRepository;
+import com.woowacamp.storage.domain.file.repository.FileMetadataJpaRepository;
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
-import com.woowacamp.storage.domain.folder.repository.FolderMetadataRepository;
+import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
 import com.woowacamp.storage.domain.shredlink.dto.request.CancelSharedLinkRequestDto;
 import com.woowacamp.storage.domain.shredlink.dto.request.MakeSharedLinkRequestDto;
 import com.woowacamp.storage.domain.shredlink.dto.response.SharedLinkResponseDto;
@@ -34,8 +34,8 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class SharedLinkService {
 	private final SharedLinkRepository sharedLinkRepository;
-	private final FolderMetadataRepository folderMetadataRepository;
-	private final FileMetadataRepository fileMetadataRepository;
+	private final FolderMetadataJpaRepository folderMetadataRepository;
+	private final FileMetadataJpaRepository fileMetadataJpaRepository;
 
 	/**
 	 * 공유 링크 생성 메소드
@@ -68,7 +68,7 @@ public class SharedLinkService {
 
 	private void validateRequest(Long userId, boolean isFile, long targetId) {
 		if (isFile) { // file인 경우
-			FileMetadata fileMetadata = fileMetadataRepository.findById(targetId)
+			FileMetadata fileMetadata = fileMetadataJpaRepository.findById(targetId)
 				.orElseThrow(ErrorCode.FILE_NOT_FOUND::baseException);
 			if (!Objects.equals(fileMetadata.getOwnerId(), userId)) {
 				throw ErrorCode.ACCESS_DENIED.baseException();
@@ -129,7 +129,7 @@ public class SharedLinkService {
 	}
 
 	public void updateFileShareStatus(Long fileId, PermissionType permissionType, LocalDateTime sharingExpireAt) {
-		FileMetadata fileMetadata = fileMetadataRepository.findById(fileId)
+		FileMetadata fileMetadata = fileMetadataJpaRepository.findById(fileId)
 			.orElseThrow(ErrorCode.FILE_NOT_FOUND::baseException);
 		fileMetadata.updateShareStatus(permissionType, sharingExpireAt);
 	}
@@ -150,7 +150,7 @@ public class SharedLinkService {
 			Long currentFolderId = folderIdStack.pop();
 
 			// 하위의 파일 조회
-			List<FileMetadata> childFileMetadata = fileMetadataRepository.findByParentFolderIdForUpdate(
+			List<FileMetadata> childFileMetadata = fileMetadataJpaRepository.findByParentFolderIdForUpdate(
 				currentFolderId);
 
 			// 하위 파일의 공유 상태 수정
@@ -167,7 +167,7 @@ public class SharedLinkService {
 				folderIdStack.push(childFolder.getId());
 			}
 		}
-		fileMetadataRepository.updateShareStatusInBatch(fileIdsToUpdate, permissionType,
+		fileMetadataJpaRepository.updateShareStatusInBatch(fileIdsToUpdate, permissionType,
 			sharingExpireAt);
 		folderMetadataRepository.updateShareStatusInBatch(folderIdsToUpdate, permissionType,
 			sharingExpireAt);
@@ -182,7 +182,7 @@ public class SharedLinkService {
 	private void cancelShare(boolean isFile, Long targetId) {
 		sharedLinkRepository.deleteByIsFileAndTargetId(isFile, targetId);
 		if (isFile) {
-			FileMetadata fileMetadata = fileMetadataRepository.findById(targetId)
+			FileMetadata fileMetadata = fileMetadataJpaRepository.findById(targetId)
 				.orElseThrow(ErrorCode.FILE_NOT_FOUND::baseException);
 			fileMetadata.cancelShare();
 		} else {
@@ -205,7 +205,7 @@ public class SharedLinkService {
 			Long currentFolderId = folderIdStack.pop();
 
 			// 하위의 파일 조회
-			List<FileMetadata> childFileMetadata = fileMetadataRepository.findByParentFolderIdForUpdate(
+			List<FileMetadata> childFileMetadata = fileMetadataJpaRepository.findByParentFolderIdForUpdate(
 				currentFolderId);
 
 			// 하위 파일의 공유 상태 수정
@@ -222,7 +222,7 @@ public class SharedLinkService {
 				folderIdStack.push(childFolder.getId());
 			}
 		}
-		fileMetadataRepository.updateShareStatusInBatch(fileIdsToUpdate, PermissionType.NONE,
+		fileMetadataJpaRepository.updateShareStatusInBatch(fileIdsToUpdate, PermissionType.NONE,
 			CommonConstant.UNAVAILABLE_TIME);
 		folderMetadataRepository.updateShareStatusInBatch(folderIdsToUpdate, PermissionType.NONE,
 			CommonConstant.UNAVAILABLE_TIME);

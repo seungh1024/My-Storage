@@ -8,9 +8,9 @@ import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.woowacamp.storage.domain.file.entity.FileMetadata;
-import com.woowacamp.storage.domain.file.repository.FileMetadataRepository;
+import com.woowacamp.storage.domain.file.repository.FileMetadataJpaRepository;
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
-import com.woowacamp.storage.domain.folder.repository.FolderMetadataRepository;
+import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
 import com.woowacamp.storage.global.aop.type.FileType;
 import com.woowacamp.storage.global.constant.PermissionType;
 import com.woowacamp.storage.global.error.ErrorCode;
@@ -22,8 +22,8 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 @Slf4j
 public class PermissionHandler {
-	private final FolderMetadataRepository folderMetadataRepository;
-	private final FileMetadataRepository fileMetadataRepository;
+	private final FolderMetadataJpaRepository folderMetadataRepository;
+	private final FileMetadataJpaRepository fileMetadataJpaRepository;
 
 	/**
 	 * 권한을 확인하는 메소드
@@ -123,10 +123,10 @@ public class PermissionHandler {
 
 		// 읽기 작업인 경우 락을 걸지 않고 권한을 확인한다.
 		if (Objects.equals(permissionType, PermissionType.READ)) {
-			fileMetadata = fileMetadataRepository.findById(permissionFieldsDto.getFileId())
+			fileMetadata = fileMetadataJpaRepository.findById(permissionFieldsDto.getFileId())
 				.orElseThrow(ErrorCode.FILE_NOT_FOUND::baseException);
 		} else {
-			fileMetadata = fileMetadataRepository.findByIdForShare(permissionFieldsDto.getFileId())
+			fileMetadata = fileMetadataJpaRepository.findByIdForShare(permissionFieldsDto.getFileId())
 				.orElseThrow(ErrorCode.FILE_NOT_FOUND::baseException);
 		}
 

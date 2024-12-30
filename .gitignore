@@ -38,3 +38,7 @@ out/
 
 ### secret###
 application-secret.yml
+
+/logs/*
+/ceph/*
+*.yml

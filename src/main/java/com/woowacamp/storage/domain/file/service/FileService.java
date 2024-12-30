@@ -1,10 +1,6 @@
 package com.woowacamp.storage.domain.file.service;
 
-import static com.woowacamp.storage.global.error.ErrorCode.*;
-
-import java.time.LocalDateTime;
 import java.util.Objects;
-import java.util.Set;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
@@ -12,31 +8,33 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.model.AmazonS3Exception;
 import com.woowacamp.storage.domain.file.dto.FileMoveDto;
 import com.woowacamp.storage.domain.file.entity.FileMetadata;
 import com.woowacamp.storage.domain.file.event.FileMoveEvent;
+import com.woowacamp.storage.domain.file.repository.FileMetadataJpaRepository;
 import com.woowacamp.storage.domain.file.repository.FileMetadataRepository;
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
-import com.woowacamp.storage.domain.folder.repository.FolderMetadataRepository;
-import com.woowacamp.storage.domain.folder.utils.FolderSearchUtil;
+import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
+import com.woowacamp.storage.domain.folder.service.MetadataService;
+import com.woowacamp.storage.domain.folder.utils.QueryExecuteTemplate;
 import com.woowacamp.storage.global.constant.UploadStatus;
 import com.woowacamp.storage.global.error.ErrorCode;
 
 import lombok.RequiredArgsConstructor;
 
+import static com.woowacamp.storage.global.error.ErrorCode.*;
+
 @Service
 @RequiredArgsConstructor
 public class FileService {
-
 	private final FileMetadataRepository fileMetadataRepository;
-	private final FolderMetadataRepository folderMetadataRepository;
-	private final FolderSearchUtil folderSearchUtil;
-	private final AmazonS3 amazonS3;
+	private final FileMetadataJpaRepository fileMetadataJpaRepository;
+	private final FolderMetadataJpaRepository folderMetadataRepository;
 	private final ApplicationEventPublisher eventPublisher;
-	@Value("${cloud.aws.credentials.bucketName}")
-	private String BUCKET_NAME;
+	private final MetadataService metadataService;
+
+	@Value("${constant.batchSize}")
+	private int pageSize;
 
 	/**
 	 * FileMetadata의 parentFolderId를 변경한다.
@@ -44,20 +42,21 @@ public class FileService {
 	 */
 	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public void moveFile(Long fileId, FileMoveDto dto) {
-		FolderMetadata folderMetadata = folderMetadataRepository.findByIdForUpdate(dto.targetFolderId())
+		FolderMetadata folderMetadata = folderMetadataRepository.findByIdNotDeleted(dto.targetFolderId())
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
 		if (!folderMetadata.getOwnerId().equals(dto.userId())) {
 			throw ErrorCode.ACCESS_DENIED.baseException();
 		}
-		FileMetadata fileMetadata = fileMetadataRepository.findByIdForUpdate(fileId)
+		FileMetadata fileMetadata = fileMetadataJpaRepository.findByIdForUpdate(fileId)
 			.orElseThrow(ErrorCode.FILE_NOT_FOUND::baseException);
 		validateMetadata(dto, fileMetadata);
 
-		Set<FolderMetadata> sourcePath = folderSearchUtil.getPathToRoot(fileMetadata.getParentFolderId());
-		Set<FolderMetadata> targetPath = folderSearchUtil.getPathToRoot(dto.targetFolderId());
-		FolderMetadata commonAncestor = folderSearchUtil.getCommonAncestor(sourcePath, targetPath);
-		folderSearchUtil.updateFolderPath(sourcePath, targetPath, commonAncestor, fileMetadata.getFileSize());
+		long originParentId = fileMetadata.getParentFolderId();
 		fileMetadata.updateParentFolderId(dto.targetFolderId());
+		fileMetadataJpaRepository.save(fileMetadata);
+
+		metadataService.calculateSize(originParentId);
+		metadataService.calculateSize(dto.targetFolderId());
 
 		eventPublisher.publishEvent(new FileMoveEvent(this, fileMetadata, folderMetadata));
 	}
@@ -66,14 +65,14 @@ public class FileService {
 		if (fileMetadata.getUploadStatus() != UploadStatus.SUCCESS) {
 			throw ErrorCode.FILE_NOT_FOUND.baseException();
 		}
-		if (fileMetadataRepository.existsByParentFolderIdAndUploadFileNameAndUploadStatusNot(dto.targetFolderId(),
+		if (fileMetadataJpaRepository.existsByParentFolderIdAndUploadFileNameAndUploadStatusNot(dto.targetFolderId(),
 			fileMetadata.getUploadFileName(), UploadStatus.FAIL)) {
 			throw ErrorCode.FILE_NAME_DUPLICATE.baseException();
 		}
 	}
 
 	public FileMetadata getFileMetadataBy(Long fileId, Long userId) {
-		FileMetadata fileMetadata = fileMetadataRepository.findById(fileId)
+		FileMetadata fileMetadata = fileMetadataJpaRepository.findById(fileId)
 			.orElseThrow(ErrorCode.FILE_NOT_FOUND::baseException);
 
 		if (!Objects.equals(fileMetadata.getOwnerId(), userId)) {
@@ -82,31 +81,26 @@ public class FileService {
 		return fileMetadata;
 	}
 
-	// private String BUCKET_NAME
 	@Transactional
 	public void deleteFile(Long fileId, Long userId) {
-		FileMetadata fileMetadata = fileMetadataRepository.findByIdAndOwnerIdAndUploadStatusNot(fileId, userId,
+		FileMetadata fileMetadata = fileMetadataJpaRepository.findByIdAndOwnerIdAndUploadStatusNot(fileId, userId,
 				UploadStatus.FAIL)
 			.orElseThrow(ACCESS_DENIED::baseException);
 
-		fileMetadataRepository.delete(fileMetadata);
+		fileMetadataJpaRepository.delete(fileMetadata);
 
-		try {
-			amazonS3.deleteObject(BUCKET_NAME, fileMetadata.getUuidFileName());
-		} catch (AmazonS3Exception e) {
-			throw ErrorCode.FILE_DELETE_FAILED.baseException();
-		}
-
-		Long currentFolderId = fileMetadata.getParentFolderId();
+		Long parentFolderId = fileMetadata.getParentFolderId();
 		long fileSize = fileMetadata.getFileSize();
-		LocalDateTime now = LocalDateTime.now();
-		while (currentFolderId != null) {
-			FolderMetadata currentFolderMetadata = folderMetadataRepository.findByIdForUpdate(currentFolderId)
-				.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
-			currentFolderMetadata.addSize(-fileSize);
-			currentFolderMetadata.updateUpdatedAt(now);
-			currentFolderId = currentFolderMetadata.getParentFolderId();
-		}
+
+		metadataService.calculateSize(parentFolderId);
+	}
+
+	public void findOrphanFileAndHardDelete() {
+		QueryExecuteTemplate.<FileMetadata>selectFilesAndExecuteWithCursor(pageSize,
+			findFile -> fileMetadataRepository.findFileMetadataByLastId(
+				findFile == null ? 0 : findFile.getParentFolderId(), findFile == null ? null : findFile.getId(),
+				pageSize),
+			fileMetadataList -> fileMetadataRepository.deleteAll(fileMetadataList));
 	}
 
 }

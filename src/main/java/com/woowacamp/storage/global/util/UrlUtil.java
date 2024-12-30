@@ -5,14 +5,14 @@ import org.springframework.stereotype.Component;
 
 import jakarta.annotation.PostConstruct;
 
-@Component
+// @Component
 public class UrlUtil {
-	public static String serverDomain;
+	public static String serverDomain = "localhost:8080";
 
 	@Value("${share.server-domain}")
 	private String injectedServerDomain;
 
-	@PostConstruct
+	// @PostConstruct
 	public void init() {
 		serverDomain = injectedServerDomain;
 	}

@@ -1,7 +1,5 @@
 package com.woowacamp.storage.domain.file.service;
 
-import static com.woowacamp.storage.global.error.ErrorCode.*;
-
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.Objects;
@@ -12,19 +10,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.model.GetObjectRequest;
-import com.amazonaws.services.s3.model.S3Object;
-import com.woowacamp.storage.domain.file.dto.FileDataDto;
 import com.woowacamp.storage.domain.file.dto.FileMetadataDto;
 import com.woowacamp.storage.domain.file.dto.FormMetadataDto;
 import com.woowacamp.storage.domain.file.dto.PartContext;
-import com.woowacamp.storage.domain.file.dto.UploadState;
 import com.woowacamp.storage.domain.file.entity.FileMetadata;
 import com.woowacamp.storage.domain.file.entity.FileMetadataFactory;
-import com.woowacamp.storage.domain.file.repository.FileMetadataRepository;
+import com.woowacamp.storage.domain.file.repository.FileMetadataJpaRepository;
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
-import com.woowacamp.storage.domain.folder.repository.FolderMetadataRepository;
+import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
 import com.woowacamp.storage.domain.user.entity.User;
 import com.woowacamp.storage.domain.user.repository.UserRepository;
 import com.woowacamp.storage.global.constant.CommonConstant;
@@ -33,14 +26,15 @@ import com.woowacamp.storage.global.error.ErrorCode;
 
 import lombok.RequiredArgsConstructor;
 
+import static com.woowacamp.storage.global.error.ErrorCode.*;
+
 @Service
 @RequiredArgsConstructor
 public class S3FileService {
 
-	private final FileMetadataRepository fileMetadataRepository;
-	private final FolderMetadataRepository folderMetadataRepository;
+	private final FileMetadataJpaRepository fileMetadataJpaRepository;
+	private final FolderMetadataJpaRepository folderMetadataRepository;
 	private final UserRepository userRepository;
-	private final AmazonS3 amazonS3;
 
 	@Value("${file.request.maxFileSize}")
 	private long MAX_FILE_SIZE;
@@ -67,7 +61,7 @@ public class S3FileService {
 
 		// 1차 메타데이터 생성
 		// TODO: 공유 기능이 생길 때, creatorId, ownerId 따로
-		FileMetadata fileMetadata = fileMetadataRepository.save(
+		FileMetadata fileMetadata = fileMetadataJpaRepository.save(
 			FileMetadataFactory.buildInitialMetadata(user, formMetadataDto.getParentFolderId(),
 				formMetadataDto.getFileSize(), uuidFileName, fileName, fileType, uuidThumbnail,
 				formMetadataDto.getCreatorId(), parentFolderMetadata));
@@ -80,36 +74,15 @@ public class S3FileService {
 	 */
 	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public void finalizeMetadata(FileMetadataDto fileMetadataDto, long fileSize) {
-		FileMetadata fileMetadata = fileMetadataRepository.findById(fileMetadataDto.metadataId())
+		FileMetadata fileMetadata = fileMetadataJpaRepository.findById(fileMetadataDto.metadataId())
 			.orElseThrow(ErrorCode.FILE_METADATA_NOT_FOUND::baseException);
 
 		// 파일 메타데이터를 먼저 쓴다.
-		fileMetadataRepository.finalizeMetadata(fileMetadata.getId(), fileSize, UploadStatus.SUCCESS);
-
-		// 1차 메타데이터가 업데이트 되지 않았다면 0을 반환한다.
-		// 0이면 부모 폴더가 삭제된 것이므로 폴더 상태 업데이트 없이 바로 예외를 던진다.
-		// if (updatedRecordCount == 0) {
-		// 	throw UNABLE_TO_CREATE_FILE.baseException();
-		// }
+		fileMetadataJpaRepository.finalizeMetadata(fileMetadata.getId(), fileSize, UploadStatus.SUCCESS);
 
 		LocalDateTime now = LocalDateTime.now();
 		updateFolderMetadataStatus(fileMetadataDto, fileSize, now);
 
-		// fileMetadata.updateFileSize(fileSize);
-		// fileMetadata.updateFinishUploadStatus();
-		// fileMetadata.updateCreatedAt(now);
-		// fileMetadata.updateUpdatedAt(now);
-	}
-
-	/**
-	 * 요청 폼 데이터의 fieldFileSize와 실제 파일 크기인 uploadFileSize가 치일한 지 확인하는 메소드
-	 */
-	public void checkMetadata(UploadState state) {
-		long fieldFileSize = state.getFileMetadataDto().fileSize();
-		long uploadedFileSize = state.getFileSize();
-		if (fieldFileSize != uploadedFileSize) {
-			throw ErrorCode.INVALID_FILE_SIZE.baseException();
-		}
 	}
 
 	/**
@@ -173,7 +146,7 @@ public class S3FileService {
 	 */
 	private String getUuidFileName() {
 		String uuidFileName = UUID.randomUUID().toString();
-		while (fileMetadataRepository.existsByUuidFileName(uuidFileName)) {
+		while (fileMetadataJpaRepository.existsByUuidFileName(uuidFileName)) {
 			uuidFileName = UUID.randomUUID().toString();
 		}
 		return uuidFileName;
@@ -191,7 +164,8 @@ public class S3FileService {
 			throw ErrorCode.INVALID_FILE_NAME.baseException();
 		}
 		// 이미 해당 폴더에 같은 이름의 파일이 존재하는지 확인
-		if (fileMetadataRepository.existsByParentFolderIdAndUploadFileNameAndUploadStatusNot(parentFolderId, fileName,
+		if (fileMetadataJpaRepository.existsByParentFolderIdAndUploadFileNameAndUploadStatusNot(parentFolderId,
+			fileName,
 			UploadStatus.FAIL)) {
 			throw ErrorCode.FILE_NAME_DUPLICATE.baseException();
 		}
@@ -204,17 +178,5 @@ public class S3FileService {
 			fileType = fileName.substring(index);
 		}
 		return fileType;
-	}
-
-	public FileDataDto downloadByS3(Long fileId, String bucketName, String uuidFileName) {
-		FileMetadata fileMetadata = fileMetadataRepository.findById(fileId).orElseThrow(FILE_NOT_FOUND::baseException);
-		S3Object s3Object;
-		try {
-			s3Object = amazonS3.getObject(new GetObjectRequest(bucketName, uuidFileName));
-		} catch (Exception e) {
-			throw FILE_NOT_FOUND.baseException();
-		}
-
-		return new FileDataDto(FileMetadataDto.of(fileMetadata), s3Object.getObjectContent());
 	}
 }

@@ -22,8 +22,10 @@ import lombok.NoArgsConstructor;
 
 @Entity
 @Table(name = "folder_metadata", indexes = {
-	@Index(name = "folder_idx_parent_folder_id_size", columnList = "parent_folder_id, created_at"),
-	@Index(name = "folder_idx_parent_folder_id_created_at", columnList = "parent_folder_id, folder_size")
+	@Index(name = "folder_idx_parent_folder_id_created_at", columnList = "parent_folder_id, created_at"),
+	@Index(name = "folder_idx_parent_folder_id_size", columnList = "parent_folder_id, folder_size"),
+	@Index(name = "folder_idx_parent_folder_id_is_deleted", columnList = "parent_folder_id, is_deleted"),
+	@Index(name = "folder_idx_find_folder_with_cursor", columnList = "parent_folder_id, is_deleted, folder_metadata_id")
 })
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
@@ -69,6 +71,11 @@ public class FolderMetadata {
 	@NotNull
 	@Enumerated(EnumType.STRING)
 	private PermissionType permissionType;
+
+	@Column(name = "is_deleted", columnDefinition = "BOOLEAN DEFAULT false")
+	@NotNull
+	private boolean isDeleted = false;
+
 
 	@Builder
 	public FolderMetadata(Long id, Long rootId, Long ownerId, Long creatorId, LocalDateTime createdAt,

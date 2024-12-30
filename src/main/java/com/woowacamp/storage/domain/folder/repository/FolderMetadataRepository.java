@@ -1,84 +1,48 @@
 package com.woowacamp.storage.domain.folder.repository;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Optional;
 
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Lock;
-import org.springframework.data.jpa.repository.Modifying;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
 
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
+import com.woowacamp.storage.global.constant.CommonConstant;
 
-import jakarta.persistence.LockModeType;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
-public interface FolderMetadataRepository extends JpaRepository<FolderMetadata, Long>, FolderCustomRepository {
+@Slf4j
+@Repository
+@RequiredArgsConstructor
+public class FolderMetadataRepository {
+	private final FolderMetadataJpaRepository folderMetadataJpaRepository;
 
-	boolean existsByIdAndCreatorId(Long id, Long creatorId);
+	public List<FolderMetadata> findByParentFolderIdWithLastId(long parentFolderId, Long lastId, int size) {
+		log.info("[Find Folder With Cursor] parent = {}, last = {} , size = {}", parentFolderId, lastId, size);
+		if (lastId == null) {
+			return folderMetadataJpaRepository.findByParentFolderId(parentFolderId, size);
+		}
 
-	@Lock(LockModeType.PESSIMISTIC_WRITE)
-	boolean existsByParentFolderIdAndUploadFolderName(Long parentFolderId, String uploadFolderName);
+		return folderMetadataJpaRepository.findByParentFolderIdWithLastId(parentFolderId, lastId, size);
+	}
 
-	@Lock(LockModeType.PESSIMISTIC_WRITE)
-	@Query(value = """
-			select f.parentFolderId from FolderMetadata f where f.id = :id
-		""")
-	Optional<Long> findParentFolderIdById(@Param("id") Long id);
+	public List<FolderMetadata> findSoftDeletedFolderWithLastId(Long lastId, int size) {
+		if (lastId == null) {
+			return folderMetadataJpaRepository.findSoftDeletedFolder(size);
+		}
+		return folderMetadataJpaRepository.findSoftDeletedFolderWithLastId(lastId, size);
+	}
 
-	@Lock(LockModeType.PESSIMISTIC_WRITE)
-	@Query("SELECT f FROM FolderMetadata f WHERE f.id = :id")
-	Optional<FolderMetadata> findByIdForUpdate(long id);
+	public List<FolderMetadata> findSoftDeletedFolderWithLastIdAndDuration(Long lastId, int size) {
+		if (lastId == null) {
+			return folderMetadataJpaRepository.findSoftDeletedFolder(size, LocalDateTime.now().minusDays(CommonConstant.hardDeleteDuration));
+		}
+		return folderMetadataJpaRepository.findSoftDeletedFolderWithLastId(lastId, size, LocalDateTime.now().minusDays(CommonConstant.hardDeleteDuration));
+	}
 
-	@Lock(LockModeType.PESSIMISTIC_WRITE)
-	@Query(value = """
-			select f.id from FolderMetadata f where f.parentFolderId = :parentFolderId
-		""")
-	List<Long> findIdsByParentFolderIdForUpdate(@Param("parentFolderId") Long parentFolderId);
+	public void deleteAll(List<FolderMetadata> folderMetadataList) {
+		folderMetadataJpaRepository.deleteAllByIdInBatch(folderMetadataList.stream().map(FolderMetadata::getId).toList());
+	}
 
-	// 부모 폴더에 락을 걸고 하위 폴더를 조회하는 메소드
-	@Lock(LockModeType.PESSIMISTIC_WRITE)
-	@Query(value = """
-			select f from FolderMetadata f where f.parentFolderId = :parentFolderId
-		""")
-	List<FolderMetadata> findByParentFolderIdForUpdate(Long parentFolderId);
-
-	@Modifying
-	@Query("DELETE FROM FolderMetadata f WHERE f.id IN :ids")
-	void deleteAllByIdInBatch(@Param("ids") Iterable<Long> ids);
-
-	// 부모 폴더에 락을 걸지 않고 하위 폴더를 조회하는 메소드
-	List<FolderMetadata> findByParentFolderId(Long parentFolderId);
-
-	@Modifying
-	@Query(value = """
-			update FolderMetadata f
-			set f.parentFolderId = :newParentId
-			where f.parentFolderId in :ids
-		""")
-	void updateParentFolderIdForDelete(@Param("newParentId") int newParentId,
-		@Param("ids") Iterable<Long> folderIdListForDelete);
-
-	@Modifying
-	@Query(value = """
-			delete from FolderMetadata f
-			where f.parentFolderId = :parentFolderId
-		""")
-	void deleteOrphanFolders(@Param("parentFolderId") long parentFolderId);
-
-	@Lock(LockModeType.PESSIMISTIC_READ)
-	@Query(value = """
-			select f from FolderMetadata f
-			where f.id = :folderId
-		""")
-	Optional<FolderMetadata> findByIdForShare(@Param("folderId") Long folderId);
-
-	List<FolderMetadata> findByOwnerId(Long ownerId);
-
-	@Modifying
-	@Query("""
-			update FolderMetadata f set f.size = f.size + :fileSize, f.updatedAt = :now where f.id = :id
-		""")
-	void updateFolderInfo(@Param("fileSize") long fileSize, @Param("now") LocalDateTime now, @Param("id") Long id);
 }

@@ -1,28 +1,21 @@
 package com.woowacamp.storage.domain.folder.service;
 
-import static com.woowacamp.storage.domain.folder.entity.FolderMetadataFactory.*;
-import static com.woowacamp.storage.global.constant.CommonConstant.*;
-
 import java.time.LocalDateTime;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
-import java.util.Queue;
-import java.util.Set;
-import java.util.Stack;
+import java.util.concurrent.Executor;
 
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.model.AmazonS3Exception;
 import com.woowacamp.storage.domain.file.entity.FileMetadata;
+import com.woowacamp.storage.domain.file.repository.FileMetadataJpaRepository;
 import com.woowacamp.storage.domain.file.repository.FileMetadataRepository;
 import com.woowacamp.storage.domain.folder.dto.CursorType;
 import com.woowacamp.storage.domain.folder.dto.FolderContentsDto;
@@ -30,33 +23,46 @@ import com.woowacamp.storage.domain.folder.dto.FolderContentsSortField;
 import com.woowacamp.storage.domain.folder.dto.request.CreateFolderReqDto;
 import com.woowacamp.storage.domain.folder.dto.request.FolderMoveDto;
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
-import com.woowacamp.storage.domain.folder.event.FolderMoveEvent;
+import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataRepository;
 import com.woowacamp.storage.domain.folder.utils.FolderSearchUtil;
+import com.woowacamp.storage.domain.folder.utils.QueryExecuteTemplate;
 import com.woowacamp.storage.domain.user.entity.User;
 import com.woowacamp.storage.domain.user.repository.UserRepository;
+import com.woowacamp.storage.global.background.BackgroundJob;
 import com.woowacamp.storage.global.constant.CommonConstant;
+import com.woowacamp.storage.global.constant.PermissionType;
 import com.woowacamp.storage.global.constant.UploadStatus;
 import com.woowacamp.storage.global.error.ErrorCode;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
+import static com.woowacamp.storage.domain.folder.entity.FolderMetadataFactory.*;
+import static com.woowacamp.storage.global.constant.CommonConstant.*;
+
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class FolderService {
 	private static final long INITIAL_CURSOR_ID = 0L;
+	private final FileMetadataJpaRepository fileMetadataJpaRepository;
 	private final FileMetadataRepository fileMetadataRepository;
+	private final FolderMetadataJpaRepository folderMetadataJpaRepository;
 	private final FolderMetadataRepository folderMetadataRepository;
+	private final MetadataService metadataService;
+	private final RedisLockService redisLockService;
 	private final UserRepository userRepository;
 	private final FolderSearchUtil folderSearchUtil;
-	private final AmazonS3 amazonS3;
-	private final ApplicationEventPublisher eventPublisher;
-	@Value("${cloud.aws.credentials.bucketName}")
-	private String BUCKET_NAME;
+	private final Executor searchThreadPoolExecutor;
+	private final BackgroundJob backgroundJob;
+
+	@Value("${constant.batchSize}")
+	private int pageSize;
 
 	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public void checkFolderOwnedBy(long folderId, long userId) {
-		FolderMetadata folderMetadata = folderMetadataRepository.findByIdForUpdate(folderId)
+		FolderMetadata folderMetadata = folderMetadataJpaRepository.findByIdForUpdate(folderId)
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
 
 		if (!folderMetadata.getOwnerId().equals(userId)) {
@@ -84,26 +90,54 @@ public class FolderService {
 		return new FolderContentsDto(folders, files);
 	}
 
-	@Transactional(isolation = Isolation.READ_COMMITTED)
+	/**
+	 * 폴더 단위가 아닌, 사용자 기준으로 락을 걸고 작업을 한다.
+	 * 따라서 폴더 이동의 경우는 동시에 처리되지 않는다.
+	 * 동시에 여러 폴더 이동이 진행될때 싸이클이 발생할 수 있기 때문에 락을 걸고 진행.
+	 */
 	public void moveFolder(Long sourceFolderId, FolderMoveDto dto) {
-		FolderMetadata folderMetadata = folderMetadataRepository.findByIdForUpdate(sourceFolderId)
+		FolderMetadata folderMetadata = folderMetadataJpaRepository.findByIdNotDeleted(sourceFolderId)
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
-		validateMoveFolder(sourceFolderId, dto, folderMetadata);
-
-		Set<FolderMetadata> sourcePath = folderSearchUtil.getPathToRoot(sourceFolderId);
-		Set<FolderMetadata> targetPath = folderSearchUtil.getPathToRoot(dto.targetFolderId());
-		FolderMetadata commonAncestor = folderSearchUtil.getCommonAncestor(sourcePath, targetPath);
-		folderSearchUtil.updateFolderPath(sourcePath, targetPath, commonAncestor, folderMetadata.getSize());
-		folderMetadata.updateParentFolderId(dto.targetFolderId());
-
-		eventPublisher.publishEvent(
-			new FolderMoveEvent(this, folderMetadata, folderMetadataRepository.findById(dto.targetFolderId()).get()));
+		redisLockService.handleUserRequest(folderMetadata.getOwnerId().toString(),
+			() -> moveFolderTask(sourceFolderId, dto), ErrorCode.TOO_MUCH_REQUEST.baseException());
 	}
 
-	private void validateMoveFolder(Long sourceFolderId, FolderMoveDto dto, FolderMetadata folderMetadata) {
+	@Transactional
+	protected void moveFolderTask(Long sourceFolderId, FolderMoveDto dto) {
+		FolderMetadata folderMetadata = folderMetadataJpaRepository.findByIdNotDeleted(sourceFolderId)
+			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
+
+		folderMetadataJpaRepository.findByIdNotDeleted(dto.targetFolderId())
+			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
+
 		validateInvalidMove(dto, folderMetadata);
 		validateFolderDepth(sourceFolderId, dto);
+		long originParentId = folderMetadata.getParentFolderId();
+
+		// 목적지에 동일 폴더를 생성하지 않도록 락이 필요하다. 누군가 폴더를 생성해서 같은 이름이 생길 수 있기 때문.
+		// 또한 트랜잭션 내부에서 락을 사용하면 커밋 전에 락이 해제되기 때문에 일관성이 깨질 수 있다.
+		String moveFolderLock = dto.targetFolderId() + "/" + folderMetadata.getUploadFolderName();
+		redisLockService.handleUserRequest(moveFolderLock, () -> duplicatedCheckAndMoveCommit(dto, folderMetadata),
+			ErrorCode.TOO_MUCH_REQUEST.baseException());
+
+		// 업데이트가 완료된 이후 용량 계산을 실시한다.
+		metadataService.calculateSize(originParentId);
+		metadataService.calculateSize(dto.targetFolderId());
+
+		// TODO 하위 경로 공유 상태 변경 필요
+		// eventPublisher.publishEvent(
+		// 	new FolderMoveEvent(this, folderMetadata,
+		// 		folderMetadataJpaRepository.findById(dto.targetFolderId()).get()));
+	}
+
+	/**
+	 * 락 내부에서 커밋을 하기 위해 이름 중복 체크와 폴더 이동 적용을 별도의 트랜잭션에서 처리
+	 */
+	@Transactional(propagation = Propagation.REQUIRES_NEW)
+	protected void duplicatedCheckAndMoveCommit(FolderMoveDto dto, FolderMetadata folderMetadata) {
 		validateDuplicatedFolderName(dto, folderMetadata);
+		folderMetadata.updateParentFolderId(dto.targetFolderId());
+		folderMetadataJpaRepository.save(folderMetadata);
 	}
 
 	/**
@@ -138,7 +172,7 @@ public class FolderService {
 	 * 이 과정 중, targetFolderId가 포함돼 있으면 예외 발생
 	 */
 	private int getLeafDepth(long currentFolderId, int currentDepth, long targetFolderId) {
-		List<Long> childFolderIds = folderMetadataRepository.findIdsByParentFolderIdForUpdate(currentFolderId);
+		List<Long> childFolderIds = folderMetadataJpaRepository.findIdsByParentFolderId(currentFolderId);
 		if (isExistsPendingFile(currentFolderId)) {
 			throw ErrorCode.CANNOT_MOVE_FOLDER_WHEN_UPLOADING.baseException();
 		}
@@ -156,14 +190,14 @@ public class FolderService {
 	}
 
 	private boolean isExistsPendingFile(long currentFolderId) {
-		return fileMetadataRepository.existsByParentFolderIdAndUploadStatus(currentFolderId, UploadStatus.PENDING);
+		return fileMetadataJpaRepository.existsByParentFolderIdAndUploadStatus(currentFolderId, UploadStatus.PENDING);
 	}
 
 	/**
 	 * 같은 폴더 내에 동일한 이름의 폴더가 있는지 확인
 	 */
 	private void validateDuplicatedFolderName(FolderMoveDto dto, FolderMetadata folderMetadata) {
-		if (folderMetadataRepository.existsByParentFolderIdAndUploadFolderName(dto.targetFolderId(),
+		if (folderMetadataJpaRepository.existsByParentFolderIdAndUploadFolderName(dto.targetFolderId(),
 			folderMetadata.getUploadFolderName())) {
 			throw ErrorCode.FILE_NAME_DUPLICATE.baseException();
 		}
@@ -171,7 +205,7 @@ public class FolderService {
 
 	private List<FileMetadata> fetchFiles(Long folderId, Long cursorId, int limit, FolderContentsSortField sortBy,
 		Sort.Direction direction, LocalDateTime dateTime, Long size, boolean ownerRequested) {
-		List<FileMetadata> files = fileMetadataRepository.selectFilesWithPagination(folderId, cursorId, sortBy,
+		List<FileMetadata> files = fileMetadataJpaRepository.selectFilesWithPagination(folderId, cursorId, sortBy,
 			direction, limit, dateTime, size);
 		if (!ownerRequested) {
 			files = files.stream().filter(file -> !file.isSharingExpired()).toList();
@@ -181,7 +215,7 @@ public class FolderService {
 
 	private List<FolderMetadata> fetchFolders(Long folderId, Long cursorId, int limit, FolderContentsSortField sortBy,
 		Sort.Direction direction, LocalDateTime dateTime, Long size, boolean ownerRequested) {
-		List<FolderMetadata> folders = folderMetadataRepository.selectFoldersWithPagination(folderId, cursorId,
+		List<FolderMetadata> folders = folderMetadataJpaRepository.selectFoldersWithPagination(folderId, cursorId,
 			sortBy, direction, limit, dateTime, size);
 		if (!ownerRequested) {
 			folders = folders.stream().filter(folder -> !folder.isSharingExpired()).toList();
@@ -190,22 +224,27 @@ public class FolderService {
 	}
 
 	/**
-	 * 부모 폴더를 삭제중인 경우가 있어서 for update로 부모 폴더를 조회합니다.
-	 * 이미 제거되어 Null을 리턴한 경우 폴더가 생성되지 않습니다.
+	 *
 	 */
-	@Transactional
 	public Long createFolder(CreateFolderReqDto req) {
 		User user = userRepository.findById(req.userId()).orElseThrow(ErrorCode.USER_NOT_FOUND::baseException);
-
-		long parentFolderId = req.parentFolderId();
-		long userId = req.userId();
-		FolderMetadata parentFolder = folderMetadataRepository.findByIdForUpdate(parentFolderId)
-			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
-
-		validatePermission(parentFolder, userId);
 		validateFolderName(req);
+
+		String lockName = req.parentFolderId() + "/" + req.uploadFolderName();
+		return redisLockService.<Long>handleUserRequest(lockName, () -> randomCreateFolder(req, user),
+			ErrorCode.TOO_MUCH_REQUEST.baseException());
+	}
+
+	@Transactional
+	protected Long randomCreateFolder(CreateFolderReqDto req, User user) {
+		long parentFolderId = req.parentFolderId();
+		FolderMetadata parentFolder = folderMetadataJpaRepository.findById(parentFolderId)
+			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
 		validateFolder(req);
-		FolderMetadata newFolder = folderMetadataRepository.save(createFolderMetadata(user, parentFolder, req));
+		FolderMetadata folderMetadata = createFolderMetadata(user, parentFolder, req);
+		folderMetadata.updateShareStatus(PermissionType.WRITE, LocalDateTime.now().plusYears(1));
+		FolderMetadata newFolder = folderMetadataJpaRepository.save(folderMetadata);
+
 		return newFolder.getId();
 	}
 
@@ -214,7 +253,7 @@ public class FolderService {
 	 * 최대 depth가 50 이하인지 확인
 	 */
 	private void validateFolder(CreateFolderReqDto req) {
-		if (folderMetadataRepository.existsByParentFolderIdAndUploadFolderName(req.parentFolderId(),
+		if (folderMetadataJpaRepository.existsByParentFolderIdAndUploadFolderName(req.parentFolderId(),
 			req.uploadFolderName())) {
 			throw ErrorCode.INVALID_FILE_NAME.baseException();
 		}
@@ -248,10 +287,14 @@ public class FolderService {
 	 * deleteWithDfs 메소드를 통해 삭제해야 할 pk를 받아옵니다.
 	 * 이후 pk 데이터를 바탕으로 폴더 및 파일 삭제와 S3에 미처 업로드가 되지 못한 파일의 부모 폴더의 값을 -1로 변경합니다.
 	 */
-	@Transactional(isolation = Isolation.READ_COMMITTED)
+	@Transactional
 	public void deleteFolder(Long folderId, Long userId) {
-		FolderMetadata folderMetadata = folderMetadataRepository.findByIdForUpdate(folderId)
+		FolderMetadata folderMetadata = folderMetadataJpaRepository.findById(folderId)
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
+
+		if (folderMetadata.isDeleted()) {
+			throw ErrorCode.FOLDER_NOT_FOUND.baseException();
+		}
 
 		if (!folderMetadata.getOwnerId().equals(userId)) {
 			throw ErrorCode.ACCESS_DENIED.baseException();
@@ -262,107 +305,67 @@ public class FolderService {
 			throw ErrorCode.INVALID_DELETE_REQUEST.baseException();
 		}
 
-		List<Long> folderIdListForDelete = new ArrayList<>();
-		List<Long> fileIdListForUpdate = new ArrayList<>();
-		List<Long> fileIdListForDelete = new ArrayList<>();
+		// 삭제 요청이 들어온 폴더를 제거한다.
+		folderMetadataJpaRepository.softDeleteById(folderMetadata.getId());
 
-		deleteWithDfs(folderId, folderIdListForDelete, fileIdListForDelete, fileIdListForUpdate);
-		// deleteWithBfs(parentFolderId, folderIdListForDelete, fileIdListForDelete);
-
-		if (!folderIdListForDelete.isEmpty()) {
-			folderMetadataRepository.deleteAllByIdInBatch(folderIdListForDelete);
-			folderMetadataRepository.updateParentFolderIdForDelete(CommonConstant.ORPHAN_PARENT_ID,
-				fileIdListForUpdate);
-			fileMetadataRepository.updateParentFolderIdForDelete(CommonConstant.ORPHAN_PARENT_ID,
-				folderIdListForDelete);
-		}
-		if (!fileIdListForDelete.isEmpty()) {
-			fileMetadataRepository.deleteAllByIdInBatch(fileIdListForDelete);
-		}
-
-		Long currentFolderId = folderMetadata.getParentFolderId();
-		long fileSize = folderMetadata.getSize();
-		LocalDateTime now = LocalDateTime.now();
-		while (currentFolderId != null) {
-			FolderMetadata currentFolderMetadata = folderMetadataRepository.findByIdForUpdate(currentFolderId)
-				.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
-			currentFolderMetadata.addSize(-fileSize);
-			currentFolderMetadata.updateUpdatedAt(now);
-			currentFolderId = currentFolderMetadata.getParentFolderId();
-		}
+		// 삭제는 스레드 풀이 처리하도록 한다.
+		deleteFolderTree(folderMetadata);
+		// 삭제한 폴더의 용량 계산을 진행한다.
+		metadataService.calculateSize(folderMetadata.getParentFolderId());
 	}
 
 	/**
-	 * 재귀호출을 하지 않고 stack을 사용한 DFS를 사용합니다.
-	 * 깊이 우선으로 탐색하여 폴더와 파일을 삭제합니다.
+	 * 현재 폴더 기준으로 하위 파일 트리를 제거하는 메소드
+	 * 하위 폴더와 파일을 재귀 호출로 탐색
 	 */
-	private void deleteWithDfs(long folderId, List<Long> folderIdListForDelete,
-		List<Long> fileIdListForDelete, List<Long> fileIdListForUpdate) {
-		Stack<Long> folderIdStack = new Stack<>();
-		folderIdStack.push(folderId);
+	public void deleteFolderTree(FolderMetadata folderMetadata) {
+		long folderId = folderMetadata.getId();
+		log.info("[Delete Start Pk] {}", folderId);
+		searchThreadPoolExecutor.execute(
+			() -> QueryExecuteTemplate.<FolderMetadata>selectFilesAndExecuteWithCursor(pageSize,
+				findFolder -> folderMetadataRepository.findByParentFolderIdWithLastId(folderId,
+					findFolder == null ? null : findFolder.getId(), pageSize), folderMetadataList -> {
+					backgroundJob.addForDeleteFolder(folderMetadataList);
+					folderMetadataList.forEach(folder -> {
+						fileDeleteWithParentFolder(folder); // 하위 파일 제거
+						deleteFolderTree(folder); // 재귀적으로 탐색
+					});
+				}));
 
-		// 재귀 탐색하며 S3 파일 삭제, 삭제해야하는 메타데이터 List에 저장하며 BatchSize 만큼 삭제
-		while (!folderIdStack.isEmpty()) {
-			Long currentFolderId = folderIdStack.pop();
-			// 폴더아이디 삭제 목록에 추가
-			folderIdListForDelete.add(currentFolderId);
-
-			// 하위의 파일 조회
-			List<FileMetadata> childFileMetadata = fileMetadataRepository.findByParentFolderIdAndUploadStatusNot(
-				currentFolderId, UploadStatus.FAIL);
-
-			// 하위 파일의 실제 데이터 삭제 및 삭제해야 할 파일 id 값 저장
-			childFileMetadata.forEach(fileMetadata -> {
-				if (Objects.equals(fileMetadata.getUploadStatus(), UploadStatus.PENDING)) {
-					throw ErrorCode.CANNOT_DELETE_FILE_WHEN_UPLOADING.baseException();
-				}
-				try {
-					// s3에 파일 chunk를 쓰고 있을 수 있기 때문에 우선 조회 후 삭제 작업을 진행한다.
-					amazonS3.getObjectMetadata(BUCKET_NAME, fileMetadata.getUuidFileName());
-					amazonS3.deleteObject(BUCKET_NAME, fileMetadata.getUuidFileName());
-					fileIdListForDelete.add(fileMetadata.getId());
-					fileIdListForUpdate.add(fileMetadata.getId());
-				} catch (AmazonS3Exception e) {
-					e.printStackTrace();
-					// 예외가 발생한 경우 해당 파일의 부모 폴더 필드를 -1로 만들어 준다.
-					fileIdListForUpdate.add(fileMetadata.getId());
-				}
-			});
-
-			// 하위의 폴더 조회
-			List<FolderMetadata> childFolders = folderMetadataRepository.findByParentFolderId(currentFolderId);
-
-			// 하위 폴더들을 스택에 추가
-			for (FolderMetadata childFolder : childFolders) {
-				folderIdStack.push(childFolder.getId());
-			}
-		}
+		// 삭제 시작한 폴더의 하위 파일 제거
+		searchThreadPoolExecutor.execute(() -> {
+			fileDeleteWithParentFolder(folderMetadata);
+		});
 	}
 
-	/**
-	 * 이후에 DFS와 비교를 위한 BFS를 활용한 파일 제거 메소드입니다.
-	 */
-	private void deleteWithBfs(long parentFolderId, List<Long> folderIdListForDelete, List<Long> fileIdListForDelete) {
-		Queue<Long> folderIdQueue = new ArrayDeque<>();
-		folderIdQueue.offer(parentFolderId);
-
-		while (!folderIdQueue.isEmpty()) {
-			Long currentFolderId = folderIdQueue.poll();
-
-			folderIdListForDelete.add(currentFolderId);
-
-			// 하위의 파일 삭제
-			List<FileMetadata> childFiles = fileMetadataRepository.findByParentFolderIdForUpdate(currentFolderId);
-			childFiles.forEach(fileMetadata -> {
-				amazonS3.deleteObject(BUCKET_NAME, fileMetadata.getUuidFileName());
-				fileIdListForDelete.add(fileMetadata.getId());
-			});
-
-			// 하위의 폴더 조회
-			List<FolderMetadata> childFolder = folderMetadataRepository.findByParentFolderIdForUpdate(currentFolderId);
-
-			// 다음 연산을 위해 Queue 에 offer
-			childFolder.stream().forEach(folder -> folderIdQueue.offer(folder.getId()));
-		}
+	// 부모 폴더 조건까지 포함해서 file 리스트 페이징 조회. 그리고 여기서 바로 삭제 쿼리 날리면 BackgroundJob은 필요 없지 않나?
+	// 만약 하위 폴더 수가 적은데 트리 깊이가 깊은 경우에는 BackgroundJob이 도움은 될듯. DB 접근 횟수를 줄여주니까
+	private void fileDeleteWithParentFolder(FolderMetadata folderMetadata) {
+		searchThreadPoolExecutor.execute(() -> {
+			QueryExecuteTemplate.<FileMetadata>selectFilesAndExecuteWithCursor(pageSize,
+				findFile -> fileMetadataRepository.findFileMetadataByLastId(folderMetadata.getId(),
+					findFile == null ? null : findFile.getId(), pageSize),
+				fileMetadataList -> backgroundJob.addForDeleteFile(fileMetadataList));
+		});
 	}
+
+	// TODO 파일 업로드 구현되면 원격 파일 삭제
+	private void deleteBinaryFile(FileMetadata fileMetadata) {
+
+	}
+
+	public void doHardDelete() {
+		QueryExecuteTemplate.<FolderMetadata>selectFilesAndExecuteWithCursor(pageSize,
+			findFolder -> folderMetadataRepository.findSoftDeletedFolderWithLastIdAndDuration(
+				findFolder == null ? null : findFolder.getId(), pageSize),
+			folderMetadataList -> folderMetadataRepository.deleteAll(folderMetadataList));
+	}
+
+	public void findOrphanFolderAndSoftDelete() {
+		QueryExecuteTemplate.<FolderMetadata>selectFilesAndExecuteWithCursor(pageSize,
+			findFolder -> folderMetadataRepository.findSoftDeletedFolderWithLastId(
+				findFolder == null ? null : findFolder.getId(), pageSize),
+			folderMetadataList -> folderMetadataList.forEach(folder -> deleteFolderTree(folder)));
+	}
+
 }
