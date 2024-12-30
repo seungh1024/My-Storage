@@ -73,7 +73,7 @@ public class FileMetadata {
 	@NotNull
 	private String uploadFileName;
 
-	@Column(name = "uuid_file_name", columnDefinition = "VARCHAR(100) NOT NULL unique")
+	@Column(name = "uuid_file_name", columnDefinition = "VARCHAR(100) NOT NULL")
 	@NotNull
 	private String uuidFileName;
 
@@ -82,7 +82,7 @@ public class FileMetadata {
 	@NotNull
 	private UploadStatus uploadStatus;
 
-	@Column(name = "thumbnail_file_name", columnDefinition = "VARCHAR(100) unique")
+	@Column(name = "thumbnail_file_name", columnDefinition = "VARCHAR(100)")
 	private String thumbnailUUID;
 
 	@Column(name = "sharing_expired_at", columnDefinition = "TIMESTAMP NOT NULL")
