@@ -20,14 +20,18 @@ import com.woowacamp.storage.domain.file.repository.FileMetadataJpaRepository;
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
 import com.woowacamp.storage.domain.folder.service.RedisLockService;
+import com.woowacamp.storage.global.background.BackgroundJob;
 import com.woowacamp.storage.global.constant.CommonConstant;
 import com.woowacamp.storage.global.constant.UploadStatus;
 import com.woowacamp.storage.global.error.ErrorCode;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import software.amazon.awssdk.services.s3.model.HeadObjectResponse;
 
 import static com.woowacamp.storage.global.error.ErrorCode.*;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class S3FileService {
@@ -36,6 +40,7 @@ public class S3FileService {
 	private final FolderMetadataJpaRepository folderMetadataRepository;
 	private final RedisLockService redisLockService;
 	private final PresignedUrlService presignedUrlService;
+	private final BackgroundJob backgroundJob;
 
 	@Value("${file.request.maxFileSize}")
 	private long MAX_FILE_SIZE;
@@ -49,8 +54,8 @@ public class S3FileService {
 	public FileUploadResponseDto createInitialMetadata(FileUploadRequestDto fileUploadRequestDto) {
 		String lockName = fileUploadRequestDto.parentFolderId() + "/" + fileUploadRequestDto.fileName();
 		return redisLockService.<FileUploadResponseDto>handleUserRequest(lockName, () ->
-			createFileMetadata(fileUploadRequestDto)
-		, FILE_NAME_DUPLICATE.baseException());
+				createFileMetadata(fileUploadRequestDto)
+			, FILE_NAME_DUPLICATE.baseException());
 	}
 
 	@Transactional
@@ -73,7 +78,7 @@ public class S3FileService {
 
 		URL presignedUrl = presignedUrlService.getPresignedUrl(objectKey);
 
-		return new FileUploadResponseDto(objectKey, presignedUrl);
+		return new FileUploadResponseDto(fileMetadata.getId(), objectKey, presignedUrl);
 	}
 
 	/**
@@ -184,4 +189,35 @@ public class S3FileService {
 
 		return presignedUrlService.getDownloadUrl(fileMetadata.getUuidFileName());
 	}
+
+	/**
+	 * 파일 업로드 완료 메서드
+	 * @param fileId
+	 * @param userId
+	 */
+	public void createComplete(long fileId, long userId, String objectKey) {
+		FileMetadata fileMetadata = fileMetadataJpaRepository.findById(fileId)
+			.orElseThrow(FILE_NOT_FOUND::baseException);
+
+		// 자신이 생성한 파일이 아니면 완료 요청을 보낼 수 없다.
+		if (fileMetadata.getCreatorId() != userId) {
+			throw WRONG_PERMISSION_TYPE.baseException();
+		}
+
+		if (!Objects.equals(fileMetadata.getUuidFileName(), objectKey)) {
+			throw WRONG_OBJECT_KEY.baseException();
+		}
+
+		HeadObjectResponse rgwFileMetadata = presignedUrlService.getFileMetadata(fileMetadata.getUuidFileName());
+		// 파일 사이즈가 다르면 기존 요청과 다른 파일을 업로드 한 것으로 간주하고 상태를 실패로 변경
+		if (rgwFileMetadata.contentLength().longValue() != fileMetadata.getFileSize().longValue()) {
+			fileMetadata.updateFailUploadStatus();
+			fileMetadataJpaRepository.save(fileMetadata);
+			throw INVALID_FILE_SIZE.baseException();
+		}
+
+		fileMetadata.updateFinishUploadStatus();
+		fileMetadataJpaRepository.save(fileMetadata);
+	}
+
 }

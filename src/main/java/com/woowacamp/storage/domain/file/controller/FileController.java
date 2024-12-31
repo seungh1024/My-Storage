@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.woowacamp.storage.domain.file.dto.FileMoveDto;
+import com.woowacamp.storage.domain.file.dto.request.FileUploadCompleteRequestDto;
 import com.woowacamp.storage.domain.file.dto.request.FileUploadRequestDto;
 import com.woowacamp.storage.domain.file.dto.response.FileUploadResponseDto;
 import com.woowacamp.storage.domain.file.service.FileService;
@@ -61,10 +62,14 @@ public class FileController {
 		return s3FileService.createInitialMetadata(fileUploadRequestDto);
 	}
 
-	@PatchMapping
+	/**
+	 * 업로드 중간에 공유 기간이 만료될 수 있으니 AOP로 확인하지 않음.
+	 * userId를 별도로 받아서 자신이 업로드한 파일인지만 확인 후 업로드 완료 진행.
+	 */
+	@PatchMapping("/complete/{fileId}")
 	@ResponseStatus(HttpStatus.OK)
-	public void createComplete() {
-
+	public void createComplete(@PathVariable long fileId, @RequestBody FileUploadCompleteRequestDto requestDto) {
+		s3FileService.createComplete(fileId, requestDto.userId(), requestDto.objectKey());
 	}
 
 	@RequestType(permission = PermissionType.READ, fileType = FileType.FILE)

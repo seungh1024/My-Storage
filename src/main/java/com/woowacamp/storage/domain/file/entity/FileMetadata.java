@@ -149,4 +149,8 @@ public class FileMetadata {
 	public boolean isSharingExpired() {
 		return sharingExpiredAt.isBefore(LocalDateTime.now());
 	}
+
+	public void updateFailUploadStatus() {
+		this.uploadStatus = UploadStatus.FAIL;
+	}
 }
