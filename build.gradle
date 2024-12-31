@@ -48,7 +48,8 @@ dependencies {
 	implementation 'io.micrometer:micrometer-registry-prometheus'
 
 	// aws
-	implementation 'com.amazonaws:aws-java-sdk-s3:1.12.300'
+	implementation platform('software.amazon.awssdk:bom:2.20.56')
+	implementation 'software.amazon.awssdk:s3' // 필요한 모듈만 추가
 
 	testImplementation 'org.testcontainers:testcontainers:1.19.4'
 	testImplementation 'org.testcontainers:junit-jupiter:1.19.4'
