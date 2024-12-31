@@ -1,5 +1,6 @@
 package com.woowacamp.storage.domain.file.service;
 
+import java.net.URL;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.Objects;
@@ -11,15 +12,14 @@ import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.woowacamp.storage.domain.file.dto.FileMetadataDto;
-import com.woowacamp.storage.domain.file.dto.FormMetadataDto;
-import com.woowacamp.storage.domain.file.dto.PartContext;
+import com.woowacamp.storage.domain.file.dto.request.FileUploadRequestDto;
+import com.woowacamp.storage.domain.file.dto.response.FileUploadResponseDto;
 import com.woowacamp.storage.domain.file.entity.FileMetadata;
 import com.woowacamp.storage.domain.file.entity.FileMetadataFactory;
 import com.woowacamp.storage.domain.file.repository.FileMetadataJpaRepository;
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
-import com.woowacamp.storage.domain.user.entity.User;
-import com.woowacamp.storage.domain.user.repository.UserRepository;
+import com.woowacamp.storage.domain.folder.service.RedisLockService;
 import com.woowacamp.storage.global.constant.CommonConstant;
 import com.woowacamp.storage.global.constant.UploadStatus;
 import com.woowacamp.storage.global.error.ErrorCode;
@@ -34,7 +34,8 @@ public class S3FileService {
 
 	private final FileMetadataJpaRepository fileMetadataJpaRepository;
 	private final FolderMetadataJpaRepository folderMetadataRepository;
-	private final UserRepository userRepository;
+	private final RedisLockService redisLockService;
+	private final PresignedUrlService presignedUrlService;
 
 	@Value("${file.request.maxFileSize}")
 	private long MAX_FILE_SIZE;
@@ -45,28 +46,34 @@ public class S3FileService {
 	 * 1차로 메타데이터를 생성하는 메소드.
 	 * 사용자의 요청 데이터에 있는 사용자 정보, 상위 폴더 정보, 파일 사이즈의 정보를 저장
 	 */
+	public FileUploadResponseDto createInitialMetadata(FileUploadRequestDto fileUploadRequestDto) {
+		String lockName = fileUploadRequestDto.parentFolderId() + "/" + fileUploadRequestDto.fileName();
+		return redisLockService.<FileUploadResponseDto>handleUserRequest(lockName, () ->
+			createFileMetadata(fileUploadRequestDto)
+		, FILE_NAME_DUPLICATE.baseException());
+	}
+
 	@Transactional
-	public FileMetadataDto createInitialMetadata(FormMetadataDto formMetadataDto, PartContext partContext) {
-		String fileName = partContext.getCurrentFileName();
-		String fileType = getFileTypeByFileName(fileName);
-		User user = userRepository.findById(formMetadataDto.getUserId())
-			.orElseThrow(ErrorCode.USER_NOT_FOUND::baseException);
-		FolderMetadata parentFolderMetadata = validateRequest(formMetadataDto, partContext, user, fileName, fileType);
+	protected FileUploadResponseDto createFileMetadata(FileUploadRequestDto fileUploadRequestDto) {
+		FolderMetadata parentFolder = folderMetadataRepository.findById(fileUploadRequestDto.parentFolderId())
+			.orElseThrow(FOLDER_NOT_FOUND::baseException);
+		// 파일 이름 검증
+		validateFile(fileUploadRequestDto);
 
+		// 1차 메타데이터 초기화
 		String uuidFileName = getUuidFileName();
-		String uuidThumbnail = null;
-		if (partContext.getCurrentContentType().startsWith("image/")) {
-			uuidThumbnail = "thumb_" + uuidFileName;
+		String objectKey = uuidFileName;
+		if (fileUploadRequestDto.fileExtension() != null) {
+			objectKey += "." + fileUploadRequestDto.fileExtension();
 		}
+		FileMetadata fileMetadata = FileMetadataFactory.buildInitialMetadata(parentFolder, fileUploadRequestDto,
+			objectKey);
 
-		// 1차 메타데이터 생성
-		// TODO: 공유 기능이 생길 때, creatorId, ownerId 따로
-		FileMetadata fileMetadata = fileMetadataJpaRepository.save(
-			FileMetadataFactory.buildInitialMetadata(user, formMetadataDto.getParentFolderId(),
-				formMetadataDto.getFileSize(), uuidFileName, fileName, fileType, uuidThumbnail,
-				formMetadataDto.getCreatorId(), parentFolderMetadata));
+		fileMetadataJpaRepository.save(fileMetadata);
 
-		return FileMetadataDto.of(fileMetadata);
+		URL presignedUrl = presignedUrlService.getPresignedUrl(objectKey);
+
+		return new FileUploadResponseDto(objectKey, presignedUrl);
 	}
 
 	/**
@@ -83,19 +90,6 @@ public class S3FileService {
 		LocalDateTime now = LocalDateTime.now();
 		updateFolderMetadataStatus(fileMetadataDto, fileSize, now);
 
-	}
-
-	/**
-	 * validateParentFolder를 먼저 호출해야 부모 폴더에 락이 걸려서 같은 파일 이름으로 동시에 써지지 않는다.
-	 */
-	private FolderMetadata validateRequest(FormMetadataDto formMetadataDto, PartContext partContext, User user,
-		String fileName, String fileType) {
-		validateFileSize(formMetadataDto.getFileSize(), user.getRootFolderId());
-		FolderMetadata parentFolderMetadata = validateParentFolder(formMetadataDto.getParentFolderId(),
-			formMetadataDto.getUserId());
-		validateFile(partContext, formMetadataDto.getParentFolderId(), fileName, fileType);
-
-		return parentFolderMetadata;
 	}
 
 	private void validateFileSize(long fileSize, Long rootFolderId) {
@@ -152,21 +146,20 @@ public class S3FileService {
 		return uuidFileName;
 	}
 
-	private void validateFile(PartContext partContext, long parentFolderId, String fileName, String fileType) {
+	private void validateFile(FileUploadRequestDto fileUploadRequestDto) {
 		// 파일 이름에 금칙어가 있는지 확인
 		if (Arrays.stream(CommonConstant.FILE_NAME_BLACK_LIST)
-			.anyMatch(character -> partContext.getCurrentFileName().indexOf(character) != -1)) {
+			.anyMatch(character -> fileUploadRequestDto.fileName().indexOf(character) != -1)) {
 			throw ErrorCode.INVALID_FILE_NAME.baseException();
 		}
 		// 확장자에 금칙어가 있는지 확인
 		if (Arrays.stream(CommonConstant.FILE_NAME_BLACK_LIST)
-			.anyMatch(character -> partContext.getCurrentFileName().indexOf(character) != -1)) {
+			.anyMatch(character -> fileUploadRequestDto.fileExtension().indexOf(character) != -1)) {
 			throw ErrorCode.INVALID_FILE_NAME.baseException();
 		}
 		// 이미 해당 폴더에 같은 이름의 파일이 존재하는지 확인
-		if (fileMetadataJpaRepository.existsByParentFolderIdAndUploadFileNameAndUploadStatusNot(parentFolderId,
-			fileName,
-			UploadStatus.FAIL)) {
+		if (fileMetadataJpaRepository.existsByParentFolderIdAndUploadFileNameAndUploadStatusNot(
+			fileUploadRequestDto.parentFolderId(), fileUploadRequestDto.fileName(), UploadStatus.FAIL)) {
 			throw ErrorCode.FILE_NAME_DUPLICATE.baseException();
 		}
 	}
@@ -178,5 +171,17 @@ public class S3FileService {
 			fileType = fileName.substring(index);
 		}
 		return fileType;
+	}
+
+	/**
+	 * 파일 다운로드 url 생성
+	 * @param fileId
+	 * @return
+	 */
+	public URL getFileUrl(long fileId) {
+		FileMetadata fileMetadata = fileMetadataJpaRepository.findById(fileId)
+			.orElseThrow(FILE_NOT_FOUND::baseException);
+
+		return presignedUrlService.getDownloadUrl(fileMetadata.getUuidFileName());
 	}
 }
