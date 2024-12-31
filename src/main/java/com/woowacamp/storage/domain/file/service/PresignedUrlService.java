@@ -7,7 +7,10 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import lombok.RequiredArgsConstructor;
+import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
+import software.amazon.awssdk.services.s3.model.HeadObjectResponse;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
@@ -16,11 +19,12 @@ import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignReques
 @Service
 @RequiredArgsConstructor
 public class PresignedUrlService {
+	private final S3Client s3Client;
 	private final S3Presigner s3Presigner;
 
 	@Value("${cloud.aws.credentials.bucketName}")
 	private String bucketName;
-	@Value("${cloud.aws.credentials.duaration}")
+	@Value("${cloud.aws.credentials.duration}")
 	private int duration;
 
 	private PutObjectRequest getPutObjectRequest(String objectKey) {
@@ -65,5 +69,18 @@ public class PresignedUrlService {
 			.build();
 
 		return s3Presigner.presignGetObject(presignRequest).url();
+	}
+
+	private HeadObjectRequest getHeadObjectRequest(String objectKey) {
+		return HeadObjectRequest.builder()
+			.bucket(bucketName)
+			.key(objectKey)
+			.build();
+	}
+
+	public HeadObjectResponse getFileMetadata(String objectKey) {
+		HeadObjectRequest headObjectRequest = getHeadObjectRequest(objectKey);
+
+		return s3Client.headObject(headObjectRequest);
 	}
 }
