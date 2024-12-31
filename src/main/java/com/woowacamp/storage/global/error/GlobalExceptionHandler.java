@@ -16,6 +16,7 @@ import com.woowacamp.storage.global.response.ErrorResponse;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
+import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 
 @RestControllerAdvice
 @Slf4j
@@ -80,5 +81,16 @@ public class GlobalExceptionHandler {
 		log.error(INTERNAL_SERVER_ERROR, e);
 		ErrorResponse errorResponse = ErrorResponse.of(HttpStatus.INTERNAL_SERVER_ERROR, INTERNAL_SERVER_ERROR);
 		return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
+	}
+
+	@ExceptionHandler(NoSuchKeyException.class)
+	public ResponseEntity<ErrorResponse> handleNoSuchKeyException(NoSuchKeyException e) {
+		CustomException customException = ErrorCode.FILE_NOT_FOUND.baseException();
+		if (e.getMessage() != null) {
+			log.debug(e.getMessage());
+		}
+		ErrorResponse errorResponse = ErrorResponse.of(customException.getHttpStatus(), customException.getMessage());
+
+		return ResponseEntity.status(customException.getHttpStatus()).body(errorResponse);
 	}
 }
