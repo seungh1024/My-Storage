@@ -33,6 +33,7 @@ public class RgwConfiguration {
 			.endpointOverride(URI.create(endpoint))
 			.credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create(accessKey, secretKey)))
 			.region(Region.AP_NORTHEAST_2)
+			.serviceConfiguration(S3Configuration.builder().pathStyleAccessEnabled(true).build())
 			.build();
 	}
 
