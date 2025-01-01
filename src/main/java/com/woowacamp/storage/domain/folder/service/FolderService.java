@@ -355,9 +355,10 @@ public class FolderService {
 	}
 
 	public void doHardDelete() {
+		LocalDateTime timeLimit = LocalDateTime.now().minusDays(hardDeleteDuration);
 		QueryExecuteTemplate.<FolderMetadata>selectFilesAndExecuteWithCursor(pageSize,
 			findFolder -> folderMetadataRepository.findSoftDeletedFolderWithLastIdAndDuration(
-				findFolder == null ? null : findFolder.getId(), pageSize),
+				findFolder == null ? null : findFolder.getId(), pageSize, timeLimit),
 			folderMetadataList -> folderMetadataRepository.deleteAll(folderMetadataList));
 	}
 

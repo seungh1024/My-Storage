@@ -33,11 +33,11 @@ public class FolderMetadataRepository {
 		return folderMetadataJpaRepository.findSoftDeletedFolderWithLastId(lastId, size);
 	}
 
-	public List<FolderMetadata> findSoftDeletedFolderWithLastIdAndDuration(Long lastId, int size) {
+	public List<FolderMetadata> findSoftDeletedFolderWithLastIdAndDuration(Long lastId, int size, LocalDateTime timeLimit) {
 		if (lastId == null) {
-			return folderMetadataJpaRepository.findSoftDeletedFolder(size, LocalDateTime.now().minusDays(CommonConstant.hardDeleteDuration));
+			return folderMetadataJpaRepository.findSoftDeletedFolder(size, timeLimit);
 		}
-		return folderMetadataJpaRepository.findSoftDeletedFolderWithLastId(lastId, size, LocalDateTime.now().minusDays(CommonConstant.hardDeleteDuration));
+		return folderMetadataJpaRepository.findSoftDeletedFolderWithLastId(lastId, size, timeLimit);
 	}
 
 	public void deleteAll(List<FolderMetadata> folderMetadataList) {
