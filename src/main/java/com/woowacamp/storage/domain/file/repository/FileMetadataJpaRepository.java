@@ -107,4 +107,22 @@ public interface FileMetadataJpaRepository extends JpaRepository<FileMetadata, L
 			WHERE f.parentFolderId = :parentId
 		""")
 	Optional<Long> sumChildFileSize(@Param("parentId") long parentId);
+
+	@Query("""
+		SELECT f
+		FROM FileMetadata f
+		WHERE f.uploadStatus = 'FAIL'
+		ORDER BY f.id
+		LIMIT :size
+	""")
+	List<FileMetadata> findUploadFailureList(int size);
+
+	@Query("""
+		SELECT f
+		FROM FileMetadata f
+		WHERE f.uploadStatus = 'FAIL' and f.id > :lastId
+		ORDER BY f.id
+		LIMIT :size
+	""")
+	List<FileMetadata> findUploadFailureListWithLastId(Long lastId, int size);
 }

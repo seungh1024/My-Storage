@@ -8,6 +8,8 @@ import org.springframework.stereotype.Service;
 
 import lombok.RequiredArgsConstructor;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
+import software.amazon.awssdk.services.s3.model.DeleteObjectResponse;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
 import software.amazon.awssdk.services.s3.model.HeadObjectResponse;
@@ -85,5 +87,18 @@ public class PresignedUrlService {
 		HeadObjectRequest headObjectRequest = getHeadObjectRequest(objectKey);
 
 		return s3Client.headObject(headObjectRequest);
+	}
+
+	private DeleteObjectRequest getDeleteObjectRequest(String objectKey) {
+		return DeleteObjectRequest.builder()
+			.bucket(bucketName)
+			.key(objectKey)
+			.build();
+	}
+
+	public DeleteObjectResponse deleteFile(String objectKey) {
+		DeleteObjectRequest deleteObjectRequest = getDeleteObjectRequest(objectKey);
+
+		return s3Client.deleteObject(deleteObjectRequest);
 	}
 }

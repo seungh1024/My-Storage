@@ -29,4 +29,12 @@ public class FileMetadataRepository {
 		}
 		return fileMetadataJpaRepository.findOrhanFileListWithLastId(lastParentId, lastId, size);
 	}
+
+	public List<FileMetadata> findUploadFailureFileByLastId(Long lastId, int size) {
+		if (lastId == null) {
+			return fileMetadataJpaRepository.findUploadFailureList(size);
+		}
+
+		return fileMetadataJpaRepository.findUploadFailureListWithLastId(lastId, size);
+	}
 }
