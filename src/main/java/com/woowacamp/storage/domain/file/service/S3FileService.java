@@ -187,6 +187,10 @@ public class S3FileService {
 		FileMetadata fileMetadata = fileMetadataJpaRepository.findById(fileId)
 			.orElseThrow(FILE_NOT_FOUND::baseException);
 
+		if (!Objects.equals(fileMetadata.getUploadStatus(), UploadStatus.SUCCESS)) {
+			throw ErrorCode.FILE_NOT_FOUND.baseException();
+		}
+
 		return presignedUrlService.getDownloadUrl(fileMetadata.getUuidFileName());
 	}
 

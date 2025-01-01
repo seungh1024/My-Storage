@@ -61,6 +61,9 @@ public class PresignedUrlService {
 	}
 
 	public URL getDownloadUrl(String objectKey) {
+		// 파일이 존재하는지 먼저 확인을 진행
+		getFileMetadata(objectKey);
+
 		GetObjectRequest objectRequest = getGetObjectRequest(objectKey);
 
 		GetObjectPresignRequest presignRequest = GetObjectPresignRequest.builder()
