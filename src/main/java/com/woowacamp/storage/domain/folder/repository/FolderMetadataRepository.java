@@ -19,7 +19,6 @@ public class FolderMetadataRepository {
 	private final FolderMetadataJpaRepository folderMetadataJpaRepository;
 
 	public List<FolderMetadata> findByParentFolderIdWithLastId(long parentFolderId, Long lastId, int size) {
-		log.info("[Find Folder With Cursor] parent = {}, last = {} , size = {}", parentFolderId, lastId, size);
 		if (lastId == null) {
 			return folderMetadataJpaRepository.findByParentFolderId(parentFolderId, size);
 		}
