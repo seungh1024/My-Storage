@@ -1,17 +1,14 @@
 package com.woowacamp.storage.domain.file.service;
 
 import java.net.URL;
-import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.Objects;
 import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.woowacamp.storage.domain.file.dto.FileMetadataDto;
 import com.woowacamp.storage.domain.file.dto.request.FileUploadRequestDto;
 import com.woowacamp.storage.domain.file.dto.response.FileUploadResponseDto;
 import com.woowacamp.storage.domain.file.entity.FileMetadata;
@@ -79,7 +76,6 @@ public class S3FileService {
 		return new FileUploadResponseDto(fileMetadata.getId(), objectKey, presignedUrl);
 	}
 
-
 	private void validateFileSize(long fileSize, Long rootFolderId) {
 		FolderMetadata rootFolderMetadata = folderMetadataJpaRepository.findByIdForUpdate(rootFolderId)
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
@@ -91,7 +87,6 @@ public class S3FileService {
 			throw ErrorCode.EXCEED_MAX_STORAGE_SIZE.baseException();
 		}
 	}
-
 
 	/**
 	 * UUID를 생성해 이미 존재하는지 확인
