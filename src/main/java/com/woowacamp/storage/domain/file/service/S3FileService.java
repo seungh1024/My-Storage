@@ -16,6 +16,7 @@ import com.woowacamp.storage.domain.file.entity.FileMetadataFactory;
 import com.woowacamp.storage.domain.file.repository.FileMetadataJpaRepository;
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
+import com.woowacamp.storage.domain.folder.service.MetadataService;
 import com.woowacamp.storage.domain.folder.service.RedisLockService;
 import com.woowacamp.storage.global.constant.CommonConstant;
 import com.woowacamp.storage.global.constant.UploadStatus;
@@ -36,6 +37,7 @@ public class S3FileService {
 	private final FolderMetadataJpaRepository folderMetadataJpaRepository;
 	private final RedisLockService redisLockService;
 	private final PresignedUrlService presignedUrlService;
+	private final MetadataService metadataService;
 
 	@Value("${file.request.maxFileSize}")
 	private long MAX_FILE_SIZE;
@@ -59,6 +61,7 @@ public class S3FileService {
 			.orElseThrow(FOLDER_NOT_FOUND::baseException);
 		// 파일 이름 검증
 		validateFile(fileUploadRequestDto);
+		validateFileSize(fileUploadRequestDto.fileSize(), parentFolder.getRootId());
 
 		// 1차 메타데이터 초기화
 		String uuidFileName = getUuidFileName();
@@ -70,6 +73,8 @@ public class S3FileService {
 			objectKey);
 
 		fileMetadataJpaRepository.save(fileMetadata);
+
+		metadataService.calculateSize(fileMetadata.getParentFolderId());
 
 		URL presignedUrl = presignedUrlService.getPresignedUrl(objectKey);
 
