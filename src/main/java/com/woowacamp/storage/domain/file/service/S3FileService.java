@@ -20,7 +20,6 @@ import com.woowacamp.storage.domain.file.repository.FileMetadataJpaRepository;
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
 import com.woowacamp.storage.domain.folder.service.RedisLockService;
-import com.woowacamp.storage.global.background.BackgroundJob;
 import com.woowacamp.storage.global.constant.CommonConstant;
 import com.woowacamp.storage.global.constant.UploadStatus;
 import com.woowacamp.storage.global.error.ErrorCode;
@@ -37,10 +36,9 @@ import static com.woowacamp.storage.global.error.ErrorCode.*;
 public class S3FileService {
 
 	private final FileMetadataJpaRepository fileMetadataJpaRepository;
-	private final FolderMetadataJpaRepository folderMetadataRepository;
+	private final FolderMetadataJpaRepository folderMetadataJpaRepository;
 	private final RedisLockService redisLockService;
 	private final PresignedUrlService presignedUrlService;
-	private final BackgroundJob backgroundJob;
 
 	@Value("${file.request.maxFileSize}")
 	private long MAX_FILE_SIZE;
@@ -60,7 +58,7 @@ public class S3FileService {
 
 	@Transactional
 	protected FileUploadResponseDto createFileMetadata(FileUploadRequestDto fileUploadRequestDto) {
-		FolderMetadata parentFolder = folderMetadataRepository.findById(fileUploadRequestDto.parentFolderId())
+		FolderMetadata parentFolder = folderMetadataJpaRepository.findById(fileUploadRequestDto.parentFolderId())
 			.orElseThrow(FOLDER_NOT_FOUND::baseException);
 		// 파일 이름 검증
 		validateFile(fileUploadRequestDto);
@@ -81,24 +79,9 @@ public class S3FileService {
 		return new FileUploadResponseDto(fileMetadata.getId(), objectKey, presignedUrl);
 	}
 
-	/**
-	 * 사용자 정보는 로그인을 했다고 가정하고 사용했습니다.
-	 */
-	@Transactional(isolation = Isolation.READ_COMMITTED)
-	public void finalizeMetadata(FileMetadataDto fileMetadataDto, long fileSize) {
-		FileMetadata fileMetadata = fileMetadataJpaRepository.findById(fileMetadataDto.metadataId())
-			.orElseThrow(ErrorCode.FILE_METADATA_NOT_FOUND::baseException);
-
-		// 파일 메타데이터를 먼저 쓴다.
-		fileMetadataJpaRepository.finalizeMetadata(fileMetadata.getId(), fileSize, UploadStatus.SUCCESS);
-
-		LocalDateTime now = LocalDateTime.now();
-		updateFolderMetadataStatus(fileMetadataDto, fileSize, now);
-
-	}
 
 	private void validateFileSize(long fileSize, Long rootFolderId) {
-		FolderMetadata rootFolderMetadata = folderMetadataRepository.findByIdForUpdate(rootFolderId)
+		FolderMetadata rootFolderMetadata = folderMetadataJpaRepository.findByIdForUpdate(rootFolderId)
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
 
 		if (fileSize > MAX_FILE_SIZE) {
@@ -109,36 +92,6 @@ public class S3FileService {
 		}
 	}
 
-	/**
-	 * 현재 폴더에서 루트 폴더까지 모든 폴더에 대한 size, updatedAt을 갱신
-	 * 중간에 새로운 파일들이 써질 수 있으니 최상위 폴더까지의 락을 획득 후 작업을 진행한다.
-	 */
-	private void updateFolderMetadataStatus(FileMetadataDto req, long fileSize, LocalDateTime now) {
-		Long parentFolderId = req.parentFolderId();
-		while (parentFolderId != null) {
-			FolderMetadata folderMetadata = folderMetadataRepository.findByIdForUpdate(parentFolderId)
-				.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
-			if (folderMetadata.getSize() + fileSize > MAX_STORAGE_SIZE) {
-				throw ErrorCode.EXCEED_MAX_STORAGE_SIZE.baseException();
-			}
-			folderMetadata.addSize(fileSize);
-			folderMetadata.updateUpdatedAt(now);
-			parentFolderId = folderMetadata.getParentFolderId();
-		}
-	}
-
-	/**
-	 * 요청한 parentFolderId가 자신의 폴더에 대한 id인지 확인
-	 */
-	private FolderMetadata validateParentFolder(long parentFolderId, long userId) {
-		FolderMetadata folderMetadata = folderMetadataRepository.findByIdForUpdate(parentFolderId)
-			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
-		if (!Objects.equals(folderMetadata.getOwnerId(), userId)) {
-			throw ACCESS_DENIED.baseException();
-		}
-
-		return folderMetadata;
-	}
 
 	/**
 	 * UUID를 생성해 이미 존재하는지 확인
