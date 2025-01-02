@@ -15,7 +15,6 @@ import software.amazon.awssdk.services.s3.S3Configuration;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 
 @Configuration
-@Profile({"local"})
 public class RgwConfiguration {
 
 	@Value("${cloud.aws.credentials.accessKey}")
