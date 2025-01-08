@@ -1,5 +1,6 @@
 package com.woowacamp.storage.domain.file.repository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -107,4 +108,41 @@ public interface FileMetadataJpaRepository extends JpaRepository<FileMetadata, L
 			WHERE f.parentFolderId = :parentId
 		""")
 	Optional<Long> sumChildFileSize(@Param("parentId") long parentId);
+
+	@Query("""
+		SELECT f
+		FROM FileMetadata f
+		WHERE f.uploadStatus = 'FAIL'
+		ORDER BY f.id
+		LIMIT :size
+	""")
+	List<FileMetadata> findUploadFailureList(int size);
+
+	@Query("""
+		SELECT f
+		FROM FileMetadata f
+		WHERE f.uploadStatus = 'FAIL' and f.id > :lastId
+		ORDER BY f.id
+		LIMIT :size
+	""")
+	List<FileMetadata> findUploadFailureListWithLastId(Long lastId, int size);
+
+	@Query("""
+			SELECT f
+			FROM FileMetadata f
+			WHERE f.createdAt < :timeLimit
+			ORDER BY f.createdAt, f.id
+			LIMIT :size
+		""")
+	List<FileMetadata> findUploadPendingList(int size, LocalDateTime timeLimit);
+
+	@Query("""
+			SELECT f
+			FROM FileMetadata f
+			WHERE f.createdAt < :timeLimit
+			and f.id > :lastId
+			ORDER BY f.createdAt, f.id
+			LIMIT :size
+		""")
+	List<FileMetadata> findUploadPendingListWithLastId(Long lastId, int size, LocalDateTime timeLimit);
 }

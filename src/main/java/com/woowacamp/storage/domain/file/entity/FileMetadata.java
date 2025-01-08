@@ -27,7 +27,8 @@ import lombok.ToString;
 	@Index(name = "file_idx_parent_folder_id_size", columnList = "parent_folder_id, created_at"),
 	@Index(name = "file_idx_parent_folder_id_created_at", columnList = "parent_folder_id, file_size"),
 	@Index(name = "file_idx_upload_status", columnList = "upload_status"),
-	@Index(name = "file_idx_parent_folder_id_file_metadata_id", columnList = "parent_folder_id, file_metadata_id")})
+	@Index(name = "file_idx_parent_folder_id_file_metadata_id", columnList = "parent_folder_id, file_metadata_id"),
+	@Index(name = "file_idx_created_at_file_metadata_id", columnList = "created_at, file_metadata_id")})
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Getter
 @ToString
@@ -73,7 +74,7 @@ public class FileMetadata {
 	@NotNull
 	private String uploadFileName;
 
-	@Column(name = "uuid_file_name", columnDefinition = "VARCHAR(100) NOT NULL unique")
+	@Column(name = "uuid_file_name", columnDefinition = "VARCHAR(100) NOT NULL")
 	@NotNull
 	private String uuidFileName;
 
@@ -82,7 +83,7 @@ public class FileMetadata {
 	@NotNull
 	private UploadStatus uploadStatus;
 
-	@Column(name = "thumbnail_file_name", columnDefinition = "VARCHAR(100) unique")
+	@Column(name = "thumbnail_file_name", columnDefinition = "VARCHAR(100)")
 	private String thumbnailUUID;
 
 	@Column(name = "sharing_expired_at", columnDefinition = "TIMESTAMP NOT NULL")
@@ -148,5 +149,9 @@ public class FileMetadata {
 
 	public boolean isSharingExpired() {
 		return sharingExpiredAt.isBefore(LocalDateTime.now());
+	}
+
+	public void updateFailUploadStatus() {
+		this.uploadStatus = UploadStatus.FAIL;
 	}
 }

@@ -25,4 +25,5 @@ public class CommonConstant {
 
 	// hard delete 날짜 조건
 	public static final long hardDeleteDuration = 30;
+	public static final long maxPendingDuration = 30;
 }

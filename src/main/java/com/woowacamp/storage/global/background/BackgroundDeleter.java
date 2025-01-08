@@ -66,4 +66,25 @@ public class BackgroundDeleter {
 
 		return threadPoolTaskExecutor;
 	}
+
+	@Bean
+	public Executor deleteRgwFileThreadPoolExecutor() {
+		ThreadPoolTaskExecutor threadPoolTaskExecutor = new ThreadPoolTaskExecutor();
+		threadPoolTaskExecutor.setCorePoolSize(threadCount);
+		threadPoolTaskExecutor.setMaxPoolSize(threadCount);
+		threadPoolTaskExecutor.setQueueCapacity(queueSize);
+		threadPoolTaskExecutor.setThreadNamePrefix(deleteThreadName);
+
+		threadPoolTaskExecutor.setRejectedExecutionHandler((r, executor) -> {
+			try {
+				executor.getQueue().put(r);
+			} catch (InterruptedException e) {
+				log.error(e.toString(), e);
+				Thread.currentThread().interrupt();
+			}
+		});
+		threadPoolTaskExecutor.initialize();
+
+		return threadPoolTaskExecutor;
+	}
 }

@@ -38,6 +38,7 @@ public enum ErrorCode {
 	WRONG_PERMISSION_TYPE(HttpStatus.BAD_REQUEST, "잘못된 권한 타입입니다."),
 	SHARED_LINK_NOT_FOUND(HttpStatus.NOT_FOUND, "공유 링크를 찾을 수 없습니다."),
 	EXPIRED_SHARED_LINK(HttpStatus.BAD_REQUEST, "만료된 공유 링크입니다."),
+	WRONG_OBJECT_KEY(HttpStatus.BAD_REQUEST, "OBJECT KEY가 일치하지 않습니다. 요청 데이터를 다시 확인해 주세요."),
 	// 500,
 	FILE_UPLOAD_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "파일 업로드에 실패했습니다."),
 	FILE_DELETE_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "파일 삭제에 실패했습니다."),
