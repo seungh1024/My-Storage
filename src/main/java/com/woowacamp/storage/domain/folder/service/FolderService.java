@@ -99,7 +99,7 @@ public class FolderService {
 		FolderMetadata folderMetadata = folderMetadataJpaRepository.findByIdNotDeleted(sourceFolderId)
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
 		redisLockService.handleUserRequest(folderMetadata.getOwnerId().toString(),
-			() -> moveFolderTask(sourceFolderId, dto), ErrorCode.TOO_MUCH_REQUEST.baseException());
+			() -> moveFolderTask(sourceFolderId, dto), ErrorCode.TOO_MUCH_REQUEST.baseException(),()->{});
 	}
 
 	@Transactional
@@ -118,7 +118,10 @@ public class FolderService {
 		// 또한 트랜잭션 내부에서 락을 사용하면 커밋 전에 락이 해제되기 때문에 일관성이 깨질 수 있다.
 		String moveFolderLock = dto.targetFolderId() + "/" + folderMetadata.getUploadFolderName();
 		redisLockService.handleUserRequest(moveFolderLock, () -> duplicatedCheckAndMoveCommit(dto, folderMetadata),
-			ErrorCode.TOO_MUCH_REQUEST.baseException());
+			ErrorCode.TOO_MUCH_REQUEST.baseException(),()->{
+				folderMetadata.updateParentFolderId(originParentId);
+				folderMetadataJpaRepository.save(folderMetadata);
+			});
 
 		// 업데이트가 완료된 이후 용량 계산을 실시한다.
 		metadataService.calculateSize(originParentId);
@@ -137,6 +140,13 @@ public class FolderService {
 	protected void duplicatedCheckAndMoveCommit(FolderMoveDto dto, FolderMetadata folderMetadata) {
 		validateDuplicatedFolderName(dto, folderMetadata);
 		folderMetadata.updateParentFolderId(dto.targetFolderId());
+		try {
+			log.info("[Sleep 100 sec]");
+			Thread.sleep(100000);
+			log.info("[Sleep End]");
+		} catch (Exception e) {
+
+		}
 		folderMetadataJpaRepository.save(folderMetadata);
 	}
 

@@ -16,7 +16,7 @@ public class RedissonConfig {
 	@Value("${spring.redisson.address}")
 	private String redissonAddress;
 
-	@Bean
+	// @Bean
 	public RedissonClient redissonClient() throws IOException {
 		InputStream configStream = getClass().getClassLoader().getResourceAsStream("redisson.yml");
 		Config config = Config.fromYAML(configStream);
