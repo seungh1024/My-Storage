@@ -19,17 +19,18 @@ public class RedisLockService {
 	private final int takingLockTime = 1;
 	private final int keepingLockTime = 10;
 
-	public void handleUserRequest(String lockName, Runnable task, RuntimeException exception) {
+	public void runWithWatchdogLock(String lockName, Runnable task, RuntimeException exception) {
 		RLock lock = redissonClient.getLock(lockName);
 		boolean isLocked = false;
 
 		try {
-			isLocked = lock.tryLock(takingLockTime, keepingLockTime, TimeUnit.SECONDS);
+			isLocked = lock.tryLock(takingLockTime, TimeUnit.SECONDS);
 			// 락 획득 실패 시 동시 요청이므로 예외 던짐
 			if (!isLocked) {
 				throw exception;
 			}
 			task.run();
+
 		} catch (InterruptedException e) {
 			log.error("[RedisLockService] error = {}", e);
 			throw new RuntimeException(e);
@@ -47,7 +48,7 @@ public class RedisLockService {
 		}
 	}
 
-	public <T> T handleUserRequest(String lockName, Supplier<T> task, RuntimeException exception) {
+	public <T> T runWithWatchdogLock(String lockName, Supplier<T> task, RuntimeException exception) {
 		RLock lock = redissonClient.getLock(lockName);
 		boolean isLocked = false;
 		T result = null;
