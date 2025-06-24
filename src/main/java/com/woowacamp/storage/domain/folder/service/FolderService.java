@@ -100,7 +100,7 @@ public class FolderService {
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
 		redisLockService.runWithWatchdogLock(folderMetadata.getId().toString(),
 			() -> {
-			folderMoveCheck(folderMetadata.getParentFolderId());
+			folderMoveCheck(folderMetadata.getParentFolderId(),null);
 			moveFolderTask(sourceFolderId, dto);
 			}, ErrorCode.TOO_MUCH_REQUEST.baseException());
 	}
@@ -108,9 +108,14 @@ public class FolderService {
 	/**
 	 * 상위 폴더를 재귀적으로 탐색하며 이동이나 삭제 작업이 존재하지 않는지 확인하는 메서드
 	 */
-	private void folderMoveCheck(Long parentId) {
+	private int folderMoveCheck(Long parentId, Long invalidId) {
+		int depth = 0;
 		do{
-			FolderMetadata parentFolder = folderMetadataJpaRepository.findByParentId(parentId)
+			if (parentId != null && parentId == invalidId) {
+				throw ErrorCode.FOLDER_MOVE_NOT_AVAILABLE.baseException();
+			}
+
+			FolderMetadata parentFolder = folderMetadataJpaRepository.findById(parentId)
 				.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
 
 			// 부모가 이동이나 삭제 작업 중인지 확인 후 이미 진행 중이라면 예외 발생
@@ -119,8 +124,11 @@ public class FolderService {
 				throw ErrorCode.PARENT_LOCKED.baseException();
 			}
 
-			parentId = parentFolder.getId(); // 부모 갱신하여 상위로 탐색
+			parentId = parentFolder.getParentFolderId(); // 부모 갱신하여 상위로 탐색
+			depth++;
 		}while(parentId != null); // Null이면 root folder에 도달했으니 종료된다.
+
+		return depth;
 	}
 
 	@Transactional
@@ -137,15 +145,14 @@ public class FolderService {
 	}
 
 	private void moveFolderInternal(FolderMetadata sourceFolder, FolderMetadata targetFolder) {
-		folderMoveCheck(targetFolder.getParentFolderId());
+		int targetFolderDepth = folderMoveCheck(targetFolder.getParentFolderId(), sourceFolder.getId());
 		// 락을 건 후에 삭제되지 않았는지 체크
 		folderMetadataJpaRepository.findByIdNotDeleted(targetFolder.getId())
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
 
 		validateInvalidMove(targetFolder, sourceFolder);
 
-		// TODO 로직 변경이 필요할 것 같다. 현재 부정확함.
-		// validateFolderDepth(sourceFolderId, dto);
+		validateFolderDepth(sourceFolder.getId(), targetFolder.getId(), targetFolderDepth);
 		long originParentId = sourceFolder.getParentFolderId();
 
 		// 목적지에 동일 폴더를 생성하지 않도록 락이 필요하다. 누군가 폴더를 생성해서 같은 이름이 생길 수 있기 때문.
@@ -193,9 +200,8 @@ public class FolderService {
 	/**
 	 * sourceFolder의 최대 깊이 + 이동하려는 폴더의 깊이가 50을 넘는지 확인
 	 */
-	private void validateFolderDepth(Long sourceFolderId, FolderMoveDto dto) {
-		int sourceFolderLeafDepth = getLeafDepth(sourceFolderId, 1, dto.targetFolderId());
-		int targetFolderCurrentDepth = folderSearchUtil.getFolderDepth(dto.targetFolderId());
+	private void validateFolderDepth(Long sourceFolderId, Long targetFolderId, int targetFolderCurrentDepth) {
+		int sourceFolderLeafDepth = getLeafDepth(sourceFolderId, 1, targetFolderId);
 		if (sourceFolderLeafDepth + targetFolderCurrentDepth > MAX_FOLDER_DEPTH) {
 			throw ErrorCode.EXCEED_MAX_FOLDER_DEPTH.baseException();
 		}
