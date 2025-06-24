@@ -2,6 +2,7 @@ package com.woowacamp.storage.domain.file.controller;
 
 import java.net.URL;
 
+import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;

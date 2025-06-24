@@ -8,7 +8,6 @@ import org.redisson.api.RedissonClient;
 import org.redisson.client.WriteRedisConnectionException;
 import org.springframework.stereotype.Service;
 
-import com.woowacamp.storage.global.config.RedissonManager;
 import com.woowacamp.storage.global.error.ErrorCode;
 
 import lombok.RequiredArgsConstructor;
@@ -19,7 +18,6 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 public class RedisLockService {
 	private final RedissonClient redissonClient;
-	private final RedissonManager redissonManager;
 
 	private final int takingLockTime = 1;
 	private final int keepingLockTime = 10;
@@ -29,8 +27,7 @@ public class RedisLockService {
 	//  그럼 그 텀이 만약 DB 타임아웃에 가깝게 되어 몇 초가 지나고, 1번 락이 그 몇 초때문에 해제되면 다른 이동 작업이 락을 획득하여 이동이 가능함.
 	//  그럼 또 순환 문제가 생길 수도 있음. 락을 획득할 땐 조금 손해볼 수 있어도 한 번에 획득하는 것이 확실한 것 같음
 	public void handleUserRequest(String lockName, Runnable task, RuntimeException exception, Runnable rollback) {
-		// RLock lock = redissonClient.getLock(lockName);
-		RLock lock = redissonManager.getCurrentClient().getLock(lockName);
+		RLock lock = redissonClient.getLock(lockName);
 
 		boolean isLocked = false;
 
@@ -65,8 +62,8 @@ public class RedisLockService {
 	}
 
 	public <T> T handleUserRequest(String lockName, Supplier<T> task, RuntimeException exception) {
-		// RLock lock = redissonClient.getLock(lockName);
-		RLock lock = redissonManager.getCurrentClient().getLock(lockName);
+		RLock lock = redissonClient.getLock(lockName);
+
 		boolean isLocked = false;
 		T result = null;
 

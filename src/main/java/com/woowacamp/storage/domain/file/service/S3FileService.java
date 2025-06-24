@@ -1,8 +1,11 @@
 package com.woowacamp.storage.domain.file.service;
 
 import java.net.URL;
+import java.util.Map;
 import java.util.Objects;
 
+import org.springframework.amqp.rabbit.annotation.RabbitListener;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,6 +38,7 @@ public class S3FileService {
 	private final PresignedUrlService presignedUrlService;
 	private final MetadataService metadataService;
 	private final ValidationService validationService;
+
 
 	/**
 	 * 1차로 메타데이터를 생성하는 메소드.
@@ -126,6 +130,11 @@ public class S3FileService {
 
 		fileMetadata.updateFinishUploadStatus();
 		fileMetadataJpaRepository.save(fileMetadata);
+	}
+
+	@RabbitListener(queues = "#{fileUploadQueue.name}")
+	public void receiveMessage(Map<String, Object> message) {
+		System.out.println("Received message: " + message);
 	}
 
 }
