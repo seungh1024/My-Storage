@@ -98,35 +98,69 @@ public class FolderService {
 	public void moveFolder(Long sourceFolderId, FolderMoveDto dto) {
 		FolderMetadata folderMetadata = folderMetadataJpaRepository.findByIdNotDeleted(sourceFolderId)
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
-		redisLockService.handleUserRequest(folderMetadata.getOwnerId().toString(),
-			() -> moveFolderTask(sourceFolderId, dto), ErrorCode.TOO_MUCH_REQUEST.baseException());
+		redisLockService.runWithWatchdogLock(folderMetadata.getId().toString(),
+			() -> {
+			folderMoveCheck(folderMetadata.getParentFolderId());
+			moveFolderTask(sourceFolderId, dto);
+			}, ErrorCode.TOO_MUCH_REQUEST.baseException());
+	}
+
+	/**
+	 * 상위 폴더를 재귀적으로 탐색하며 이동이나 삭제 작업이 존재하지 않는지 확인하는 메서드
+	 */
+	private void folderMoveCheck(Long parentId) {
+		do{
+			FolderMetadata parentFolder = folderMetadataJpaRepository.findByParentId(parentId)
+				.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
+
+			// 부모가 이동이나 삭제 작업 중인지 확인 후 이미 진행 중이라면 예외 발생
+			boolean checkLockResult = redisLockService.checkLock(parentFolder.getId().toString());
+			if (checkLockResult) {
+				throw ErrorCode.PARENT_LOCKED.baseException();
+			}
+
+			parentId = parentFolder.getId(); // 부모 갱신하여 상위로 탐색
+		}while(parentId != null); // Null이면 root folder에 도달했으니 종료된다.
 	}
 
 	@Transactional
 	protected void moveFolderTask(Long sourceFolderId, FolderMoveDto dto) {
-		FolderMetadata folderMetadata = folderMetadataJpaRepository.findByIdNotDeleted(sourceFolderId)
+		FolderMetadata sourceFolder = folderMetadataJpaRepository.findByIdNotDeleted(sourceFolderId)
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
 
-		folderMetadataJpaRepository.findByIdNotDeleted(dto.targetFolderId())
+		// target folder에도 락을 걸고, 상위에 이동,삭제 작업이 없는지 확인
+		FolderMetadata targetFolder = folderMetadataJpaRepository.findById(dto.targetFolderId())
+			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
+		redisLockService.runWithWatchdogLock(targetFolder.getId().toString(),
+			() -> moveFolderInternal(sourceFolder,targetFolder), ErrorCode.TOO_MUCH_REQUEST.baseException());
+
+	}
+
+	private void moveFolderInternal(FolderMetadata sourceFolder, FolderMetadata targetFolder) {
+		folderMoveCheck(targetFolder.getParentFolderId());
+		// 락을 건 후에 삭제되지 않았는지 체크
+		folderMetadataJpaRepository.findByIdNotDeleted(targetFolder.getId())
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
 
-		validateInvalidMove(dto, folderMetadata);
-		validateFolderDepth(sourceFolderId, dto);
-		long originParentId = folderMetadata.getParentFolderId();
+		validateInvalidMove(targetFolder, sourceFolder);
+
+		// TODO 로직 변경이 필요할 것 같다. 현재 부정확함.
+		// validateFolderDepth(sourceFolderId, dto);
+		long originParentId = sourceFolder.getParentFolderId();
 
 		// 목적지에 동일 폴더를 생성하지 않도록 락이 필요하다. 누군가 폴더를 생성해서 같은 이름이 생길 수 있기 때문.
 		// 또한 트랜잭션 내부에서 락을 사용하면 커밋 전에 락이 해제되기 때문에 일관성이 깨질 수 있다.
-		String moveFolderLock = dto.targetFolderId() + "/" + folderMetadata.getUploadFolderName();
-		redisLockService.handleUserRequest(moveFolderLock, () -> duplicatedCheckAndMoveCommit(dto, folderMetadata),
+		String moveFolderLock = targetFolder.getId() + "/" + sourceFolder.getUploadFolderName();
+		redisLockService.runWithWatchdogLock(moveFolderLock, () -> duplicatedCheckAndMoveCommit(targetFolder, sourceFolder),
 			ErrorCode.TOO_MUCH_REQUEST.baseException());
 
 		// 업데이트가 완료된 이후 용량 계산을 실시한다.
 		metadataService.calculateSize(originParentId);
-		metadataService.calculateSize(dto.targetFolderId());
+		metadataService.calculateSize(targetFolder.getId());
 
 		// TODO 하위 경로 공유 상태 변경 필요
 		// eventPublisher.publishEvent(
-		// 	new FolderMoveEvent(this, folderMetadata,
+		// 	new FolderMoveEvent(this, sourceFolder,
 		// 		folderMetadataJpaRepository.findById(dto.targetFolderId()).get()));
 	}
 
@@ -134,24 +168,24 @@ public class FolderService {
 	 * 락 내부에서 커밋을 하기 위해 이름 중복 체크와 폴더 이동 적용을 별도의 트랜잭션에서 처리
 	 */
 	@Transactional(propagation = Propagation.REQUIRES_NEW)
-	protected void duplicatedCheckAndMoveCommit(FolderMoveDto dto, FolderMetadata folderMetadata) {
-		validateDuplicatedFolderName(dto, folderMetadata);
-		folderMetadata.updateParentFolderId(dto.targetFolderId());
-		folderMetadataJpaRepository.save(folderMetadata);
+	protected void duplicatedCheckAndMoveCommit(FolderMetadata targetFolder, FolderMetadata sourceFolder) {
+		validateDuplicatedFolderName(targetFolder, sourceFolder);
+		sourceFolder.updateParentFolderId(targetFolder.getId());
+		folderMetadataJpaRepository.save(sourceFolder);
 	}
 
 	/**
 	 * root folder를 이동하려하는지 확인
 	 * 같은 폴더 내에서 이동하려하는지 확인
 	 */
-	private void validateInvalidMove(FolderMoveDto dto, FolderMetadata folderMetadata) {
-		if (Objects.equals(folderMetadata.getId(), dto.targetFolderId())) {
+	private void validateInvalidMove(FolderMetadata targetFolder, FolderMetadata sourceFolder) {
+		if (Objects.equals(sourceFolder.getId(), targetFolder.getId())) {
 			throw ErrorCode.FOLDER_MOVE_NOT_AVAILABLE.baseException();
 		}
-		if (folderMetadata.getParentFolderId() == null) {
+		if (sourceFolder.getParentFolderId() == null) {
 			throw ErrorCode.FOLDER_MOVE_NOT_AVAILABLE.baseException();
 		}
-		if (Objects.equals(folderMetadata.getParentFolderId(), dto.targetFolderId())) {
+		if (Objects.equals(sourceFolder.getParentFolderId(), targetFolder.getId())) {
 			throw ErrorCode.FOLDER_MOVE_NOT_AVAILABLE.baseException();
 		}
 	}
@@ -196,8 +230,8 @@ public class FolderService {
 	/**
 	 * 같은 폴더 내에 동일한 이름의 폴더가 있는지 확인
 	 */
-	private void validateDuplicatedFolderName(FolderMoveDto dto, FolderMetadata folderMetadata) {
-		if (folderMetadataJpaRepository.existsByParentFolderIdAndUploadFolderName(dto.targetFolderId(),
+	private void validateDuplicatedFolderName(FolderMetadata targetFolder, FolderMetadata folderMetadata) {
+		if (folderMetadataJpaRepository.existsByParentFolderIdAndUploadFolderName(targetFolder.getId(),
 			folderMetadata.getUploadFolderName())) {
 			throw ErrorCode.FILE_NAME_DUPLICATE.baseException();
 		}
@@ -231,7 +265,7 @@ public class FolderService {
 		validateFolderName(req);
 
 		String lockName = req.parentFolderId() + "/" + req.uploadFolderName();
-		return redisLockService.<Long>handleUserRequest(lockName, () -> randomCreateFolder(req, user),
+		return redisLockService.<Long>runWithWatchdogLock(lockName, () -> randomCreateFolder(req, user),
 			ErrorCode.TOO_MUCH_REQUEST.baseException());
 	}
 

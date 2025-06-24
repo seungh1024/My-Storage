@@ -77,4 +77,8 @@ public class RedisLockService {
 		return result;
 	}
 
+	public boolean checkLock(String lockName) {
+		RLock lock = redissonClient.getLock(lockName);
+		return lock.isLocked();
+	}
 }
