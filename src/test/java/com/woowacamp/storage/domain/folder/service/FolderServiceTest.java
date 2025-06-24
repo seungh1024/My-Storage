@@ -1,5 +1,6 @@
 package com.woowacamp.storage.domain.folder.service;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
@@ -29,6 +30,7 @@ import com.woowacamp.storage.domain.file.repository.FileMetadataJpaRepository;
 import com.woowacamp.storage.domain.folder.dto.request.FolderMoveDto;
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
+import com.woowacamp.storage.global.constant.PermissionType;
 import com.woowacamp.storage.global.error.CustomException;
 import com.woowacamp.storage.global.error.ErrorCode;
 
@@ -58,6 +60,9 @@ class FolderServiceTest extends ContainerBaseConfig {
 
 	@Autowired
 	Executor metadataThreadPoolExecutor;
+
+	@Autowired
+	private RedisLockService redisLockService;
 
 	private long userId = 1L;
 
@@ -148,6 +153,84 @@ class FolderServiceTest extends ContainerBaseConfig {
 
 			assertEquals(ErrorCode.FOLDER_MOVE_NOT_AVAILABLE.getMessage(), customException.getMessage());
 
+		}
+
+		@Test
+		@DisplayName("source 폴더의 상위 폴더가 이동 중이면 하위 폴더는 이동 작업을 할 수 없다.")
+		void source_folder_move_conflict_test() {
+			FolderMetadata childFolder = folderTreeSetUp.getSubSubFolder();
+			long childId = childFolder.getId();
+			FolderMetadata parentFolder = folderMetadataRepository.findParentByParentFolderId(
+				childFolder.getParentFolderId()).get();
+			long parentId = folderMetadataRepository.findById(parentFolder.getId()).get().getId();
+
+			String lockName = parentId + "";
+			redisLockService.tryLock(lockName);
+
+			long targetId = folderTreeSetUp.getSubFolders().get(2).getId();
+			FolderMoveDto dto = new FolderMoveDto(userId, targetId);
+
+			CustomException customException = assertThrows(CustomException.class,
+				() -> folderService.moveFolder(childId, dto));
+			redisLockService.unlock(lockName);
+
+			assertEquals(ErrorCode.PARENT_LOCKED.getMessage(), customException.getMessage());
+		}
+
+		@Test
+		@DisplayName("target 폴더의 상위 폴더가 이동 중이면 하위 폴더는 이동 작업을 할 수 없다.")
+		void target_folder_move_conflict_test() {
+			FolderMetadata childFolder = folderTreeSetUp.getSubSubFolder();
+			long childId = childFolder.getId();
+			FolderMetadata parentFolder = folderMetadataRepository.findParentByParentFolderId(
+				childFolder.getParentFolderId()).get();
+			long parentId = folderMetadataRepository.findById(parentFolder.getId()).get().getId();
+
+			String lockName = parentId + "";
+			redisLockService.tryLock(lockName);
+
+			long sourceId = folderTreeSetUp.getSubFolders().get(2).getId();
+			FolderMoveDto dto = new FolderMoveDto(userId, childId);
+
+			CustomException customException = assertThrows(CustomException.class,
+				() -> folderService.moveFolder(sourceId, dto));
+			redisLockService.unlock(lockName);
+
+			assertEquals(ErrorCode.PARENT_LOCKED.getMessage(), customException.getMessage());
+		}
+
+		@Test
+		@DisplayName("폴더 깊이가 최대치를 초과하면 폴더 이동에 실패한다.")
+		void folder_move_maximum_depth_test() {
+			FolderMetadata targetFolder = folderTreeSetUp.getSubSubFolder();
+			long targetId = targetFolder.getId();
+			long sourceId = folderTreeSetUp.getSubFolders().get(2).getId();
+			long parentId = sourceId;
+			LocalDateTime now = LocalDateTime.now();
+
+			for (int i = 0; i < 48; i++) {
+				FolderMetadata folder = folderMetadataRepository.save(FolderMetadata.builder()
+					.rootId(folderTreeSetUp.getRootFolder().getId())
+					.creatorId(userId)
+					.createdAt(now.minusDays(1))
+					.updatedAt(now)
+					.parentFolderId(parentId)
+					.uploadFolderName("folder " + i)
+					.sharingExpiredAt(now)
+					.size(1000)
+					.ownerId(userId)
+					.permissionType(PermissionType.WRITE)
+					.build());
+
+				parentId = folder.getId();
+			}
+
+			FolderMoveDto dto = new FolderMoveDto(userId, targetId);
+
+			CustomException customException = assertThrows(CustomException.class,
+				() -> folderService.moveFolder(sourceId, dto));
+
+			assertEquals(ErrorCode.EXCEED_MAX_FOLDER_DEPTH.getMessage(), customException.getMessage());
 		}
 	}
 

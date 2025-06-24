@@ -81,4 +81,22 @@ public class RedisLockService {
 		RLock lock = redissonClient.getLock(lockName);
 		return lock.isLocked();
 	}
+
+	/**
+	 * 테스트용 락 획득 메서드
+	 */
+	public void tryLock(String lockName) {
+		RLock lock = redissonClient.getLock(lockName);
+		try {
+			lock.tryLock(takingLockTime, keepingLockTime, TimeUnit.SECONDS);
+		} catch (InterruptedException e) {
+			log.error("[RedisLockService] error = {}", e);
+			throw new RuntimeException(e);
+		}
+	}
+
+	public void unlock(String lockName) {
+		RLock lock = redissonClient.getLock(lockName);
+		lock.unlock();
+	}
 }
