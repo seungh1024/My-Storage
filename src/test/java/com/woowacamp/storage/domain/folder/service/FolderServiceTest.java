@@ -300,14 +300,16 @@ class FolderServiceTest extends ContainerBaseConfig {
 			long findRootSize = findRootFolder.getSize();
 			List<FileMetadata> deletedParentFileList = fileMetadataJpaRepository.findByParentFolderId(deleteFolderId,
 				10);
-			List<FileMetadata> deletedSubParentFileList = fileMetadataJpaRepository.findByParentFolderId(
-				folderTreeSetUp.getSubSubFolder().getId(),
-				0);
+			int fileListSize = deletedParentFileList.size();
+			int deletedCnt = 0;
+			for (FileMetadata f : deletedParentFileList) {
+				if (f.isDeleted()) {
+					deletedCnt++;
+				}
+			}
 
 			assertEquals(rootSize - minusSize, findRootSize);
-			assertTrue(deletedParentFileList.isEmpty());
-			assertTrue(deletedParentFileList.isEmpty());
-			assertTrue(deletedSubParentFileList.isEmpty());
+			assertEquals(fileListSize, deletedCnt);
 		}
 
 		@Test
@@ -420,14 +422,13 @@ class FolderServiceTest extends ContainerBaseConfig {
 
 			countDownLatch.await();
 			Thread.sleep(10000);
-			ThreadPoolTaskExecutor taskExecutor = (ThreadPoolTaskExecutor) metadataThreadPoolExecutor;
+			ThreadPoolTaskExecutor taskExecutor = (ThreadPoolTaskExecutor)metadataThreadPoolExecutor;
 
 			// 실제 ThreadPoolExecutor를 가져옴
 			ThreadPoolExecutor executor = taskExecutor.getThreadPoolExecutor();
-			System.out.println("queue size = "+executor.getQueue().size());
-			System.out.println("queue size = "+executor.getQueue().size());
-			System.out.println("queue size = "+executor.getQueue().size());
-
+			System.out.println("queue size = " + executor.getQueue().size());
+			System.out.println("queue size = " + executor.getQueue().size());
+			System.out.println("queue size = " + executor.getQueue().size());
 
 			long endTime = System.currentTimeMillis();
 
@@ -437,27 +438,26 @@ class FolderServiceTest extends ContainerBaseConfig {
 			System.out.println("fail count = " + failedCount.get());
 			FolderMetadata findA = folderMetadataRepository.findById(aId).get();
 			FolderMetadata findB = folderMetadataRepository.findById(bId).get();
-			System.out.println("findA id = " + findA.getId() +
-				"findA parent = " + findA.getParentFolderId() + ", aSize = " + findA.getSize() + ", start size = "
-				+ folderA.getSize());
-			System.out.println("findB id = " + findB.getId() +
-				"findB parent = " + findB.getParentFolderId() + ", bSize = " + findB.getSize() + ", start size = "
-				+ folderB.getSize());
+			System.out.println(
+				"findA id = " + findA.getId() + "findA parent = " + findA.getParentFolderId() + ", aSize = "
+					+ findA.getSize() + ", start size = " + folderA.getSize());
+			System.out.println(
+				"findB id = " + findB.getId() + "findB parent = " + findB.getParentFolderId() + ", bSize = "
+					+ findB.getSize() + ", start size = " + folderB.getSize());
 			FolderMetadata findRootFolder = folderMetadataRepository.findById(rootId).get();
 			List<FolderMetadata> byParentFolderId = folderMetadataRepository.findByParentFolderId(rootId, 10);
 			byParentFolderId.forEach(f -> System.out.println("id = " + f.getId() + ", size = " + f.getSize()));
 			Long l = folderMetadataRepository.sumChildFolderSize(rootId).get();
 			System.out.println("total size = " + l);
 
-
 			System.out.println("==========");
 
 			long time = System.currentTimeMillis();
-			long end = time+3000;
+			long end = time + 3000;
 			while (true) {
 				int size = executor.getQueue().size();
 				if (size != 0 || System.currentTimeMillis() > end) {
-					System.out.println("size = "+size);
+					System.out.println("size = " + size);
 					break;
 				}
 			}

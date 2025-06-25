@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.woowacamp.storage.domain.file.entity.FileMetadata;
 import com.woowacamp.storage.global.constant.UploadStatus;
@@ -78,31 +79,6 @@ public interface FileMetadataJpaRepository extends JpaRepository<FileMetadata, L
 		@Param("size") int size);
 
 	@Query("""
-			SELECT file
-			FROM FileMetadata file
-			JOIN FolderMetadata folder
-			ON file.parentFolderId = folder.id
-			AND folder.isDeleted = true
-			ORDER BY file.id
-			LIMIT :size
-		""")
-	List<FileMetadata> findOrphanFileList(@Param("size") int size);
-
-	@Query("""
-			SELECT file
-			FROM FileMetadata file
-			JOIN FolderMetadata folder
-			ON file.parentFolderId = folder.id
-			AND folder.isDeleted = true
-			AND file.parentFolderId >= :lastParentId
-			AND file.id > :lastId
-			ORDER BY file.parentFolderId, file.id
-			LIMIT :size
-		""")
-	List<FileMetadata> findOrhanFileListWithLastId(@Param("lastParentId") long lastParentId,
-		@Param("lastId") Long lastId, int size);
-
-	@Query("""
 			SELECT SUM(f.fileSize)
 			FROM FileMetadata f
 			WHERE f.parentFolderId = :parentId
@@ -110,21 +86,21 @@ public interface FileMetadataJpaRepository extends JpaRepository<FileMetadata, L
 	Optional<Long> sumChildFileSize(@Param("parentId") long parentId);
 
 	@Query("""
-		SELECT f
-		FROM FileMetadata f
-		WHERE f.uploadStatus = 'FAIL'
-		ORDER BY f.id
-		LIMIT :size
-	""")
+			SELECT f
+			FROM FileMetadata f
+			WHERE f.uploadStatus = 'FAIL'
+			ORDER BY f.id
+			LIMIT :size
+		""")
 	List<FileMetadata> findUploadFailureList(int size);
 
 	@Query("""
-		SELECT f
-		FROM FileMetadata f
-		WHERE f.uploadStatus = 'FAIL' and f.id > :lastId
-		ORDER BY f.id
-		LIMIT :size
-	""")
+			SELECT f
+			FROM FileMetadata f
+			WHERE f.uploadStatus = 'FAIL' and f.id > :lastId
+			ORDER BY f.id
+			LIMIT :size
+		""")
 	List<FileMetadata> findUploadFailureListWithLastId(Long lastId, int size);
 
 	@Query("""
@@ -145,4 +121,33 @@ public interface FileMetadataJpaRepository extends JpaRepository<FileMetadata, L
 			LIMIT :size
 		""")
 	List<FileMetadata> findUploadPendingListWithLastId(Long lastId, int size, LocalDateTime timeLimit);
+
+	@Transactional
+	@Modifying
+	@Query("""
+			UPDATE FileMetadata f SET f.isDeleted = true, f.updatedAt = NOW() WHERE f.id IN (:ids)
+		""")
+	void softDeleteAllByIdInBatch(@Param("ids") List<Long> batchList);
+
+	@Query("""
+			SELECT f
+			FROM FileMetadata f
+			WHERE f.isDeleted = true
+			AND f.updatedAt < :duration
+			ORDER BY f.id
+			LIMIT :size
+		""")
+	List<FileMetadata> findSoftDeletedFile(@Param("size") int size, @Param("duration") LocalDateTime timeLimit);
+
+	@Query("""
+			SELECT f
+			FROM FileMetadata f
+			WHERE f.isDeleted = true 
+			AND f.id > :lastId
+			AND f.updatedAt < :duration
+			ORDER BY f.id
+			LIMIT :size
+		""")
+	List<FileMetadata> findSoftDeletedFileWithLastId(@Param("lastId") Long lastId, @Param("size") int size,
+		@Param("duration") LocalDateTime timeLimit);
 }

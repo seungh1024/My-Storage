@@ -1,5 +1,6 @@
 package com.woowacamp.storage.domain.file.service;
 
+import java.time.LocalDateTime;
 import java.util.Objects;
 
 import org.springframework.beans.factory.annotation.Value;
@@ -22,6 +23,7 @@ import com.woowacamp.storage.global.error.ErrorCode;
 
 import lombok.RequiredArgsConstructor;
 
+import static com.woowacamp.storage.global.constant.CommonConstant.*;
 import static com.woowacamp.storage.global.error.ErrorCode.*;
 
 @Service
@@ -84,8 +86,7 @@ public class FileService {
 	@Transactional
 	public void deleteFile(Long fileId, Long userId) {
 		FileMetadata fileMetadata = fileMetadataJpaRepository.findByIdAndOwnerIdAndUploadStatusNot(fileId, userId,
-				UploadStatus.FAIL)
-			.orElseThrow(ACCESS_DENIED::baseException);
+			UploadStatus.FAIL).orElseThrow(ACCESS_DENIED::baseException);
 
 		fileMetadataJpaRepository.delete(fileMetadata);
 
@@ -95,12 +96,11 @@ public class FileService {
 		metadataService.calculateSize(parentFolderId);
 	}
 
-	public void findOrphanFileAndHardDelete() {
+	public void doHardDelete() {
+		LocalDateTime timeLimit = LocalDateTime.now().minusDays(hardDeleteDuration);
 		QueryExecuteTemplate.<FileMetadata>selectFilesAndExecuteWithCursor(pageSize,
-			findFile -> fileMetadataRepository.findFileMetadataByLastId(
-				findFile == null ? 0 : findFile.getParentFolderId(), findFile == null ? null : findFile.getId(),
-				pageSize),
+			findFile -> fileMetadataRepository.findSoftDeletedFileWithLastIdAndDuration(
+				findFile == null ? null : findFile.getId(), pageSize, timeLimit),
 			fileMetadataList -> fileMetadataRepository.deleteAll(fileMetadataList));
 	}
-
 }
