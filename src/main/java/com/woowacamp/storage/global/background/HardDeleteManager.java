@@ -17,8 +17,6 @@ public class HardDeleteManager {
 	private final FolderService folderService;
 	private static final int FIND_DELAY = 1000 * 60 * 60 * 60;
 
-	@Value("${constant.batchSize}")
-	private int pageSize;
 
 	@Scheduled(fixedDelay = FIND_DELAY)
 	private void folderDeleteScheduler() {

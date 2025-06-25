@@ -20,9 +20,6 @@ public class OrphanFileManager {
 
 	private static final int FIND_DELAY = 1000 * 60;
 
-	@Value("${constant.batchSize}")
-	private int pageSize;
-
 	/**
 	 * 이미 soft delete가 완료된 폴더를 기준으로 삭제가 되지 않은 하위 폴더 및 파일을 탐색
 	 * 이후 마찬가지로 폴더는 soft delete, 파일은 hard delete를 진행한다

@@ -7,6 +7,8 @@ import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.stereotype.Service;
 
+import com.woowacamp.storage.global.error.ErrorCode;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -19,7 +21,7 @@ public class RedisLockService {
 	private final int takingLockTime = 1;
 	private final int keepingLockTime = 10;
 
-	public void runWithWatchdogLock(String lockName, Runnable task, RuntimeException exception) {
+	public void runWithWatchdogLock(String lockName, Runnable task) {
 		RLock lock = redissonClient.getLock(lockName);
 		boolean isLocked = false;
 
@@ -27,7 +29,7 @@ public class RedisLockService {
 			isLocked = lock.tryLock(takingLockTime, TimeUnit.SECONDS);
 			// 락 획득 실패 시 동시 요청이므로 예외 던짐
 			if (!isLocked) {
-				throw exception;
+				throw ErrorCode.TOO_MUCH_REQUEST.baseException();
 			}
 			task.run();
 
