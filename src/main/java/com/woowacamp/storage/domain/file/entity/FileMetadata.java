@@ -95,6 +95,10 @@ public class FileMetadata {
 	@Enumerated(EnumType.STRING)
 	private PermissionType permissionType;
 
+	@Column(name = "is_deleted", columnDefinition = "BOOLEAN DEFAULT false")
+	@NotNull
+	private boolean isDeleted = false;
+
 	@Builder
 	public FileMetadata(Long id, Long rootId, Long creatorId, Long ownerId, String fileType, LocalDateTime createdAt,
 		LocalDateTime updatedAt, Long parentFolderId, Long fileSize, String uploadFileName, String uuidFileName,
