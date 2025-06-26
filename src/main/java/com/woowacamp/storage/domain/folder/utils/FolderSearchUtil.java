@@ -9,6 +9,7 @@ import org.springframework.stereotype.Component;
 
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
+import com.woowacamp.storage.domain.folder.service.RedisLockService;
 import com.woowacamp.storage.global.error.ErrorCode;
 
 import lombok.RequiredArgsConstructor;
@@ -17,14 +18,15 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class FolderSearchUtil {
 
-	private final FolderMetadataJpaRepository folderMetadataRepository;
+	private final FolderMetadataJpaRepository folderMetadataJpaRepository;
+	private final RedisLockService redisLockService;
 
 	/**
 	 * 현재 folder에서 rootFolder까지 경로를 구하는 함수
 	 */
 	public Set<FolderMetadata> getPathToRoot(Long folderId) {
 		Set<FolderMetadata> path = new LinkedHashSet<>();
-		FolderMetadata current = folderMetadataRepository.findByIdForUpdate(folderId)
+		FolderMetadata current = folderMetadataJpaRepository.findByIdForUpdate(folderId)
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
 
 		while (current != null) {
@@ -32,7 +34,7 @@ public class FolderSearchUtil {
 			if (current.getParentFolderId() == null) {
 				break;
 			}
-			current = folderMetadataRepository.findByIdForUpdate(current.getParentFolderId())
+			current = folderMetadataJpaRepository.findByIdForUpdate(current.getParentFolderId())
 				.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
 		}
 		return path;
@@ -67,14 +69,14 @@ public class FolderSearchUtil {
 				isExistCommonAncestor = true;
 			}
 			if (!isExistCommonAncestor) {
-				folderMetadataRepository.updateFolderInfo(-fileSize, now, source.getId());
+				folderMetadataJpaRepository.updateFolderInfo(-fileSize, now, source.getId());
 			}
 		}
 		for (var target : targetPath) {
 			if (target.equals(commonAncestor)) {
 				break;
 			}
-			folderMetadataRepository.updateFolderInfo(fileSize, now, target.getId());
+			folderMetadataJpaRepository.updateFolderInfo(fileSize, now, target.getId());
 		}
 	}
 
@@ -85,13 +87,39 @@ public class FolderSearchUtil {
 		int depth = 1;
 		Long currentFolderId = folderId;
 		while (true) {
-			Optional<Long> parentFolderIdById = folderMetadataRepository.findParentFolderIdById(currentFolderId);
+			Optional<Long> parentFolderIdById = folderMetadataJpaRepository.findParentFolderIdById(currentFolderId);
 			if (parentFolderIdById.isEmpty()) {
 				break;
 			}
 			currentFolderId = parentFolderIdById.get();
 			depth++;
 		}
+		return depth;
+	}
+
+	/**
+	 * 상위 폴더를 재귀적으로 탐색하며 이동이나 삭제 작업이 존재하지 않는지 확인하는 메서드
+	 */
+	public int folderLockCheck(Long parentId, Long invalidId) {
+		int depth = 0;
+		do{
+			if (parentId != null && parentId == invalidId) {
+				throw ErrorCode.FOLDER_MOVE_NOT_AVAILABLE.baseException();
+			}
+
+			FolderMetadata parentFolder = folderMetadataJpaRepository.findById(parentId)
+				.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
+
+			// 부모가 이동이나 삭제 작업 중인지 확인 후 이미 진행 중이라면 예외 발생
+			boolean checkLockResult = redisLockService.checkLock(parentFolder.getId().toString());
+			if (checkLockResult) {
+				throw ErrorCode.PARENT_LOCKED.baseException();
+			}
+
+			parentId = parentFolder.getParentFolderId(); // 부모 갱신하여 상위로 탐색
+			depth++;
+		}while(parentId != null); // Null이면 root folder에 도달했으니 종료된다.
+
 		return depth;
 	}
 }
