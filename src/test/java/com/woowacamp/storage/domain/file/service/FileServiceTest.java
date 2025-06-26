@@ -20,6 +20,7 @@ import com.woowacamp.storage.domain.file.entity.FileMetadata;
 import com.woowacamp.storage.domain.file.repository.FileMetadataJpaRepository;
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
+import com.woowacamp.storage.domain.folder.service.RedisLockService;
 import com.woowacamp.storage.global.constant.PermissionType;
 import com.woowacamp.storage.global.constant.UploadStatus;
 import com.woowacamp.storage.global.error.CustomException;
@@ -42,6 +43,8 @@ class FileServiceTest extends ContainerBaseConfig {
 	private FolderMetadataJpaRepository folderMetadataJpaRepository;
 	@Autowired
 	private FileService fileService;
+	@Autowired
+	private RedisLockService redisLockService;
 
 	@BeforeEach
 	void setUp(){
@@ -163,6 +166,23 @@ class FileServiceTest extends ContainerBaseConfig {
 			FolderMetadata findFolder = folderMetadataJpaRepository.findById(targetFile.getParentFolderId()).get();
 
 			assertEquals(parentFolder.getSize() - targetFile.getFileSize(), findFolder.getSize());
+		}
+
+		@Test
+		@DisplayName("상위 폴더에서 삭제,이동 작업 중이면 파일 삭제에 실패한다.")
+		void if_parent_has_lock_then_file_delete_fail() {
+			List<FileMetadata> files = folderTreeSetUp.getFiles();
+			FileMetadata targetFile = files.get(0);
+			FolderMetadata parentFolder = folderMetadataJpaRepository.findById(targetFile.getParentFolderId()).get();
+
+			redisLockService.tryLock(parentFolder.getParentFolderId()+"");
+
+			CustomException customException = assertThrows(CustomException.class,
+				() -> fileService.deleteFile(targetFile.getId(), folderTreeSetUp.getUserId()));
+
+			redisLockService.unlock(parentFolder.getParentFolderId()+"");
+
+			assertEquals(ErrorCode.PARENT_LOCKED.getMessage(), customException.getMessage());
 		}
 	}
 }

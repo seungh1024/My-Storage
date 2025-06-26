@@ -114,6 +114,7 @@ public class FileService {
 	}
 
 	private void deleteFileTask(FileMetadata fileMetadata) {
+		folderSearchUtil.folderLockCheck(fileMetadata.getParentFolderId(), null);
 		fileMetadataJpaRepository.softDelete(fileMetadata.getId());
 		metadataService.calculateSize(fileMetadata.getParentFolderId());
 	}
