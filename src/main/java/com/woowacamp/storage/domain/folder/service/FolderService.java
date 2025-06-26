@@ -107,8 +107,8 @@ public class FolderService {
 		FolderMetadata targetFolder = folderMetadataJpaRepository.findByIdNotDeleted(dto.targetFolderId())
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
 
-		folderSearchUtil.folderLockCheck(sourceFolder.getParentFolderId(), null);
-		int targetFolderDepth = folderSearchUtil.folderLockCheck(targetFolder.getParentFolderId(),
+		folderSearchUtil.folderLockCheck(sourceFolder.getId(), null);
+		int targetFolderDepth = folderSearchUtil.folderLockCheck(targetFolder.getId(),
 			sourceFolderId);// target은 source의 자식이면 안된다.
 
 		// 락을 건 후에 삭제되지 않았는지 체크
@@ -323,7 +323,7 @@ public class FolderService {
 		// 상위에 이동, 삭제 작업이 없는지 확인한다.
 		// 이런 작업이 시간이 오래 걸리니까 이런 작업을 비동기 처리하고 Future 같은걸로 받아서 처리해도 좋을 것 같다.
 		// 다만 위의 검증 과정이 메모리에서 이뤄지는 거라서 별 차이 없을 것 같다. 만약 검증 과정이 복잡하거나, 다른 추가 작업이 발생한다면 고려할만 하다고 생각한다.
-		folderSearchUtil.folderLockCheck(folderMetadata.getParentFolderId(), null);
+		folderSearchUtil.folderLockCheck(folderMetadata.getId(), null);
 
 		// 삭제 요청이 들어온 폴더를 제거한다.
 		folderMetadataJpaRepository.softDeleteById(folderMetadata.getId());

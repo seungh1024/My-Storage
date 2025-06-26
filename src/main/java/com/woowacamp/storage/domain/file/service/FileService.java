@@ -110,7 +110,7 @@ public class FileService {
 		FileMetadata fileMetadata = fileMetadataJpaRepository.findByIdAndOwnerIdAndUploadStatusNot(fileId, userId,
 			UploadStatus.FAIL).orElseThrow(ACCESS_DENIED::baseException);
 		redisLockService.runWithWatchdogLock(fileMetadata.getParentFolderId() + "",
-			() -> deleteFileTask(fileMetadata\));
+			() -> deleteFileTask(fileMetadata));
 	}
 
 	private void deleteFileTask(FileMetadata fileMetadata) {

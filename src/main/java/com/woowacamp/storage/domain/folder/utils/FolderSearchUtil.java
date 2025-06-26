@@ -100,9 +100,12 @@ public class FolderSearchUtil {
 	/**
 	 * 상위 폴더를 재귀적으로 탐색하며 이동이나 삭제 작업이 존재하지 않는지 확인하는 메서드
 	 */
-	public int folderLockCheck(Long parentId, Long invalidId) {
+	public int folderLockCheck(Long folderId, Long invalidId) {
 		int depth = 0;
-		do{
+		FolderMetadata folderMetadata = folderMetadataJpaRepository.findById(folderId)
+			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
+		Long parentId = folderMetadata.getParentFolderId();
+		while(parentId!=null){
 			if (parentId != null && parentId == invalidId) {
 				throw ErrorCode.FOLDER_MOVE_NOT_AVAILABLE.baseException();
 			}
@@ -118,7 +121,7 @@ public class FolderSearchUtil {
 
 			parentId = parentFolder.getParentFolderId(); // 부모 갱신하여 상위로 탐색
 			depth++;
-		}while(parentId != null); // Null이면 root folder에 도달했으니 종료된다.
+		}
 
 		return depth;
 	}
