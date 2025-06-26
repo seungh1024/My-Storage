@@ -1,8 +1,11 @@
 package com.woowacamp.storage.domain.folder.service;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
+import org.redisson.RedissonMultiLock;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.stereotype.Service;
@@ -77,6 +80,45 @@ public class RedisLockService {
 		}
 
 		return result;
+	}
+
+	public void runWithWatchdogMultiLock(String lockName1, String lockName2, Runnable task) {
+		List<String> lockList = new ArrayList<>(List.of(lockName1,lockName2));
+		lockList.sort(String::compareTo); // 데드락 방지를 위한 정렬
+
+		// 락 객체 생성
+		RLock[] locks = lockList.stream()
+			.map(redissonClient::getLock)
+			.toArray(RLock[]::new);
+
+		boolean isLocked = false;
+
+		// 여러 락을 동시에 점유하려면 RedissonMultiLock 사용
+		RedissonMultiLock multiLock = new RedissonMultiLock(locks);
+
+		try {
+			isLocked = multiLock.tryLock(takingLockTime, TimeUnit.SECONDS);
+			// 락 획득 실패 시 동시 요청이므로 예외 던짐
+			if (!isLocked) {
+				throw ErrorCode.TOO_MUCH_REQUEST.baseException();
+			}
+			task.run();
+
+		} catch (InterruptedException e) {
+			log.error("[RedisLockService] error = {}", e);
+			throw new RuntimeException(e);
+		} finally {
+			if (isLocked) {
+				try {
+					multiLock.unlock();
+				} catch (IllegalMonitorStateException e) {
+					// 락 소유 시간동안 비즈니스 로직 처리를 하지 못한 경우 예외 처리
+					// 여기서 throw를 하면 비즈니스 로직이 정상적으로 처리됐어도 예외 응답을 받게 됨.
+					// 메일 같은 것으로 락 소유시간이 짧은 것 같다는 알림을 전송하는게 좋다고 생각
+					log.error("Failed to do service: " + e.getMessage(), e);
+				}
+			}
+		}
 	}
 
 	public boolean checkLock(String lockName) {
