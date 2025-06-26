@@ -82,6 +82,7 @@ public interface FileMetadataJpaRepository extends JpaRepository<FileMetadata, L
 			SELECT SUM(f.fileSize)
 			FROM FileMetadata f
 			WHERE f.parentFolderId = :parentId
+			AND f.isDeleted = false
 		""")
 	Optional<Long> sumChildFileSize(@Param("parentId") long parentId);
 

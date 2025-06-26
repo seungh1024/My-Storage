@@ -115,11 +115,7 @@ public class FileService {
 
 	private void deleteFileTask(FileMetadata fileMetadata) {
 		fileMetadataJpaRepository.softDelete(fileMetadata.getId());
-
-		Long parentFolderId = fileMetadata.getParentFolderId();
-		long fileSize = fileMetadata.getFileSize();
-
-		metadataService.calculateSize(parentFolderId);
+		metadataService.calculateSize(fileMetadata.getParentFolderId());
 	}
 
 	public void doHardDelete() {
