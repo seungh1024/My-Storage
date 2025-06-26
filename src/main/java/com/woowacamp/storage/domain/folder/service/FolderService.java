@@ -96,31 +96,21 @@ public class FolderService {
 	 * 동시에 여러 폴더 이동이 진행될때 싸이클이 발생할 수 있기 때문에 락을 걸고 진행.
 	 */
 	public void moveFolder(Long sourceFolderId, FolderMoveDto dto) {
-		FolderMetadata folderMetadata = folderMetadataJpaRepository.findByIdNotDeleted(sourceFolderId)
-			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
-		redisLockService.runWithWatchdogLock(folderMetadata.getId().toString(),
-			() -> {
-			folderSearchUtil.folderLockCheck(folderMetadata.getParentFolderId(),null);
-			moveFolderTask(sourceFolderId, dto);
-			});
+		redisLockService.runWithWatchdogMultiLock(sourceFolderId + "", dto.targetFolderId() + "",
+			() -> moveFolderTask(sourceFolderId, dto));
 	}
-
 
 	@Transactional
 	protected void moveFolderTask(Long sourceFolderId, FolderMoveDto dto) {
 		FolderMetadata sourceFolder = folderMetadataJpaRepository.findByIdNotDeleted(sourceFolderId)
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
+		FolderMetadata targetFolder = folderMetadataJpaRepository.findByIdNotDeleted(dto.targetFolderId())
+			.orElseThrow(ErrorCode.FILE_NOT_FOUND::baseException);
 
-		// target folder에도 락을 걸고, 상위에 이동,삭제 작업이 없는지 확인
-		FolderMetadata targetFolder = folderMetadataJpaRepository.findById(dto.targetFolderId())
-			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
-		redisLockService.runWithWatchdogLock(targetFolder.getId().toString(),
-			() -> moveFolderInternal(sourceFolder,targetFolder));
+		folderSearchUtil.folderLockCheck(sourceFolder.getParentFolderId(), null);
+		int targetFolderDepth = folderSearchUtil.folderLockCheck(targetFolder.getParentFolderId(),
+			sourceFolderId);// target은 source의 자식이면 안된다.
 
-	}
-
-	private void moveFolderInternal(FolderMetadata sourceFolder, FolderMetadata targetFolder) {
-		int targetFolderDepth = folderSearchUtil.folderLockCheck(targetFolder.getParentFolderId(), sourceFolder.getId());
 		// 락을 건 후에 삭제되지 않았는지 체크
 		folderMetadataJpaRepository.findByIdNotDeleted(targetFolder.getId())
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
@@ -133,7 +123,8 @@ public class FolderService {
 		// 목적지에 동일 폴더를 생성하지 않도록 락이 필요하다. 누군가 폴더를 생성해서 같은 이름이 생길 수 있기 때문.
 		// 또한 트랜잭션 내부에서 락을 사용하면 커밋 전에 락이 해제되기 때문에 일관성이 깨질 수 있다.
 		String moveFolderLock = targetFolder.getId() + "/" + sourceFolder.getUploadFolderName();
-		redisLockService.runWithWatchdogLock(moveFolderLock, () -> duplicatedCheckAndMoveCommit(targetFolder, sourceFolder));
+		redisLockService.runWithWatchdogLock(moveFolderLock,
+			() -> duplicatedCheckAndMoveCommit(targetFolder, sourceFolder));
 
 		// 업데이트가 완료된 이후 용량 계산을 실시한다.
 		metadataService.calculateSize(originParentId);
@@ -303,8 +294,8 @@ public class FolderService {
 	 * @param userId
 	 */
 	public void deleteFolder(Long folderId, Long userId) {
-		String lockName = folderId+"";
-		redisLockService.runWithWatchdogLock(lockName,()-> deleteFolderTask(folderId,userId));
+		String lockName = folderId + "";
+		redisLockService.runWithWatchdogLock(lockName, () -> deleteFolderTask(folderId, userId));
 	}
 
 	/**
@@ -312,7 +303,7 @@ public class FolderService {
 	 * 하위 폴더 및 파일까지 탐색하여 삭제를 진행합니다.
 	 * DFS로 탐색하며, leaf 노드부터 제거합니다.
 	 */
-	private void deleteFolderTask(Long folderId, Long userId){
+	private void deleteFolderTask(Long folderId, Long userId) {
 		FolderMetadata folderMetadata = folderMetadataJpaRepository.findById(folderId)
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
 
@@ -355,8 +346,8 @@ public class FolderService {
 		searchThreadPoolExecutor.execute(
 			() -> QueryExecuteTemplate.<FolderMetadata>selectFilesAndExecuteWithCursor(pageSize,
 				findFolder -> folderMetadataRepository.findByParentFolderIdWithLastId(folderId,
-					findFolder == null ? null : findFolder.getId(), pageSize), folderMetadataList ->
-					folderMetadataList.forEach(folder -> deleteFolderTree(folder))));
+					findFolder == null ? null : findFolder.getId(), pageSize),
+				folderMetadataList -> folderMetadataList.forEach(folder -> deleteFolderTree(folder))));
 
 		//현재 폴더 삭제 -> 리프부터 삭제
 		fileDeleteWithParentFolder(folderMetadata);
