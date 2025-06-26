@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.woowacamp.storage.domain.file.dto.FileMoveDto;
@@ -17,6 +18,8 @@ import com.woowacamp.storage.domain.file.repository.FileMetadataRepository;
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
 import com.woowacamp.storage.domain.folder.service.MetadataService;
+import com.woowacamp.storage.domain.folder.service.RedisLockService;
+import com.woowacamp.storage.domain.folder.utils.FolderSearchUtil;
 import com.woowacamp.storage.domain.folder.utils.QueryExecuteTemplate;
 import com.woowacamp.storage.global.constant.UploadStatus;
 import com.woowacamp.storage.global.error.ErrorCode;
@@ -34,6 +37,8 @@ public class FileService {
 	private final FolderMetadataJpaRepository folderMetadataRepository;
 	private final ApplicationEventPublisher eventPublisher;
 	private final MetadataService metadataService;
+	private final FolderSearchUtil folderSearchUtil;
+	private final RedisLockService redisLockService;
 
 	@Value("${constant.batchSize}")
 	private int pageSize;
@@ -44,26 +49,40 @@ public class FileService {
 	 */
 	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public void moveFile(Long fileId, FileMoveDto dto) {
-		FolderMetadata folderMetadata = folderMetadataRepository.findByIdNotDeleted(dto.targetFolderId())
+		FileMetadata fileMetadata = fileMetadataJpaRepository.findById(fileId)
+			.orElseThrow(ErrorCode.FILE_NOT_FOUND::baseException);
+		redisLockService.runWithWatchdogMultiLock(fileMetadata.getParentFolderId() + "", dto.targetFolderId() + "",
+			() -> moveFileTask(dto, fileMetadata));
+
+	}
+
+	private void moveFileTask(FileMoveDto dto, FileMetadata fileMetadata) {
+		FolderMetadata targetFolder = folderMetadataRepository.findByIdNotDeleted(dto.targetFolderId())
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
-		if (!folderMetadata.getOwnerId().equals(dto.userId())) {
+		if (!targetFolder.getOwnerId().equals(dto.userId())) {
 			throw ErrorCode.ACCESS_DENIED.baseException();
 		}
-		FileMetadata fileMetadata = fileMetadataJpaRepository.findByIdForUpdate(fileId)
-			.orElseThrow(ErrorCode.FILE_NOT_FOUND::baseException);
-		validateMetadata(dto, fileMetadata);
+		validateMetadata(dto, fileMetadata, targetFolder);
 
 		long originParentId = fileMetadata.getParentFolderId();
 		fileMetadata.updateParentFolderId(dto.targetFolderId());
-		fileMetadataJpaRepository.save(fileMetadata);
+
+		// 이름 중복 방지를 위한 락 사용. 락 반환 전에 flush
+		redisLockService.runWithWatchdogLock(fileMetadata.getParentFolderId() + "/" + fileMetadata.getUploadFileName(),
+			() -> fileCommit(fileMetadata));
 
 		metadataService.calculateSize(originParentId);
 		metadataService.calculateSize(dto.targetFolderId());
 
-		eventPublisher.publishEvent(new FileMoveEvent(this, fileMetadata, folderMetadata));
+		eventPublisher.publishEvent(new FileMoveEvent(this, fileMetadata, targetFolder));
 	}
 
-	private void validateMetadata(FileMoveDto dto, FileMetadata fileMetadata) {
+	@Transactional(propagation = Propagation.REQUIRES_NEW)
+	protected void fileCommit(FileMetadata fileMetadata) {
+		fileMetadataJpaRepository.saveAndFlush(fileMetadata);
+	}
+
+	private void validateMetadata(FileMoveDto dto, FileMetadata fileMetadata, FolderMetadata targetFolder) {
 		if (fileMetadata.getUploadStatus() != UploadStatus.SUCCESS) {
 			throw ErrorCode.FILE_NOT_FOUND.baseException();
 		}
@@ -71,6 +90,9 @@ public class FileService {
 			fileMetadata.getUploadFileName(), UploadStatus.FAIL)) {
 			throw ErrorCode.FILE_NAME_DUPLICATE.baseException();
 		}
+
+		folderSearchUtil.folderLockCheck(fileMetadata.getParentFolderId(), null);
+		folderSearchUtil.folderLockCheck(targetFolder.getParentFolderId(), fileMetadata.getParentFolderId());
 	}
 
 	public FileMetadata getFileMetadataBy(Long fileId, Long userId) {
@@ -87,8 +109,12 @@ public class FileService {
 	public void deleteFile(Long fileId, Long userId) {
 		FileMetadata fileMetadata = fileMetadataJpaRepository.findByIdAndOwnerIdAndUploadStatusNot(fileId, userId,
 			UploadStatus.FAIL).orElseThrow(ACCESS_DENIED::baseException);
+		redisLockService.runWithWatchdogLock(fileMetadata.getParentFolderId() + "",
+			() -> deleteFileTask(fileMetadata\));
+	}
 
-		fileMetadataJpaRepository.delete(fileMetadata);
+	private void deleteFileTask(FileMetadata fileMetadata) {
+		fileMetadataJpaRepository.softDelete(fileMetadata.getId());
 
 		Long parentFolderId = fileMetadata.getParentFolderId();
 		long fileSize = fileMetadata.getFileSize();

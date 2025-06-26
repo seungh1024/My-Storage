@@ -105,7 +105,7 @@ public class FolderService {
 		FolderMetadata sourceFolder = folderMetadataJpaRepository.findByIdNotDeleted(sourceFolderId)
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
 		FolderMetadata targetFolder = folderMetadataJpaRepository.findByIdNotDeleted(dto.targetFolderId())
-			.orElseThrow(ErrorCode.FILE_NOT_FOUND::baseException);
+			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
 
 		folderSearchUtil.folderLockCheck(sourceFolder.getParentFolderId(), null);
 		int targetFolderDepth = folderSearchUtil.folderLockCheck(targetFolder.getParentFolderId(),

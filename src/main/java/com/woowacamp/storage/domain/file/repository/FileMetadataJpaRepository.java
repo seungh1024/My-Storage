@@ -129,6 +129,13 @@ public interface FileMetadataJpaRepository extends JpaRepository<FileMetadata, L
 		""")
 	void softDeleteAllByIdInBatch(@Param("ids") List<Long> batchList);
 
+	@Transactional
+	@Modifying
+	@Query("""
+			UPDATE FileMetadata f SET f.isDeleted = true, f.updatedAt = NOW() WHERE f.id = (:id)
+		""")
+	void softDelete(@Param("id") Long id);
+
 	@Query("""
 			SELECT f
 			FROM FileMetadata f
