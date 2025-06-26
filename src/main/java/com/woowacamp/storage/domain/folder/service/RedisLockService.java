@@ -50,7 +50,7 @@ public class RedisLockService {
 		}
 	}
 
-	public <T> T runWithWatchdogLock(String lockName, Supplier<T> task, RuntimeException exception) {
+	public <T> T runWithWatchdogLock(String lockName, Supplier<T> task) {
 		RLock lock = redissonClient.getLock(lockName);
 		boolean isLocked = false;
 		T result = null;
@@ -58,7 +58,7 @@ public class RedisLockService {
 		try {
 			isLocked = lock.tryLock(takingLockTime, keepingLockTime, TimeUnit.SECONDS);
 			if (!isLocked) {
-				throw exception;
+				throw ErrorCode.TOO_MUCH_REQUEST.baseException();
 			}
 			lock.lock();
 

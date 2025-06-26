@@ -270,12 +270,12 @@ public class FolderService {
 		validateFolderName(req);
 
 		String lockName = req.parentFolderId() + "/" + req.uploadFolderName();
-		return redisLockService.<Long>runWithWatchdogLock(lockName, () -> randomCreateFolder(req, user),
-			ErrorCode.TOO_MUCH_REQUEST.baseException());
+		return redisLockService.<Long>runWithWatchdogLock(lockName, () -> createFolderTask(req, user));
 	}
 
+	// TODO : 현재 테스트를 위해 쓰기 권한으로 생성한다. 테스트가 끝나면 제거 필요
 	@Transactional
-	protected Long randomCreateFolder(CreateFolderReqDto req, User user) {
+	protected Long createFolderTask(CreateFolderReqDto req, User user) {
 		long parentFolderId = req.parentFolderId();
 		FolderMetadata parentFolder = folderMetadataJpaRepository.findById(parentFolderId)
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
@@ -296,7 +296,8 @@ public class FolderService {
 			req.uploadFolderName())) {
 			throw ErrorCode.INVALID_FILE_NAME.baseException();
 		}
-		if (folderSearchUtil.getFolderDepth(req.parentFolderId()) >= MAX_FOLDER_DEPTH) {
+		int depth = folderLockCheck(req.parentFolderId(), null);
+		if (depth >= MAX_FOLDER_DEPTH) {
 			throw ErrorCode.EXCEED_MAX_FOLDER_DEPTH.baseException();
 		}
 	}
