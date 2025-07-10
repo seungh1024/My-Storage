@@ -10,6 +10,7 @@ import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.stereotype.Service;
 
+import com.woowacamp.storage.domain.file.util.StringFormat;
 import com.woowacamp.storage.global.error.ErrorCode;
 
 import lombok.RequiredArgsConstructor;
@@ -19,6 +20,9 @@ import lombok.extern.slf4j.Slf4j;
 @Service
 @RequiredArgsConstructor
 public class RedisLockService {
+	private static String LOCK_FORMAT = "LOCK NAME : {}";
+	private static String MULTI_LOCK_FORMAT = "LOCK NAME 1 : {}, LOCK NAME 2 : {}";
+
 	private final RedissonClient redissonClient;
 
 	private final int takingLockTime = 1;
@@ -32,7 +36,7 @@ public class RedisLockService {
 			isLocked = lock.tryLock(takingLockTime, TimeUnit.SECONDS);
 			// 락 획득 실패 시 동시 요청이므로 예외 던짐
 			if (!isLocked) {
-				throw ErrorCode.TOO_MUCH_REQUEST.baseException();
+				throw ErrorCode.TOO_MUCH_REQUEST.baseException(StringFormat.format(LOCK_FORMAT, lockName));
 			}
 			task.run();
 
@@ -61,7 +65,7 @@ public class RedisLockService {
 		try {
 			isLocked = lock.tryLock(takingLockTime, keepingLockTime, TimeUnit.SECONDS);
 			if (!isLocked) {
-				throw ErrorCode.TOO_MUCH_REQUEST.baseException();
+				throw ErrorCode.TOO_MUCH_REQUEST.baseException(StringFormat.format(LOCK_FORMAT, lockName));
 			}
 			lock.lock();
 
@@ -100,7 +104,8 @@ public class RedisLockService {
 			isLocked = multiLock.tryLock(takingLockTime, TimeUnit.SECONDS);
 			// 락 획득 실패 시 동시 요청이므로 예외 던짐
 			if (!isLocked) {
-				throw ErrorCode.TOO_MUCH_REQUEST.baseException();
+				throw ErrorCode.TOO_MUCH_REQUEST.baseException(
+					StringFormat.format(MULTI_LOCK_FORMAT, lockName1, lockName2));
 			}
 			task.run();
 

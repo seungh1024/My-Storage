@@ -236,7 +236,8 @@ public class FolderService {
 		validateFolderName(req);
 
 		String lockName = req.parentFolderId() + "/" + req.uploadFolderName();
-		return redisLockService.<Long>runWithWatchdogLock(lockName, () -> createFolderTask(req, user));
+		// return redisLockService.<Long>runWithWatchdogLock(lockName, () -> createFolderTask(req, user));
+		return createFolderTask(req, user);
 	}
 
 	// TODO : 현재 테스트를 위해 쓰기 권한으로 생성한다. 테스트가 끝나면 제거 필요
@@ -262,7 +263,7 @@ public class FolderService {
 			req.uploadFolderName())) {
 			throw ErrorCode.INVALID_FILE_NAME.baseException();
 		}
-		int depth = folderSearchUtil.folderLockCheck(req.parentFolderId(), null);
+		int depth = folderSearchUtil.folderDepthCheck(req.parentFolderId());
 		if (depth >= MAX_FOLDER_DEPTH) {
 			throw ErrorCode.EXCEED_MAX_FOLDER_DEPTH.baseException();
 		}

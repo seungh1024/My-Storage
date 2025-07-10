@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+
+    <!-- 로그 출력 패턴 설정 -->
+    <property name="LOG_PATTERN"
+              value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"/>
+
+    <!-- 로그 파일 경로 설정 -->
+    <springProperty scope="context" name="LOG_PATH" source="logging.file.path"/>
+
+    <!-- 콘솔 출력 -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>${LOG_PATTERN}</pattern>
+        </encoder>
+    </appender>
+
+    <!-- 파일 출력 -->
+    <appender name="FILE" class="ch.qos.logback.core.FileAppender">
+        <file>${LOG_PATH}</file>
+        <append>false</append> <!-- 기존 파일에 이어쓰기 false-->
+        <encoder>
+            <pattern>${LOG_PATTERN}</pattern>
+        </encoder>
+    </appender>
+
+    <!-- 로그 레벨 설정 -->
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="FILE"/>
+    </root>
+
+</configuration>

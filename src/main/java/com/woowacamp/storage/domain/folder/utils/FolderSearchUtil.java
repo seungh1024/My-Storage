@@ -125,4 +125,21 @@ public class FolderSearchUtil {
 
 		return depth;
 	}
+
+	public int folderDepthCheck(Long folderId) {
+		int depth = 0;
+		FolderMetadata folderMetadata = folderMetadataJpaRepository.findById(folderId)
+			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
+		Long parentId = folderMetadata.getParentFolderId();
+		while(parentId!=null){
+
+			FolderMetadata parentFolder = folderMetadataJpaRepository.findById(parentId)
+				.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
+
+			parentId = parentFolder.getParentFolderId(); // 부모 갱신하여 상위로 탐색
+			depth++;
+		}
+
+		return depth;
+	}
 }

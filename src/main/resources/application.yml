@@ -13,10 +13,10 @@ spring:
       connection-timeout: 3000
       leak-detection-threshold: 2000
   jpa:
-    show-sql: true
+    show-sql: ${SPRING_JPA_SHOW_SQL:true}
     hibernate:
       dialect: org.hibernate.dialect.MySQL8Dialect
-      ddl-auto: none
+      ddl-auto: ${SPRING_DDL_AUTO:none}
       properties:
         hibernate:
           format_sql: true
@@ -45,10 +45,10 @@ management:
 server:
   tomcat:
     threads:
-      min-spare: 50
-      max: 200
-    accept-count: 100
-    max-connections: 200
+      min-spare: 100
+      max: 300
+    accept-count: 200
+    max-connections: 400
     connection-timeout: 5000
 
 
@@ -59,3 +59,5 @@ logging:
   level:
     root: info
     com.zaxxer.hikari: error
+  file:
+    path: ${SPRING_LOG_PATH:./logs/app.log}

@@ -2,6 +2,7 @@ package com.woowacamp.storage.container;
 
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.junit.jupiter.Container;
@@ -24,5 +25,15 @@ public abstract class ContainerBaseConfig {
 		registry.add("spring.datasource.driver-class-name", mySQLContainer::getDriverClassName);
 		registry.add("spring.jpa.properties.hibernate.dialect", () -> "org.hibernate.dialect.MySQL8Dialect");
 
+	}
+
+	@Container
+	static GenericContainer<?> redis = new GenericContainer<>("redis:7")
+		.withExposedPorts(6379);
+
+	@DynamicPropertySource
+	static void redisProperties(DynamicPropertyRegistry registry) {
+		registry.add("spring.redis.host", redis::getHost);
+		registry.add("spring.redis.port", redis::getFirstMappedPort);
 	}
 }
