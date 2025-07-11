@@ -127,8 +127,8 @@ public class FolderService {
 			() -> duplicatedCheckAndMoveCommit(targetFolder, sourceFolder));
 
 		// 업데이트가 완료된 이후 용량 계산을 실시한다.
-		metadataService.calculateSize(originParentId);
-		metadataService.calculateSize(targetFolder.getId());
+		// metadataService.calculateSize(originParentId);
+		// metadataService.calculateSize(targetFolder.getId());
 
 		// TODO 하위 경로 공유 상태 변경 필요
 		// eventPublisher.publishEvent(
@@ -331,8 +331,9 @@ public class FolderService {
 
 		// 삭제는 스레드 풀이 처리하도록 한다.
 		deleteFolderTree(folderMetadata);
+
 		// 삭제한 폴더의 용량 계산을 진행한다.
-		metadataService.calculateSize(folderMetadata.getParentFolderId());
+		// metadataService.calculateSize(folderMetadata.getParentFolderId());
 	}
 
 	/**
