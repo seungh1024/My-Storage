@@ -48,6 +48,7 @@ public class FolderTreeSetUp {
 				.sharingExpiredAt(now)
 				.ownerId(userId)
 				.size(8000)
+				.parentFolderId(null)
 				.permissionType(
 					PermissionType.WRITE)
 				.build());

@@ -44,6 +44,9 @@ public class BackgroundJob {
 	@Value("${constant.batchSize}")
 	private int batchSize;
 
+	@Value("${constant.maxRetry}")
+	private int MAX_RETRY;
+
 	@PostConstruct
 	public void init() {
 		folderDeleteQueue = new LinkedBlockingQueue<>();
@@ -62,8 +65,8 @@ public class BackgroundJob {
 	 * 여러 스레드가 동시에 size()에 접근하면 불필요하게 DB 접근이 많아진다고 판단하여 synchronized 사용
 	 * @param folderMetadataList
 	 */
-	public void addForDeleteFolder(List<FolderMetadata> folderMetadataList) {
-		folderDeleteQueue.addAll(folderMetadataList);
+	public void addForDeleteFolder(FolderMetadata folderMetadataList) {
+		folderDeleteQueue.add(folderMetadataList);
 	}
 
 	/**
@@ -88,9 +91,31 @@ public class BackgroundJob {
 			batchList -> folderMetadataJpaRepository.softDeleteAllByIdInBatch(batchList));
 	}
 
+	/**
+	 * fileBatchDelete()가 실패하는 경우, 고아 파일이 생성될 수 있다.
+	 * 이를 방지하기 위해 MAX_RETRY만큼 재시도를 진행하고 로그를 자세히 남겼다.
+	 */
 	private void fileBatchDelete() {
 		this.<FileMetadata>doBatchJob(fileDeleteQueue, fileList -> fileList.stream().map(FileMetadata::getId).toList(),
-			batchList -> fileMetadataJpaRepository.deleteAllByIdInBatch(batchList));
+			batchList -> {
+				int retry = 0;
+				boolean success = false;
+				while (retry < MAX_RETRY && !success) {
+					try {
+						log.info("[Start Soft Delete] retry = {}, IDs = {}", retry, batchList);
+						fileMetadataJpaRepository.softDeleteAllByIdInBatch(batchList);
+						success = true;
+						log.info("[Soft Delete Success] IDs = {}", batchList);
+					} catch (Exception e) {
+						retry++;
+						log.warn("[Retry {}] Failed deleting IDs = {}, error = {}", retry, batchList, e.getMessage(),
+							e);
+						if (retry >= MAX_RETRY) {
+							log.error("[Max Retry Failed] IDs = {}", batchList);
+						}
+					}
+				}
+			});
 	}
 
 	/**

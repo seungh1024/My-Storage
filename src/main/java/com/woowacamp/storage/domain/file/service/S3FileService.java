@@ -42,9 +42,8 @@ public class S3FileService {
 	 */
 	public FileUploadResponseDto createInitialMetadata(FileUploadRequestDto fileUploadRequestDto) {
 		String lockName = fileUploadRequestDto.parentFolderId() + "/" + fileUploadRequestDto.fileName();
-		return redisLockService.<FileUploadResponseDto>handleUserRequest(lockName, () ->
-				createFileMetadata(fileUploadRequestDto)
-			, FILE_NAME_DUPLICATE.baseException());
+		return redisLockService.<FileUploadResponseDto>runWithWatchdogLock(lockName, () ->
+				createFileMetadata(fileUploadRequestDto));
 	}
 
 	@Transactional

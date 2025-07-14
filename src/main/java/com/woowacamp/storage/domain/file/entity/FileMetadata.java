@@ -24,11 +24,12 @@ import lombok.ToString;
 
 @Entity
 @Table(name = "file_metadata", indexes = {
-	@Index(name = "file_idx_parent_folder_id_size", columnList = "parent_folder_id, created_at"),
-	@Index(name = "file_idx_parent_folder_id_created_at", columnList = "parent_folder_id, file_size"),
+	@Index(name = "file_idx_parent_folder_id_created_at", columnList = "parent_folder_id, created_at"),
+	@Index(name = "file_idx_parent_folder_id_file_size", columnList = "parent_folder_id, file_size"),
 	@Index(name = "file_idx_upload_status", columnList = "upload_status"),
 	@Index(name = "file_idx_parent_folder_id_file_metadata_id", columnList = "parent_folder_id, file_metadata_id"),
-	@Index(name = "file_idx_created_at_file_metadata_id", columnList = "created_at, file_metadata_id")})
+	@Index(name = "file_idx_created_at_file_metadata_id", columnList = "created_at, file_metadata_id"),
+	@Index(name = "file_idx_is_deleted", columnList = "is_deleted")})
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Getter
 @ToString
@@ -94,6 +95,10 @@ public class FileMetadata {
 	@NotNull
 	@Enumerated(EnumType.STRING)
 	private PermissionType permissionType;
+
+	@Column(name = "is_deleted", columnDefinition = "BOOLEAN DEFAULT false")
+	@NotNull
+	private boolean isDeleted = false;
 
 	@Builder
 	public FileMetadata(Long id, Long rootId, Long creatorId, Long ownerId, String fileType, LocalDateTime createdAt,

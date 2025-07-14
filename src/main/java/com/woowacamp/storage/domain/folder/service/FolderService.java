@@ -96,37 +96,43 @@ public class FolderService {
 	 * 동시에 여러 폴더 이동이 진행될때 싸이클이 발생할 수 있기 때문에 락을 걸고 진행.
 	 */
 	public void moveFolder(Long sourceFolderId, FolderMoveDto dto) {
-		FolderMetadata folderMetadata = folderMetadataJpaRepository.findByIdNotDeleted(sourceFolderId)
-			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
-		redisLockService.handleUserRequest(folderMetadata.getOwnerId().toString(),
-			() -> moveFolderTask(sourceFolderId, dto), ErrorCode.TOO_MUCH_REQUEST.baseException());
+		redisLockService.runWithWatchdogMultiLock(sourceFolderId + "", dto.targetFolderId() + "",
+			() -> moveFolderTask(sourceFolderId, dto));
 	}
 
 	@Transactional
 	protected void moveFolderTask(Long sourceFolderId, FolderMoveDto dto) {
-		FolderMetadata folderMetadata = folderMetadataJpaRepository.findByIdNotDeleted(sourceFolderId)
+		FolderMetadata sourceFolder = folderMetadataJpaRepository.findByIdNotDeleted(sourceFolderId)
+			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
+		FolderMetadata targetFolder = folderMetadataJpaRepository.findByIdNotDeleted(dto.targetFolderId())
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
 
-		folderMetadataJpaRepository.findByIdNotDeleted(dto.targetFolderId())
+		folderSearchUtil.folderLockCheck(sourceFolder.getId(), null);
+		int targetFolderDepth = folderSearchUtil.folderLockCheck(targetFolder.getId(),
+			sourceFolderId);// target은 source의 자식이면 안된다.
+
+		// 락을 건 후에 삭제되지 않았는지 체크
+		folderMetadataJpaRepository.findByIdNotDeleted(targetFolder.getId())
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
 
-		validateInvalidMove(dto, folderMetadata);
-		validateFolderDepth(sourceFolderId, dto);
-		long originParentId = folderMetadata.getParentFolderId();
+		validateInvalidMove(targetFolder, sourceFolder);
+
+		validateFolderDepth(sourceFolder.getId(), targetFolder.getId(), targetFolderDepth);
+		long originParentId = sourceFolder.getParentFolderId();
 
 		// 목적지에 동일 폴더를 생성하지 않도록 락이 필요하다. 누군가 폴더를 생성해서 같은 이름이 생길 수 있기 때문.
 		// 또한 트랜잭션 내부에서 락을 사용하면 커밋 전에 락이 해제되기 때문에 일관성이 깨질 수 있다.
-		String moveFolderLock = dto.targetFolderId() + "/" + folderMetadata.getUploadFolderName();
-		redisLockService.handleUserRequest(moveFolderLock, () -> duplicatedCheckAndMoveCommit(dto, folderMetadata),
-			ErrorCode.TOO_MUCH_REQUEST.baseException());
+		String moveFolderLock = targetFolder.getId() + "/" + sourceFolder.getUploadFolderName();
+		redisLockService.runWithWatchdogLock(moveFolderLock,
+			() -> duplicatedCheckAndMoveCommit(targetFolder, sourceFolder));
 
 		// 업데이트가 완료된 이후 용량 계산을 실시한다.
-		metadataService.calculateSize(originParentId);
-		metadataService.calculateSize(dto.targetFolderId());
+		// metadataService.calculateSize(originParentId);
+		// metadataService.calculateSize(targetFolder.getId());
 
 		// TODO 하위 경로 공유 상태 변경 필요
 		// eventPublisher.publishEvent(
-		// 	new FolderMoveEvent(this, folderMetadata,
+		// 	new FolderMoveEvent(this, sourceFolder,
 		// 		folderMetadataJpaRepository.findById(dto.targetFolderId()).get()));
 	}
 
@@ -134,24 +140,24 @@ public class FolderService {
 	 * 락 내부에서 커밋을 하기 위해 이름 중복 체크와 폴더 이동 적용을 별도의 트랜잭션에서 처리
 	 */
 	@Transactional(propagation = Propagation.REQUIRES_NEW)
-	protected void duplicatedCheckAndMoveCommit(FolderMoveDto dto, FolderMetadata folderMetadata) {
-		validateDuplicatedFolderName(dto, folderMetadata);
-		folderMetadata.updateParentFolderId(dto.targetFolderId());
-		folderMetadataJpaRepository.save(folderMetadata);
+	protected void duplicatedCheckAndMoveCommit(FolderMetadata targetFolder, FolderMetadata sourceFolder) {
+		validateDuplicatedFolderName(targetFolder, sourceFolder);
+		sourceFolder.updateParentFolderId(targetFolder.getId());
+		folderMetadataJpaRepository.save(sourceFolder);
 	}
 
 	/**
 	 * root folder를 이동하려하는지 확인
 	 * 같은 폴더 내에서 이동하려하는지 확인
 	 */
-	private void validateInvalidMove(FolderMoveDto dto, FolderMetadata folderMetadata) {
-		if (Objects.equals(folderMetadata.getId(), dto.targetFolderId())) {
+	private void validateInvalidMove(FolderMetadata targetFolder, FolderMetadata sourceFolder) {
+		if (Objects.equals(sourceFolder.getId(), targetFolder.getId())) {
 			throw ErrorCode.FOLDER_MOVE_NOT_AVAILABLE.baseException();
 		}
-		if (folderMetadata.getParentFolderId() == null) {
+		if (sourceFolder.getParentFolderId() == null) {
 			throw ErrorCode.FOLDER_MOVE_NOT_AVAILABLE.baseException();
 		}
-		if (Objects.equals(folderMetadata.getParentFolderId(), dto.targetFolderId())) {
+		if (Objects.equals(sourceFolder.getParentFolderId(), targetFolder.getId())) {
 			throw ErrorCode.FOLDER_MOVE_NOT_AVAILABLE.baseException();
 		}
 	}
@@ -159,9 +165,8 @@ public class FolderService {
 	/**
 	 * sourceFolder의 최대 깊이 + 이동하려는 폴더의 깊이가 50을 넘는지 확인
 	 */
-	private void validateFolderDepth(Long sourceFolderId, FolderMoveDto dto) {
-		int sourceFolderLeafDepth = getLeafDepth(sourceFolderId, 1, dto.targetFolderId());
-		int targetFolderCurrentDepth = folderSearchUtil.getFolderDepth(dto.targetFolderId());
+	private void validateFolderDepth(Long sourceFolderId, Long targetFolderId, int targetFolderCurrentDepth) {
+		int sourceFolderLeafDepth = getLeafDepth(sourceFolderId, 1, targetFolderId);
 		if (sourceFolderLeafDepth + targetFolderCurrentDepth > MAX_FOLDER_DEPTH) {
 			throw ErrorCode.EXCEED_MAX_FOLDER_DEPTH.baseException();
 		}
@@ -196,8 +201,8 @@ public class FolderService {
 	/**
 	 * 같은 폴더 내에 동일한 이름의 폴더가 있는지 확인
 	 */
-	private void validateDuplicatedFolderName(FolderMoveDto dto, FolderMetadata folderMetadata) {
-		if (folderMetadataJpaRepository.existsByParentFolderIdAndUploadFolderName(dto.targetFolderId(),
+	private void validateDuplicatedFolderName(FolderMetadata targetFolder, FolderMetadata folderMetadata) {
+		if (folderMetadataJpaRepository.existsByParentFolderIdAndUploadFolderName(targetFolder.getId(),
 			folderMetadata.getUploadFolderName())) {
 			throw ErrorCode.FILE_NAME_DUPLICATE.baseException();
 		}
@@ -231,12 +236,13 @@ public class FolderService {
 		validateFolderName(req);
 
 		String lockName = req.parentFolderId() + "/" + req.uploadFolderName();
-		return redisLockService.<Long>handleUserRequest(lockName, () -> randomCreateFolder(req, user),
-			ErrorCode.TOO_MUCH_REQUEST.baseException());
+		// return redisLockService.<Long>runWithWatchdogLock(lockName, () -> createFolderTask(req, user));
+		return createFolderTask(req, user);
 	}
 
+	// TODO : 현재 테스트를 위해 쓰기 권한으로 생성한다. 테스트가 끝나면 제거 필요
 	@Transactional
-	protected Long randomCreateFolder(CreateFolderReqDto req, User user) {
+	protected Long createFolderTask(CreateFolderReqDto req, User user) {
 		long parentFolderId = req.parentFolderId();
 		FolderMetadata parentFolder = folderMetadataJpaRepository.findById(parentFolderId)
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
@@ -257,7 +263,8 @@ public class FolderService {
 			req.uploadFolderName())) {
 			throw ErrorCode.INVALID_FILE_NAME.baseException();
 		}
-		if (folderSearchUtil.getFolderDepth(req.parentFolderId()) >= MAX_FOLDER_DEPTH) {
+		int depth = folderSearchUtil.folderDepthCheck(req.parentFolderId());
+		if (depth >= MAX_FOLDER_DEPTH) {
 			throw ErrorCode.EXCEED_MAX_FOLDER_DEPTH.baseException();
 		}
 	}
@@ -282,13 +289,22 @@ public class FolderService {
 	}
 
 	/**
-	 * 폴더 삭제 메소드입니다.
-	 * 하위 폴더 및 파일까지 탐색하여 삭제를 진행합니다.
-	 * deleteWithDfs 메소드를 통해 삭제해야 할 pk를 받아옵니다.
-	 * 이후 pk 데이터를 바탕으로 폴더 및 파일 삭제와 S3에 미처 업로드가 되지 못한 파일의 부모 폴더의 값을 -1로 변경합니다.
+	 * 폴더 삭제 메서드
+	 * 락을 먼저 걸고 실제 삭제 작업을 진행
+	 * @param folderId
+	 * @param userId
 	 */
-	@Transactional
 	public void deleteFolder(Long folderId, Long userId) {
+		String lockName = folderId + "";
+		redisLockService.runWithWatchdogLock(lockName, () -> deleteFolderTask(folderId, userId));
+	}
+
+	/**
+	 *
+	 * 하위 폴더 및 파일까지 탐색하여 삭제를 진행합니다.
+	 * DFS로 탐색하며, leaf 노드부터 제거합니다.
+	 */
+	private void deleteFolderTask(Long folderId, Long userId) {
 		FolderMetadata folderMetadata = folderMetadataJpaRepository.findById(folderId)
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
 
@@ -305,32 +321,39 @@ public class FolderService {
 			throw ErrorCode.INVALID_DELETE_REQUEST.baseException();
 		}
 
+		// 상위에 이동, 삭제 작업이 없는지 확인한다.
+		// 이런 작업이 시간이 오래 걸리니까 이런 작업을 비동기 처리하고 Future 같은걸로 받아서 처리해도 좋을 것 같다.
+		// 다만 위의 검증 과정이 메모리에서 이뤄지는 거라서 별 차이 없을 것 같다. 만약 검증 과정이 복잡하거나, 다른 추가 작업이 발생한다면 고려할만 하다고 생각한다.
+		folderSearchUtil.folderLockCheck(folderMetadata.getId(), null);
+
 		// 삭제 요청이 들어온 폴더를 제거한다.
 		folderMetadataJpaRepository.softDeleteById(folderMetadata.getId());
 
 		// 삭제는 스레드 풀이 처리하도록 한다.
 		deleteFolderTree(folderMetadata);
+
 		// 삭제한 폴더의 용량 계산을 진행한다.
-		metadataService.calculateSize(folderMetadata.getParentFolderId());
+		// metadataService.calculateSize(folderMetadata.getParentFolderId());
 	}
 
 	/**
 	 * 현재 폴더 기준으로 하위 파일 트리를 제거하는 메소드
-	 * 하위 폴더와 파일을 재귀 호출로 탐색
+	 * 하위 폴더 N개를 조회하고, N개를 순회하며 재귀로 탐색 진행
 	 */
 	public void deleteFolderTree(FolderMetadata folderMetadata) {
 		long folderId = folderMetadata.getId();
 		log.info("[Delete Start Pk] {}", folderId);
+
+		// pageSize만큼 페이징 처리하여 하위 폴더 조회하고, 각각에 대해 재귀호출 진행
 		searchThreadPoolExecutor.execute(
 			() -> QueryExecuteTemplate.<FolderMetadata>selectFilesAndExecuteWithCursor(pageSize,
 				findFolder -> folderMetadataRepository.findByParentFolderIdWithLastId(folderId,
-					findFolder == null ? null : findFolder.getId(), pageSize), folderMetadataList -> {
-					backgroundJob.addForDeleteFolder(folderMetadataList);
-					folderMetadataList.forEach(folder -> {
-						fileDeleteWithParentFolder(folder); // 하위 파일 제거
-						deleteFolderTree(folder); // 재귀적으로 탐색
-					});
-				}));
+					findFolder == null ? null : findFolder.getId(), pageSize),
+				folderMetadataList -> folderMetadataList.forEach(folder -> deleteFolderTree(folder))));
+
+		//현재 폴더 삭제 -> 리프부터 삭제
+		fileDeleteWithParentFolder(folderMetadata);
+		backgroundJob.addForDeleteFolder(folderMetadata);
 
 		// 삭제 시작한 폴더의 하위 파일 제거
 		searchThreadPoolExecutor.execute(() -> {

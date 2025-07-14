@@ -24,11 +24,27 @@ public class FileMetadataRepository {
 		fileMetadataJpaRepository.deleteAllByIdInBatch(fileMetadataList.stream().map(FileMetadata::getId).toList());
 	}
 
-	public List<FileMetadata> findOrphanFileByLastId(long lastParentId, Long lastId, int size) {
+	public List<FileMetadata> findUploadFailureFileByLastId(Long lastId, int size) {
 		if (lastId == null) {
-			fileMetadataJpaRepository.findOrphanFileList(size);
+			return fileMetadataJpaRepository.findUploadFailureList(size);
 		}
-		return fileMetadataJpaRepository.findOrhanFileListWithLastId(lastParentId, lastId, size);
+
+		return fileMetadataJpaRepository.findUploadFailureListWithLastId(lastId, size);
+	}
+
+	public List<FileMetadata> findUploadPendingFileByLastId(Long lastId, int size, LocalDateTime timeLimit) {
+		if (lastId == null) {
+			return fileMetadataJpaRepository.findUploadPendingList(size, timeLimit);
+		}
+
+		return fileMetadataJpaRepository.findUploadPendingListWithLastId(lastId, size, timeLimit);
+	}
+
+	public List<FileMetadata> findSoftDeletedFileWithLastIdAndDuration(Long lastId, int size, LocalDateTime timeLimit) {
+		if (lastId == null) {
+			return fileMetadataJpaRepository.findSoftDeletedFile(size, timeLimit);
+		}
+		return fileMetadataJpaRepository.findSoftDeletedFileWithLastId(lastId, size, timeLimit);
 	}
 
 	public List<FileMetadata> findUploadFailureFileByLastId(Long lastId, int size) {

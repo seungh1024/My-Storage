@@ -1,0 +1,10 @@
+.git
+*.log
+*.md
+build/
+ceph/
+*.csv
+*.zip
+*.tar.gz
+*.db
+*.class

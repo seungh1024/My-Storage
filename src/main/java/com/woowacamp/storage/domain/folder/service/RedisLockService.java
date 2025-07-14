@@ -1,11 +1,17 @@
 package com.woowacamp.storage.domain.folder.service;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
+import org.redisson.RedissonMultiLock;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.stereotype.Service;
+
+import com.woowacamp.storage.domain.file.util.StringFormat;
+import com.woowacamp.storage.global.error.ErrorCode;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -14,22 +20,26 @@ import lombok.extern.slf4j.Slf4j;
 @Service
 @RequiredArgsConstructor
 public class RedisLockService {
+	private static String LOCK_FORMAT = "LOCK NAME : {}";
+	private static String MULTI_LOCK_FORMAT = "LOCK NAME 1 : {}, LOCK NAME 2 : {}";
+
 	private final RedissonClient redissonClient;
 
 	private final int takingLockTime = 1;
 	private final int keepingLockTime = 10;
 
-	public void handleUserRequest(String lockName, Runnable task, RuntimeException exception) {
+	public void runWithWatchdogLock(String lockName, Runnable task) {
 		RLock lock = redissonClient.getLock(lockName);
 		boolean isLocked = false;
 
 		try {
-			isLocked = lock.tryLock(takingLockTime, keepingLockTime, TimeUnit.SECONDS);
+			isLocked = lock.tryLock(takingLockTime, TimeUnit.SECONDS);
 			// 락 획득 실패 시 동시 요청이므로 예외 던짐
 			if (!isLocked) {
-				throw exception;
+				throw ErrorCode.TOO_MUCH_REQUEST.baseException(StringFormat.format(LOCK_FORMAT, lockName));
 			}
 			task.run();
+
 		} catch (InterruptedException e) {
 			log.error("[RedisLockService] error = {}", e);
 			throw new RuntimeException(e);
@@ -47,7 +57,7 @@ public class RedisLockService {
 		}
 	}
 
-	public <T> T handleUserRequest(String lockName, Supplier<T> task, RuntimeException exception) {
+	public <T> T runWithWatchdogLock(String lockName, Supplier<T> task) {
 		RLock lock = redissonClient.getLock(lockName);
 		boolean isLocked = false;
 		T result = null;
@@ -55,7 +65,7 @@ public class RedisLockService {
 		try {
 			isLocked = lock.tryLock(takingLockTime, keepingLockTime, TimeUnit.SECONDS);
 			if (!isLocked) {
-				throw exception;
+				throw ErrorCode.TOO_MUCH_REQUEST.baseException(StringFormat.format(LOCK_FORMAT, lockName));
 			}
 			lock.lock();
 
@@ -76,4 +86,66 @@ public class RedisLockService {
 		return result;
 	}
 
+	public void runWithWatchdogMultiLock(String lockName1, String lockName2, Runnable task) {
+		List<String> lockList = new ArrayList<>(List.of(lockName1,lockName2));
+		lockList.sort(String::compareTo); // 데드락 방지를 위한 정렬
+
+		// 락 객체 생성
+		RLock[] locks = lockList.stream()
+			.map(redissonClient::getLock)
+			.toArray(RLock[]::new);
+
+		boolean isLocked = false;
+
+		// 여러 락을 동시에 점유하려면 RedissonMultiLock 사용
+		RedissonMultiLock multiLock = new RedissonMultiLock(locks);
+
+		try {
+			isLocked = multiLock.tryLock(takingLockTime, TimeUnit.SECONDS);
+			// 락 획득 실패 시 동시 요청이므로 예외 던짐
+			if (!isLocked) {
+				throw ErrorCode.TOO_MUCH_REQUEST.baseException(
+					StringFormat.format(MULTI_LOCK_FORMAT, lockName1, lockName2));
+			}
+			task.run();
+
+		} catch (InterruptedException e) {
+			log.error("[RedisLockService] error = {}", e);
+			throw new RuntimeException(e);
+		} finally {
+			if (isLocked) {
+				try {
+					multiLock.unlock();
+				} catch (IllegalMonitorStateException e) {
+					// 락 소유 시간동안 비즈니스 로직 처리를 하지 못한 경우 예외 처리
+					// 여기서 throw를 하면 비즈니스 로직이 정상적으로 처리됐어도 예외 응답을 받게 됨.
+					// 메일 같은 것으로 락 소유시간이 짧은 것 같다는 알림을 전송하는게 좋다고 생각
+					log.error("Failed to do service: " + e.getMessage(), e);
+				}
+			}
+		}
+	}
+
+	public boolean checkLock(String lockName) {
+		RLock lock = redissonClient.getLock(lockName);
+		return lock.isLocked();
+	}
+
+	/**
+	 * 테스트용 락 획득 메서드
+	 */
+	public void tryLock(String lockName) {
+		RLock lock = redissonClient.getLock(lockName);
+		try {
+			lock.tryLock(takingLockTime, keepingLockTime, TimeUnit.SECONDS);
+		} catch (InterruptedException e) {
+			log.error("[RedisLockService] error = {}", e);
+			throw new RuntimeException(e);
+		}
+	}
+
+	public void unlock(String lockName) {
+		RLock lock = redissonClient.getLock(lockName);
+		lock.unlock();
+	}
 }

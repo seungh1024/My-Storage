@@ -42,3 +42,6 @@ application-secret.yml
 /logs/*
 /ceph/*
 *.yml
+
+
+telegraf.conf

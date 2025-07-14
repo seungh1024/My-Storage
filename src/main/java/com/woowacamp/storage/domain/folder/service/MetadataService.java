@@ -24,6 +24,7 @@ public class MetadataService {
 	/**
 	 * 상위 폴더를 탐색하며 현재 폴더의 사이즈를 계산하고 업데이트
 	 */
+	// TODO 재귀호출 수정. 데드락 발생함. 아마 MQ로 바꿀듯
 	public void calculateSize(long folderId) {
 		metadataThreadPoolExecutor.execute(() -> {
 			FolderMetadata folderMetadata = folderMetadataJpaRepository.findByParentId(folderId)
