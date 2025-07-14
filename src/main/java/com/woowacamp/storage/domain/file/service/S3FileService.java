@@ -1,11 +1,8 @@
 package com.woowacamp.storage.domain.file.service;
 
 import java.net.URL;
-import java.util.Map;
 import java.util.Objects;
 
-import org.springframework.amqp.rabbit.annotation.RabbitListener;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -39,16 +36,14 @@ public class S3FileService {
 	private final MetadataService metadataService;
 	private final ValidationService validationService;
 
-
 	/**
 	 * 1차로 메타데이터를 생성하는 메소드.
 	 * 사용자의 요청 데이터에 있는 사용자 정보, 상위 폴더 정보, 파일 사이즈의 정보를 저장
 	 */
 	public FileUploadResponseDto createInitialMetadata(FileUploadRequestDto fileUploadRequestDto) {
 		String lockName = fileUploadRequestDto.parentFolderId() + "/" + fileUploadRequestDto.fileName();
-		return redisLockService.<FileUploadResponseDto>handleUserRequest(lockName, () ->
-				createFileMetadata(fileUploadRequestDto)
-			, FILE_NAME_DUPLICATE.baseException());
+		return redisLockService.<FileUploadResponseDto>runWithWatchdogLock(lockName, () ->
+				createFileMetadata(fileUploadRequestDto));
 	}
 
 	@Transactional
@@ -130,11 +125,6 @@ public class S3FileService {
 
 		fileMetadata.updateFinishUploadStatus();
 		fileMetadataJpaRepository.save(fileMetadata);
-	}
-
-	@RabbitListener(queues = "#{fileUploadQueue.name}")
-	public void receiveMessage(Map<String, Object> message) {
-		System.out.println("Received message: " + message);
 	}
 
 }

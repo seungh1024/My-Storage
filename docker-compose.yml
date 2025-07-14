@@ -1,6 +1,7 @@
 version: '2.6'
 services:
   spring-server:
+    container_name: test-server
     build:
       context: .
       dockerfile: Dockerfile
@@ -12,27 +13,13 @@ services:
       - SPRING_DATASOURCE_USERNAME=root
       - SPRING_DATASOURCE_PASSWORD=root
       - SPRING_REDIS_URL=redis://redisson:6379
-    depends_on:
-      - mysql
-      - redisson
+      - SPRING_DDL_AUTO=update
+      - AWS_ENDPOINT=http://ceph_rgw:7480
+      - TZ=Asia/Seoul
+      - SPRING_LOG_PATH=/app/logs/app.log
+      - SPRING_JPA_SHOW_SQL=false
     mem_limit: 1G
     cpus: 2.0
     volumes:
-      - ./logs/app.log:/app/logs/app.log
-
-  mysql:
-    image: mysql:8
-    environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: test
-    ports:
-      - "8888:3306"
-    mem_limit: 1G
-    cpus: 2.0
-
-  redisson:
-    image: redis:7
-    ports:
-      - "9999:6379"
-    mem_limit: 512M
-    cpus: 1.0
+      - ./logs:/app/logs
+      - ./config:/app/config

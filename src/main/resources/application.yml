@@ -45,10 +45,10 @@ management:
 server:
   tomcat:
     threads:
-      min-spare: 50
-      max: 200
-    accept-count: 100
-    max-connections: 200
+      min-spare: 100
+      max: 300
+    accept-count: 200
+    max-connections: 400
     connection-timeout: 5000
 
 

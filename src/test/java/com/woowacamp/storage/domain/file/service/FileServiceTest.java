@@ -20,6 +20,7 @@ import com.woowacamp.storage.domain.file.entity.FileMetadata;
 import com.woowacamp.storage.domain.file.repository.FileMetadataJpaRepository;
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
+import com.woowacamp.storage.domain.folder.service.RedisLockService;
 import com.woowacamp.storage.global.constant.PermissionType;
 import com.woowacamp.storage.global.constant.UploadStatus;
 import com.woowacamp.storage.global.error.CustomException;
@@ -42,6 +43,8 @@ class FileServiceTest extends ContainerBaseConfig {
 	private FolderMetadataJpaRepository folderMetadataJpaRepository;
 	@Autowired
 	private FileService fileService;
+	@Autowired
+	private RedisLockService redisLockService;
 
 	@BeforeEach
 	void setUp(){
@@ -143,6 +146,65 @@ class FileServiceTest extends ContainerBaseConfig {
 			assertEquals(targetSize + sourceFileSize, findTargetFolder.getSize());
 		}
 
+		@Test
+		@DisplayName("source 폴더 상위에서 삭제,이동 작업 중이면 파일 이동에 실패한다.")
+		void if_source_parent_has_lock_then_file_move_fail() {
+			List<FileMetadata> files = folderTreeSetUp.getFiles();
+			List<FolderMetadata> subFolders = folderTreeSetUp.getSubFolders();
+			FileMetadata sourceFile = files.get(0);
+			long parentId = sourceFile.getParentFolderId();
+			long targetIdx = 0;
+			for (FolderMetadata f : subFolders) {
+				if (parentId != f.getId()) {
+					break;
+				}
+				targetIdx++;
+			}
+
+			// 현재 파일의 부모 폴더 -> 락을 거는 파일
+			FolderMetadata sourceFolder = folderMetadataJpaRepository.findById(sourceFile.getParentFolderId()).get();
+			// 현재 파일의 부모의 부모 폴더 -> 삭제나 이동 작업 중이라고 가정하는 폴더
+			String lock = sourceFolder.getParentFolderId()+"";
+			redisLockService.tryLock(lock);
+			FolderMetadata targetFolder =  subFolders.get((int)(targetIdx));
+			FileMoveDto fileMoveDto = new FileMoveDto(targetFolder.getId(), folderTreeSetUp.getUserId());
+
+			CustomException customException = assertThrows(CustomException.class,
+				() -> fileService.moveFile(sourceFile.getId(), fileMoveDto));
+
+			redisLockService.unlock(lock);
+
+			assertEquals(ErrorCode.PARENT_LOCKED.getMessage(), customException.getMessage());
+		}
+
+		@Test
+		@DisplayName("target 폴더 상위에서 삭제,이동 작업 중이면 파일 이동에 실패한다.")
+		void if_target_parent_has_lock_then_file_move_fail() {
+			List<FileMetadata> files = folderTreeSetUp.getFiles();
+			List<FolderMetadata> subFolders = folderTreeSetUp.getSubFolders();
+			FileMetadata sourceFile = files.get(0);
+			long parentId = sourceFile.getParentFolderId();
+			long targetIdx = 0;
+			for (FolderMetadata f : subFolders) {
+				if (parentId != f.getId()) {
+					break;
+				}
+				targetIdx++;
+			}
+
+			FolderMetadata targetFolder =  subFolders.get((int)(targetIdx));
+			String lock = targetFolder.getParentFolderId()+"";
+			redisLockService.tryLock(lock);
+			FileMoveDto fileMoveDto = new FileMoveDto(targetFolder.getId(), folderTreeSetUp.getUserId());
+
+			CustomException customException = assertThrows(CustomException.class,
+				() -> fileService.moveFile(sourceFile.getId(), fileMoveDto));
+
+			redisLockService.unlock(lock);
+
+			assertEquals(ErrorCode.PARENT_LOCKED.getMessage(), customException.getMessage());
+		}
+
 	}
 
 	@Nested
@@ -163,6 +225,24 @@ class FileServiceTest extends ContainerBaseConfig {
 			FolderMetadata findFolder = folderMetadataJpaRepository.findById(targetFile.getParentFolderId()).get();
 
 			assertEquals(parentFolder.getSize() - targetFile.getFileSize(), findFolder.getSize());
+		}
+
+		@Test
+		@DisplayName("상위 폴더에서 삭제,이동 작업 중이면 파일 삭제에 실패한다.")
+		void if_parent_has_lock_then_file_delete_fail() {
+			List<FileMetadata> files = folderTreeSetUp.getFiles();
+			FileMetadata targetFile = files.get(0);
+			FolderMetadata parentFolder = folderMetadataJpaRepository.findById(targetFile.getParentFolderId()).get();
+
+			String lock = parentFolder.getParentFolderId()+"";
+			redisLockService.tryLock(lock);
+
+			CustomException customException = assertThrows(CustomException.class,
+				() -> fileService.deleteFile(targetFile.getId(), folderTreeSetUp.getUserId()));
+
+			redisLockService.unlock(lock);
+
+			assertEquals(ErrorCode.PARENT_LOCKED.getMessage(), customException.getMessage());
 		}
 	}
 }

@@ -39,13 +39,12 @@ public enum ErrorCode {
 	SHARED_LINK_NOT_FOUND(HttpStatus.NOT_FOUND, "공유 링크를 찾을 수 없습니다."),
 	EXPIRED_SHARED_LINK(HttpStatus.BAD_REQUEST, "만료된 공유 링크입니다."),
 	WRONG_OBJECT_KEY(HttpStatus.BAD_REQUEST, "OBJECT KEY가 일치하지 않습니다. 요청 데이터를 다시 확인해 주세요."),
+	PARENT_LOCKED(HttpStatus.CONFLICT, "상위에 이동이나 삭제 작업 중인 폴더가 있습니다."),
 	// 500,
 	FILE_UPLOAD_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "파일 업로드에 실패했습니다."),
 	FILE_DELETE_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "파일 삭제에 실패했습니다."),
 	PERMISSION_CHECK_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "권한 확인 중 예외가 발생했습니다."),
-	TOO_MUCH_REQUEST(HttpStatus.INTERNAL_SERVER_ERROR, "요청이 많습니다. 잠시 후에 다시 시도해주세요."),
-	REDIS_LOCK_TIME_OVER(HttpStatus.INTERNAL_SERVER_ERROR, "서버에 문제가 생겨 요청 처리가 느립니다. 잠시 후에 다시 시도해주세요."),
-	REDIS_DISCONNECTED_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버에 문제가 생겨 요청을 처리할 수 없습니다. 잠시 후에 다시 시도해주세요.");
+	TOO_MUCH_REQUEST(HttpStatus.INTERNAL_SERVER_ERROR, "요청이 많습니다. 잠시 후에 다시 시도해주세요.");
 	private final HttpStatus status;
 	private final String message;
 
