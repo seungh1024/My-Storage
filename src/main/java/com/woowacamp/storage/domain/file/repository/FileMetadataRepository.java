@@ -46,20 +46,4 @@ public class FileMetadataRepository {
 		}
 		return fileMetadataJpaRepository.findSoftDeletedFileWithLastId(lastId, size, timeLimit);
 	}
-
-	public List<FileMetadata> findUploadFailureFileByLastId(Long lastId, int size) {
-		if (lastId == null) {
-			return fileMetadataJpaRepository.findUploadFailureList(size);
-		}
-
-		return fileMetadataJpaRepository.findUploadFailureListWithLastId(lastId, size);
-	}
-
-	public List<FileMetadata> findUploadPendingFileByLastId(Long lastId, int size, LocalDateTime timeLimit) {
-		if (lastId == null) {
-			return fileMetadataJpaRepository.findUploadPendingList(size, timeLimit);
-		}
-
-		return fileMetadataJpaRepository.findUploadPendingListWithLastId(lastId, size, timeLimit);
-	}
 }
