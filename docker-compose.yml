@@ -21,5 +21,29 @@ services:
     mem_limit: 1G
     cpus: 2.0
     volumes:
-      - ./logs:/app/logs
+      - ./logs/app.log:/app/logs/app.log
+      - ./config:/app/config
+
+  spring-server2:
+    container_name: test-server2
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8081:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=local
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/test?connectTimeout=3000&socketTimeout=3000
+      - SPRING_DATASOURCE_USERNAME=root
+      - SPRING_DATASOURCE_PASSWORD=root
+      - SPRING_REDIS_URL=redis://redisson:6379
+      - SPRING_DDL_AUTO=update
+      - AWS_ENDPOINT=http://ceph_rgw:7480
+      - TZ=Asia/Seoul
+      - SPRING_LOG_PATH=/app/logs/app.log
+      - SPRING_JPA_SHOW_SQL=false
+    mem_limit: 1G
+    cpus: 2.0
+    volumes:
+      - ./logs/app2.log:/app/logs/app.log
       - ./config:/app/config

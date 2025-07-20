@@ -7,6 +7,7 @@ import org.redisson.Redisson;
 import org.redisson.api.RedissonClient;
 import org.redisson.config.Config;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
@@ -17,7 +18,7 @@ public class RedissonConfig {
 	@Value("${spring.redisson.lock-watchdog-timeout}")
 	private long lockWatchdogTimeout;
 
-	// @Bean
+	@Bean
 	public RedissonClient redissonClient() throws IOException {
 		InputStream configStream = getClass().getClassLoader().getResourceAsStream("redisson.yml");
 		Config config = Config.fromYAML(configStream);
