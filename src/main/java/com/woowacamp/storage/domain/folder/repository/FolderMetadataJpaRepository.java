@@ -187,4 +187,24 @@ public interface FolderMetadataJpaRepository extends JpaRepository<FolderMetadat
 		WHERE f.id = :id
 	""")
 	void updateFolderSize(@Param("size") long size, @Param("id") long id);
+
+	@Transactional
+	@Modifying
+	@Query("""
+		UPDATE FolderMetadata f
+		SET f.updating = true, f.updatedAt = NOW()
+		WHERE f.id =:id
+		and f.updating = false
+	""")
+	int tryLock(@Param("id") long id);
+
+	@Transactional
+	@Modifying
+	@Query("""
+		UPDATE FolderMetadata f
+		SET f.updating = false, f.updatedAt = NOW()
+		WHERE f.id =:id
+		and f.updating = true
+	""")
+	int unlock(@Param("id") Long id);
 }

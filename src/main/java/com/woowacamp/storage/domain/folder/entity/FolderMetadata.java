@@ -77,6 +77,10 @@ public class FolderMetadata {
 	@NotNull
 	private boolean isDeleted = false;
 
+	@Column(name = "updating", columnDefinition = "BOOLEAN DEFAULT false")
+	@NotNull
+	private boolean updating = false;
+
 
 	@Builder
 	public FolderMetadata(Long id, Long rootId, Long ownerId, Long creatorId, LocalDateTime createdAt,
@@ -127,5 +131,9 @@ public class FolderMetadata {
 
 	public boolean isSharingExpired() {
 		return sharingExpiredAt.isBefore(LocalDateTime.now());
+	}
+
+	public void lock() {
+		this.updating = true;
 	}
 }

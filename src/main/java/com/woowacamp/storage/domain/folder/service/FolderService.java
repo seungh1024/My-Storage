@@ -96,35 +96,72 @@ public class FolderService {
 	 * 동시에 여러 폴더 이동이 진행될때 싸이클이 발생할 수 있기 때문에 락을 걸고 진행.
 	 */
 	public void moveFolder(Long sourceFolderId, FolderMoveDto dto) {
-		redisLockService.runWithWatchdogMultiLock(sourceFolderId + "", dto.targetFolderId() + "",
-			() -> moveFolderTask(sourceFolderId, dto));
+		// redisLockService.runWithWatchdogMultiLock(sourceFolderId + "", dto.targetFolderId() + "",
+		// 	() -> moveFolderTask(sourceFolderId, dto));
+		moveFolderTask(sourceFolderId, dto);
 	}
 
 	@Transactional
 	protected void moveFolderTask(Long sourceFolderId, FolderMoveDto dto) {
 		FolderMetadata sourceFolder = folderMetadataJpaRepository.findByIdNotDeleted(sourceFolderId)
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
+
 		FolderMetadata targetFolder = folderMetadataJpaRepository.findByIdNotDeleted(dto.targetFolderId())
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
 
-		folderSearchUtil.folderLockCheck(sourceFolder.getId(), null);
-		int targetFolderDepth = folderSearchUtil.folderLockCheck(targetFolder.getId(),
-			sourceFolderId);// target은 source의 자식이면 안된다.
-
-		// 락을 건 후에 삭제되지 않았는지 체크
-		folderMetadataJpaRepository.findByIdNotDeleted(targetFolder.getId())
-			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
-
 		validateInvalidMove(targetFolder, sourceFolder);
+		long minId = Math.min(sourceFolder.getId(), targetFolder.getId());
+		long maxId = Math.max(sourceFolder.getId(), targetFolder.getId());
+		long lock1 = tryLock(minId);
+		if (lock1 == 0) {
+			throw ErrorCode.PARENT_LOCKED.baseException();
+		}
+		long lock2 = tryLock(maxId);
+		if (lock2 == 0) {
+			while (true) {
+				int unlock = unlock(minId);
+				if (unlock == 1) {
+					break;
+				}
+			}
+			throw ErrorCode.PARENT_LOCKED.baseException();
+		}
 
-		validateFolderDepth(sourceFolder.getId(), targetFolder.getId(), targetFolderDepth);
-		long originParentId = sourceFolder.getParentFolderId();
+		try {
 
-		// 목적지에 동일 폴더를 생성하지 않도록 락이 필요하다. 누군가 폴더를 생성해서 같은 이름이 생길 수 있기 때문.
-		// 또한 트랜잭션 내부에서 락을 사용하면 커밋 전에 락이 해제되기 때문에 일관성이 깨질 수 있다.
-		String moveFolderLock = targetFolder.getId() + "/" + sourceFolder.getUploadFolderName();
-		redisLockService.runWithWatchdogLock(moveFolderLock,
-			() -> duplicatedCheckAndMoveCommit(targetFolder, sourceFolder));
+			folderSearchUtil.folderLockCheck(sourceFolder.getId(), null);
+			int targetFolderDepth = folderSearchUtil.folderLockCheck(targetFolder.getId(),
+				sourceFolderId);// target은 source의 자식이면 안된다.
+
+			// 락을 건 후에 삭제되지 않았는지 체크
+			folderMetadataJpaRepository.findByIdNotDeleted(targetFolder.getId())
+				.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
+
+
+			validateFolderDepth(sourceFolder.getId(), targetFolder.getId(), targetFolderDepth);
+			long originParentId = sourceFolder.getParentFolderId();
+
+			// 목적지에 동일 폴더를 생성하지 않도록 락이 필요하다. 누군가 폴더를 생성해서 같은 이름이 생길 수 있기 때문.
+			// 또한 트랜잭션 내부에서 락을 사용하면 커밋 전에 락이 해제되기 때문에 일관성이 깨질 수 있다.
+			// String moveFolderLock = targetFolder.getId() + "/" + sourceFolder.getUploadFolderName();
+			// redisLockService.runWithWatchdogLock(moveFolderLock,
+			// 	() -> duplicatedCheckAndMoveCommit(targetFolder, sourceFolder));
+			duplicatedCheckAndMoveCommit(targetFolder, sourceFolder);
+		} catch (Exception e) {
+			throw e;
+		}finally {
+			int cnt = 0;
+			while (cnt < 2) {
+				long unlock1 = unlock(minId);
+				long unlock2 = unlock(maxId);
+				if (unlock1 == 1 && unlock2 == 1) {
+					break;
+				} else if (unlock1 == 1 || unlock2 == 1) {
+					cnt++;
+				}
+			}
+		}
+
 
 		// 업데이트가 완료된 이후 용량 계산을 실시한다.
 		// metadataService.calculateSize(originParentId);
@@ -136,6 +173,15 @@ public class FolderService {
 		// 		folderMetadataJpaRepository.findById(dto.targetFolderId()).get()));
 	}
 
+	@Transactional(propagation = Propagation.REQUIRES_NEW)
+	public int tryLock(long id) {
+		return folderMetadataJpaRepository.tryLock(id);
+	}
+	@Transactional(propagation = Propagation.REQUIRES_NEW)
+	public int unlock(long id) {
+		return folderMetadataJpaRepository.unlock(id);
+	}
+
 	/**
 	 * 락 내부에서 커밋을 하기 위해 이름 중복 체크와 폴더 이동 적용을 별도의 트랜잭션에서 처리
 	 */
@@ -143,6 +189,8 @@ public class FolderService {
 	protected void duplicatedCheckAndMoveCommit(FolderMetadata targetFolder, FolderMetadata sourceFolder) {
 		validateDuplicatedFolderName(targetFolder, sourceFolder);
 		sourceFolder.updateParentFolderId(targetFolder.getId());
+		sourceFolder.lock();
+		targetFolder.lock();
 		folderMetadataJpaRepository.save(sourceFolder);
 	}
 
