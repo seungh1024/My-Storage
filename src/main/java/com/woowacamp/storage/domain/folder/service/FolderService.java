@@ -50,7 +50,6 @@ public class FolderService {
 	private final FileMetadataRepository fileMetadataRepository;
 	private final FolderMetadataJpaRepository folderMetadataJpaRepository;
 	private final FolderMetadataRepository folderMetadataRepository;
-	private final MetadataService metadataService;
 	private final RedisLockService redisLockService;
 	private final UserRepository userRepository;
 	private final FolderSearchUtil folderSearchUtil;
@@ -95,13 +94,8 @@ public class FolderService {
 	 * 따라서 폴더 이동의 경우는 동시에 처리되지 않는다.
 	 * 동시에 여러 폴더 이동이 진행될때 싸이클이 발생할 수 있기 때문에 락을 걸고 진행.
 	 */
-	public void moveFolder(Long sourceFolderId, FolderMoveDto dto) {
-		redisLockService.runWithWatchdogMultiLock(sourceFolderId + "", dto.targetFolderId() + "",
-			() -> moveFolderTask(sourceFolderId, dto));
-	}
-
 	@Transactional
-	protected void moveFolderTask(Long sourceFolderId, FolderMoveDto dto) {
+	public void moveFolder(Long sourceFolderId, FolderMoveDto dto) {
 		FolderMetadata sourceFolder = folderMetadataJpaRepository.findByIdNotDeleted(sourceFolderId)
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
 		FolderMetadata targetFolder = folderMetadataJpaRepository.findByIdNotDeleted(dto.targetFolderId())
@@ -231,18 +225,13 @@ public class FolderService {
 	/**
 	 *
 	 */
+
+	// TODO : 현재 테스트를 위해 쓰기 권한으로 생성한다. 테스트가 끝나면 제거 필요
+	@Transactional
 	public Long createFolder(CreateFolderReqDto req) {
 		User user = userRepository.findById(req.userId()).orElseThrow(ErrorCode.USER_NOT_FOUND::baseException);
 		validateFolderName(req);
 
-		String lockName = req.parentFolderId() + "/" + req.uploadFolderName();
-		// return redisLockService.<Long>runWithWatchdogLock(lockName, () -> createFolderTask(req, user));
-		return createFolderTask(req, user);
-	}
-
-	// TODO : 현재 테스트를 위해 쓰기 권한으로 생성한다. 테스트가 끝나면 제거 필요
-	@Transactional
-	protected Long createFolderTask(CreateFolderReqDto req, User user) {
 		long parentFolderId = req.parentFolderId();
 		FolderMetadata parentFolder = folderMetadataJpaRepository.findById(parentFolderId)
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
@@ -289,22 +278,11 @@ public class FolderService {
 	}
 
 	/**
-	 * 폴더 삭제 메서드
-	 * 락을 먼저 걸고 실제 삭제 작업을 진행
-	 * @param folderId
-	 * @param userId
-	 */
-	public void deleteFolder(Long folderId, Long userId) {
-		String lockName = folderId + "";
-		redisLockService.runWithWatchdogLock(lockName, () -> deleteFolderTask(folderId, userId));
-	}
-
-	/**
 	 *
 	 * 하위 폴더 및 파일까지 탐색하여 삭제를 진행합니다.
-	 * DFS로 탐색하며, leaf 노드부터 제거합니다.
+	 * BFS로 탐색하며, leaf 노드부터 제거합니다.
 	 */
-	private void deleteFolderTask(Long folderId, Long userId) {
+	private void deleteFolder(Long folderId, Long userId) {
 		FolderMetadata folderMetadata = folderMetadataJpaRepository.findById(folderId)
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
 
