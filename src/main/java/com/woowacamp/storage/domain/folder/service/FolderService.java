@@ -282,7 +282,7 @@ public class FolderService {
 	 * 하위 폴더 및 파일까지 탐색하여 삭제를 진행합니다.
 	 * BFS로 탐색하며, leaf 노드부터 제거합니다.
 	 */
-	private void deleteFolder(Long folderId, Long userId) {
+	public void deleteFolder(Long folderId, Long userId) {
 		FolderMetadata folderMetadata = folderMetadataJpaRepository.findById(folderId)
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
 
