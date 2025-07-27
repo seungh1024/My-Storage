@@ -117,7 +117,6 @@ public class FolderService {
 		validateInvalidMove(targetFolder, sourceFolder);
 
 		validateFolderDepth(sourceFolder.getId(), targetFolder.getId(), targetFolderDepth);
-		long originParentId = sourceFolder.getParentFolderId();
 
 		// 목적지에 동일 폴더를 생성하지 않도록 락이 필요하다. 누군가 폴더를 생성해서 같은 이름이 생길 수 있기 때문.
 		// 또한 트랜잭션 내부에서 락을 사용하면 커밋 전에 락이 해제되기 때문에 일관성이 깨질 수 있다.
@@ -125,9 +124,6 @@ public class FolderService {
 		redisLockService.runWithWatchdogLock(moveFolderLock,
 			() -> duplicatedCheckAndMoveCommit(targetFolder, sourceFolder));
 
-		// 용량 업데이트 이벤트 발행
-		publisher.publishEvent(new FolderSizeEvent(sourceFolder, -sourceFolder.getSize()));
-		publisher.publishEvent(new FolderSizeEvent(targetFolder, sourceFolder.getSize()));
 
 		// TODO 하위 경로 공유 상태 변경 필요
 		// eventPublisher.publishEvent(
@@ -140,6 +136,10 @@ public class FolderService {
 	 */
 	@Transactional(propagation = Propagation.REQUIRES_NEW)
 	protected void duplicatedCheckAndMoveCommit(FolderMetadata targetFolder, FolderMetadata sourceFolder) {
+		// 용량 업데이트 이벤트 발행.
+		publisher.publishEvent(new FolderSizeEvent(sourceFolder.getParentFolderId(), -sourceFolder.getSize()));
+		publisher.publishEvent(new FolderSizeEvent(targetFolder.getId(), sourceFolder.getSize()));
+
 		validateDuplicatedFolderName(targetFolder, sourceFolder);
 		sourceFolder.updateParentFolderId(targetFolder.getId());
 		folderMetadataJpaRepository.save(sourceFolder);
