@@ -8,6 +8,7 @@ import java.util.Objects;
 import java.util.concurrent.Executor;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
@@ -23,6 +24,7 @@ import com.woowacamp.storage.domain.folder.dto.FolderContentsSortField;
 import com.woowacamp.storage.domain.folder.dto.request.CreateFolderReqDto;
 import com.woowacamp.storage.domain.folder.dto.request.FolderMoveDto;
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
+import com.woowacamp.storage.domain.folder.event.FolderMoveEvent;
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataRepository;
 import com.woowacamp.storage.domain.folder.utils.FolderSearchUtil;
@@ -55,6 +57,9 @@ public class FolderService {
 	private final FolderSearchUtil folderSearchUtil;
 	private final Executor searchThreadPoolExecutor;
 	private final BackgroundJob backgroundJob;
+
+	private final ApplicationEventPublisher publisher;
+
 
 	@Value("${constant.batchSize}")
 	private int pageSize;
@@ -120,9 +125,8 @@ public class FolderService {
 		redisLockService.runWithWatchdogLock(moveFolderLock,
 			() -> duplicatedCheckAndMoveCommit(targetFolder, sourceFolder));
 
-		// 업데이트가 완료된 이후 용량 계산을 실시한다.
-		// metadataService.calculateSize(originParentId);
-		// metadataService.calculateSize(targetFolder.getId());
+		// 용량 업데이트 이벤트 발행
+		publisher.publishEvent(new FolderMoveEvent(sourceFolder,targetFolder));
 
 		// TODO 하위 경로 공유 상태 변경 필요
 		// eventPublisher.publishEvent(

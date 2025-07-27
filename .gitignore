@@ -45,3 +45,5 @@ application-secret.yml
 
 
 telegraf.conf
+
+rabbitmq/

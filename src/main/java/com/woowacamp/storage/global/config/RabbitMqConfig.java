@@ -3,8 +3,8 @@ package com.woowacamp.storage.global.config;
 import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.BindingBuilder;
 import org.springframework.amqp.core.DirectExchange;
-import org.springframework.amqp.core.Exchange;
 import org.springframework.amqp.core.Queue;
+import org.springframework.amqp.core.QueueBuilder;
 import org.springframework.amqp.core.TopicExchange;
 import org.springframework.amqp.rabbit.connection.CachingConnectionFactory;
 import org.springframework.amqp.rabbit.connection.ConnectionFactory;
@@ -26,12 +26,20 @@ public class RabbitMqConfig {
 	private String password;
 	@Value("${spring.rabbitmq.virtual-host}")
 	private String virtualHost;
-	@Value("${spring.rabbitmq.file-upload-queue}")
-	private String fileUploadQueue;
-	@Value("${spring.rabbitmq.file-upload-exchange}")
-	private String fileUploadExchange;
-	@Value("${spring.rabbitmq.file-upload-key}")
-	private String fileUploadKey;
+	@Value("${spring.rabbitmq.folder-size-queue}")
+	private String folderSizeQueue;
+	@Value("${spring.rabbitmq.folder-size-exchange}")
+	private String folderSizeExchange;
+	@Value("${spring.rabbitmq.folder-size-key}")
+	private String folderSizeKey;
+
+	@Value("${spring.rabbitmq.folder-size-dlx-queue}")
+	private String folderSizeDlxQueue;
+	@Value("${spring.rabbitmq.folder-size-dlx-exchange}")
+	private String folderSizeDlxExchange;
+	@Value("${spring.rabbitmq.folder-size-dlx-key}")
+	private String folderSizeDlxKey;
+
 	@Bean
 	public ConnectionFactory connectionFactory() {
 		CachingConnectionFactory connectionFactory = new CachingConnectionFactory();
@@ -45,8 +53,12 @@ public class RabbitMqConfig {
 	}
 
 	@Bean
-	public Queue fileUploadQueue() {
-		return new Queue(fileUploadQueue,true);
+	public Queue folderSizeQueue() {
+		return QueueBuilder.durable(folderSizeQueue)
+			.withArgument("x-message-ttl", 60000)  // 메시지 TTL 60000ms = 1분
+			.withArgument("x-dead-letter-exchange", folderSizeDlxExchange)  // DLX 설정
+			.withArgument("x-dead-letter-routing-key", folderSizeDlxKey)  // DLX 라우팅 키
+			.build();
 	}
 
 	/**
@@ -55,13 +67,28 @@ public class RabbitMqConfig {
 	 * @return
 	 */
 	@Bean
-	public TopicExchange fileUploadExchange() {
-		return new TopicExchange(fileUploadExchange);
+	public TopicExchange folderSizeExchange() {
+		return new TopicExchange(folderSizeExchange);
 	}
 
 	@Bean
-	public Binding fileUploadBinding(TopicExchange fileUploadExchange, Queue fileUploadQueue) {
-		return BindingBuilder.bind(fileUploadQueue).to(fileUploadExchange).with(fileUploadKey);
+	public Binding folderSizeBinding(TopicExchange folderSizeExchange, Queue folderSizeQueue) {
+		return BindingBuilder.bind(folderSizeQueue).to(folderSizeExchange).with(folderSizeKey);
+	}
+
+	@Bean
+	public DirectExchange dlxExchange() {
+		return new DirectExchange(folderSizeDlxExchange);
+	}
+
+	@Bean
+	public Queue dlq() {
+		return QueueBuilder.durable(folderSizeDlxQueue).build();
+	}
+
+	@Bean
+	public Binding dlqBinding(Queue dlq, DirectExchange dlxExchange) {
+		return BindingBuilder.bind(dlq).to(dlxExchange).with(folderSizeDlxKey);
 	}
 
 	/**

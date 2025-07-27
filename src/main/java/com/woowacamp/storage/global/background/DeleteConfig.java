@@ -11,7 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 
 @Configuration
 @Slf4j
-public class BackgroundDeleter {
+public class DeleteConfig {
 	@Value("${folder.delete.threadCount}")
 	private int threadCount;
 
