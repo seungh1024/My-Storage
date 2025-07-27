@@ -1,6 +1,8 @@
 package com.woowacamp.storage.domain.folder.event;
 
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
+import com.woowacamp.storage.domain.message.entity.MessageInfo;
+import com.woowacamp.storage.domain.message.util.EventType;
 
 import lombok.Getter;
 
@@ -13,7 +15,6 @@ public class FolderSizeEvent {
 		this.folderMetadata = folderMetadata;
 		this.size = size;
 	}
-
 
 	public MessageInfo toEntity(String payload) {
 		return new MessageInfo(

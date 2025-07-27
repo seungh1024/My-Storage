@@ -116,7 +116,7 @@ public class FolderSearchUtil {
 			// 부모가 이동이나 삭제 작업 중인지 확인 후 이미 진행 중이라면 예외 발생
 			boolean checkLockResult = redisLockService.checkLock(parentFolder.getId().toString());
 			if (checkLockResult) {
-				throw ErrorCode.PARENT_LOCKED.baseException();
+				throw ErrorCode.PARENT_LOCKED.baseException("folder id = "+folderId + ", locked id = "+parentFolder.getId());
 			}
 
 			parentId = parentFolder.getParentFolderId(); // 부모 갱신하여 상위로 탐색
