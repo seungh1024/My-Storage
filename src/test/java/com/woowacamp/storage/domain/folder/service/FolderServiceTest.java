@@ -55,11 +55,6 @@ class FolderServiceTest extends ContainerBaseConfig {
 	@Autowired
 	private FolderService folderService;
 
-	@Autowired
-	MetadataService metadataService;
-
-	@Autowired
-	Executor metadataThreadPoolExecutor;
 
 	@Autowired
 	private RedisLockService redisLockService;
@@ -231,6 +226,23 @@ class FolderServiceTest extends ContainerBaseConfig {
 				() -> folderService.moveFolder(sourceId, dto));
 
 			assertEquals(ErrorCode.EXCEED_MAX_FOLDER_DEPTH.getMessage(), customException.getMessage());
+		}
+
+		@Test
+		@DisplayName("target 폴더의 부모 폴더가 아닌 상위 폴더로 이동할 수 있다.")
+		void target_folder_move_success_test() {
+			FolderMetadata childFolder = folderTreeSetUp.getSubSubFolder();
+			long childId = childFolder.getId();
+			FolderMetadata parentFolder = folderMetadataRepository.findParentByParentFolderId(
+				childFolder.getParentFolderId()).get();
+			FolderMetadata targetFolder = folderMetadataRepository.findById(parentFolder.getParentFolderId()).get();
+			long targetId = targetFolder.getId();
+
+			FolderMoveDto dto = new FolderMoveDto(userId, targetId);
+			folderService.moveFolder(childId, dto);
+
+			FolderMetadata folder = folderMetadataRepository.findById(childId).get();
+			assertEquals(targetId, folder.getParentFolderId());
 		}
 	}
 
@@ -422,53 +434,9 @@ class FolderServiceTest extends ContainerBaseConfig {
 
 			countDownLatch.await();
 			Thread.sleep(10000);
-			ThreadPoolTaskExecutor taskExecutor = (ThreadPoolTaskExecutor)metadataThreadPoolExecutor;
 
-			// 실제 ThreadPoolExecutor를 가져옴
-			ThreadPoolExecutor executor = taskExecutor.getThreadPoolExecutor();
-			System.out.println("queue size = " + executor.getQueue().size());
-			System.out.println("queue size = " + executor.getQueue().size());
-			System.out.println("queue size = " + executor.getQueue().size());
 
-			long endTime = System.currentTimeMillis();
-
-			System.out.println("total time = " + (endTime - startTime));
-
-			System.out.println("success count = " + successCount.get());
-			System.out.println("fail count = " + failedCount.get());
-			FolderMetadata findA = folderMetadataRepository.findById(aId).get();
-			FolderMetadata findB = folderMetadataRepository.findById(bId).get();
-			System.out.println(
-				"findA id = " + findA.getId() + "findA parent = " + findA.getParentFolderId() + ", aSize = "
-					+ findA.getSize() + ", start size = " + folderA.getSize());
-			System.out.println(
-				"findB id = " + findB.getId() + "findB parent = " + findB.getParentFolderId() + ", bSize = "
-					+ findB.getSize() + ", start size = " + folderB.getSize());
 			FolderMetadata findRootFolder = folderMetadataRepository.findById(rootId).get();
-			List<FolderMetadata> byParentFolderId = folderMetadataRepository.findByParentFolderId(rootId, 10);
-			byParentFolderId.forEach(f -> System.out.println("id = " + f.getId() + ", size = " + f.getSize()));
-			Long l = folderMetadataRepository.sumChildFolderSize(rootId).get();
-			System.out.println("total size = " + l);
-
-			System.out.println("==========");
-
-			long time = System.currentTimeMillis();
-			long end = time + 3000;
-			while (true) {
-				int size = executor.getQueue().size();
-				if (size != 0 || System.currentTimeMillis() > end) {
-					System.out.println("size = " + size);
-					break;
-				}
-			}
-
-			metadataService.calculateSize(aId);
-			metadataService.calculateSize(bId);
-			Thread.sleep(3000);
-			byParentFolderId = folderMetadataRepository.findByParentFolderId(rootId, 10);
-			byParentFolderId.forEach(f -> System.out.println("id = " + f.getId() + ", size = " + f.getSize()));
-			l = folderMetadataRepository.sumChildFolderSize(rootId).get();
-			System.out.println("total size = " + l);
 
 			assertEquals(rootSize, findRootFolder.getSize());
 
