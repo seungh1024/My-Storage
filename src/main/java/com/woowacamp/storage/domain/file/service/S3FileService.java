@@ -13,7 +13,6 @@ import com.woowacamp.storage.domain.file.entity.FileMetadataFactory;
 import com.woowacamp.storage.domain.file.repository.FileMetadataJpaRepository;
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
-import com.woowacamp.storage.domain.folder.service.MetadataService;
 import com.woowacamp.storage.domain.folder.service.RedisLockService;
 import com.woowacamp.storage.global.constant.UploadStatus;
 import com.woowacamp.storage.global.error.ErrorCode;
@@ -33,7 +32,6 @@ public class S3FileService {
 	private final FolderMetadataJpaRepository folderMetadataJpaRepository;
 	private final RedisLockService redisLockService;
 	private final PresignedUrlService presignedUrlService;
-	private final MetadataService metadataService;
 	private final ValidationService validationService;
 
 	/**
@@ -64,8 +62,6 @@ public class S3FileService {
 			objectKey);
 
 		fileMetadataJpaRepository.save(fileMetadata);
-
-		metadataService.calculateSize(fileMetadata.getParentFolderId());
 
 		URL presignedUrl = presignedUrlService.getPresignedUrl(objectKey);
 

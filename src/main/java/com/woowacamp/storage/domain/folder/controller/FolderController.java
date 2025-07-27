@@ -67,8 +67,9 @@ public class FolderController {
 	@PatchMapping("/{folderId}")
 	public void moveFolder(@PathVariable("folderId") @CheckField(value = FieldType.FOLDER_ID) Long sourceFolderId,
 		@CheckDto @RequestBody FolderMoveDto dto) {
-		redisLockService.runWithWatchdogMultiLock(String.valueOf(sourceFolderId), String.valueOf(dto.targetFolderId()),
+		redisLockService.runWithWatchdogLock(String.valueOf(sourceFolderId),
 			() -> folderService.moveFolder(sourceFolderId, dto));
+
 	}
 
 	@RequestType(permission = PermissionType.WRITE, fileType = FileType.FOLDER)

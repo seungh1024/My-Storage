@@ -21,7 +21,6 @@ import com.woowacamp.storage.domain.file.entity.FileMetadata;
 import com.woowacamp.storage.domain.file.repository.FileMetadataJpaRepository;
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
-import com.woowacamp.storage.domain.folder.service.MetadataService;
 import com.woowacamp.storage.global.aop.type.FileType;
 import com.woowacamp.storage.global.constant.PermissionType;
 import com.woowacamp.storage.global.constant.UploadStatus;
@@ -45,9 +44,6 @@ class S3FileServiceTest {
 
 	@Mock
 	private PresignedUrlService presignedUrlService;
-
-	@Mock
-	private MetadataService metadataService;
 
 	private final long MAX_FILE_SIZE = 10000L;
 	private final long MAX_STORAGE_SIZE = 10000L;
@@ -204,7 +200,6 @@ class S3FileServiceTest {
 				return savedMetadata;
 			});
 
-			doNothing().when(metadataService).calculateSize(anyLong());
 
 			given(presignedUrlService.getPresignedUrl(anyString())).willReturn(url);
 

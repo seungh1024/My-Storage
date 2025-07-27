@@ -17,7 +17,6 @@ import com.woowacamp.storage.domain.file.repository.FileMetadataJpaRepository;
 import com.woowacamp.storage.domain.file.repository.FileMetadataRepository;
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
-import com.woowacamp.storage.domain.folder.service.MetadataService;
 import com.woowacamp.storage.domain.folder.service.RedisLockService;
 import com.woowacamp.storage.domain.folder.utils.FolderSearchUtil;
 import com.woowacamp.storage.domain.folder.utils.QueryExecuteTemplate;
@@ -36,7 +35,6 @@ public class FileService {
 	private final FileMetadataJpaRepository fileMetadataJpaRepository;
 	private final FolderMetadataJpaRepository folderMetadataRepository;
 	private final ApplicationEventPublisher eventPublisher;
-	private final MetadataService metadataService;
 	private final FolderSearchUtil folderSearchUtil;
 	private final RedisLockService redisLockService;
 
@@ -51,7 +49,7 @@ public class FileService {
 	public void moveFile(Long fileId, FileMoveDto dto) {
 		FileMetadata fileMetadata = fileMetadataJpaRepository.findById(fileId)
 			.orElseThrow(ErrorCode.FILE_NOT_FOUND::baseException);
-		redisLockService.runWithWatchdogMultiLock(fileMetadata.getParentFolderId() + "", dto.targetFolderId() + "",
+		redisLockService.runWithWatchdogLock(fileMetadata.getParentFolderId() + "",
 			() -> moveFileTask(dto, fileMetadata));
 
 	}
@@ -70,9 +68,6 @@ public class FileService {
 		// 이름 중복 방지를 위한 락 사용. 락 반환 전에 flush
 		redisLockService.runWithWatchdogLock(fileMetadata.getParentFolderId() + "/" + fileMetadata.getUploadFileName(),
 			() -> fileCommit(fileMetadata));
-
-		metadataService.calculateSize(originParentId);
-		metadataService.calculateSize(dto.targetFolderId());
 
 		eventPublisher.publishEvent(new FileMoveEvent(this, fileMetadata, targetFolder));
 	}
@@ -116,7 +111,6 @@ public class FileService {
 	private void deleteFileTask(FileMetadata fileMetadata) {
 		folderSearchUtil.folderLockCheck(fileMetadata.getParentFolderId(), null);
 		fileMetadataJpaRepository.softDelete(fileMetadata.getId());
-		metadataService.calculateSize(fileMetadata.getParentFolderId());
 	}
 
 	public void doHardDelete() {
