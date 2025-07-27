@@ -24,7 +24,7 @@ import com.woowacamp.storage.domain.folder.dto.FolderContentsSortField;
 import com.woowacamp.storage.domain.folder.dto.request.CreateFolderReqDto;
 import com.woowacamp.storage.domain.folder.dto.request.FolderMoveDto;
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
-import com.woowacamp.storage.domain.folder.event.FolderMoveEvent;
+import com.woowacamp.storage.domain.folder.event.FolderSizeEvent;
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataRepository;
 import com.woowacamp.storage.domain.folder.utils.FolderSearchUtil;
@@ -126,7 +126,8 @@ public class FolderService {
 			() -> duplicatedCheckAndMoveCommit(targetFolder, sourceFolder));
 
 		// 용량 업데이트 이벤트 발행
-		publisher.publishEvent(new FolderMoveEvent(sourceFolder,targetFolder));
+		publisher.publishEvent(new FolderSizeEvent(sourceFolder, -sourceFolder.getSize()));
+		publisher.publishEvent(new FolderSizeEvent(targetFolder, sourceFolder.getSize()));
 
 		// TODO 하위 경로 공유 상태 변경 필요
 		// eventPublisher.publishEvent(
