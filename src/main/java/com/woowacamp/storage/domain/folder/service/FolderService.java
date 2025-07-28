@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.concurrent.Executor;
 
 import org.springframework.beans.factory.annotation.Value;
@@ -18,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.woowacamp.storage.domain.file.entity.FileMetadata;
 import com.woowacamp.storage.domain.file.repository.FileMetadataJpaRepository;
 import com.woowacamp.storage.domain.file.repository.FileMetadataRepository;
+import com.woowacamp.storage.domain.file.util.StringFormat;
 import com.woowacamp.storage.domain.folder.dto.CursorType;
 import com.woowacamp.storage.domain.folder.dto.FolderContentsDto;
 import com.woowacamp.storage.domain.folder.dto.FolderContentsSortField;
@@ -29,6 +31,7 @@ import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepositor
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataRepository;
 import com.woowacamp.storage.domain.folder.utils.FolderSearchUtil;
 import com.woowacamp.storage.domain.folder.utils.QueryExecuteTemplate;
+import com.woowacamp.storage.domain.message.event.MessageInfoEvent;
 import com.woowacamp.storage.domain.user.entity.User;
 import com.woowacamp.storage.domain.user.repository.UserRepository;
 import com.woowacamp.storage.global.background.BackgroundJob;
@@ -373,6 +376,32 @@ public class FolderService {
 			findFolder -> folderMetadataRepository.findSoftDeletedFolderWithLastId(
 				findFolder == null ? null : findFolder.getId(), pageSize),
 			folderMetadataList -> folderMetadataList.forEach(folder -> deleteFolderTree(folder)));
+	}
+
+	@Transactional
+	public int updateFolderSize(UUID uuid, long id, long size) {
+		FolderMetadata folderMetadata = folderMetadataJpaRepository.findById(id)
+			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
+
+		// 최상위 폴더라면 용량 처리할 필요가 없다
+		if (folderMetadata.getParentFolderId() == null) {
+			publisher.publishEvent(new MessageInfoEvent(uuid, folderMetadata.getId()));
+			return 1;
+		}
+		// 사이즈 업데이트
+		int result = folderMetadataJpaRepository.updateFolderSize(size, folderMetadata.getId(),
+			folderMetadata.getVersion());
+		if (result == 0) {
+			return result;
+		}
+
+		// MessageInfo 완료 처리
+		publisher.publishEvent(new MessageInfoEvent(uuid, folderMetadata.getId()));
+
+		// 상위 폴더 이벤트 전파
+		publisher.publishEvent(new FolderSizeEvent(folderMetadata.getParentFolderId(), size));
+
+		return result;
 	}
 
 }

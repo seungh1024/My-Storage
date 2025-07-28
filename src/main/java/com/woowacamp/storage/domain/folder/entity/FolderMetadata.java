@@ -2,11 +2,15 @@ package com.woowacamp.storage.domain.folder.entity;
 
 import java.time.LocalDateTime;
 
+import org.springframework.data.annotation.LastModifiedDate;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
+
 import com.woowacamp.storage.global.constant.CommonConstant;
 import com.woowacamp.storage.global.constant.PermissionType;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
@@ -30,6 +34,7 @@ import lombok.NoArgsConstructor;
 })
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
+@EntityListeners(AuditingEntityListener.class)
 public class FolderMetadata {
 
 	@Id
@@ -50,6 +55,7 @@ public class FolderMetadata {
 	@NotNull
 	private LocalDateTime createdAt;
 
+	@LastModifiedDate
 	@Column(name = "updated_at", columnDefinition = "TIMESTAMP NOT NULL")
 	@NotNull
 	private LocalDateTime updatedAt;
@@ -77,11 +83,14 @@ public class FolderMetadata {
 	@NotNull
 	private boolean isDeleted = false;
 
+	@Column(name = "version")
+	private long version = 0L;
 
 	@Builder
 	public FolderMetadata(Long id, Long rootId, Long ownerId, Long creatorId, LocalDateTime createdAt,
 		LocalDateTime updatedAt, Long parentFolderId, String uploadFolderName, long size,
 		LocalDateTime sharingExpiredAt, PermissionType permissionType) {
+
 		this.id = id;
 		this.rootId = rootId;
 		this.ownerId = ownerId;
