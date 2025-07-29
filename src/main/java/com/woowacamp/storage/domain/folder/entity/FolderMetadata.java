@@ -89,7 +89,7 @@ public class FolderMetadata {
 	@Builder
 	public FolderMetadata(Long id, Long rootId, Long ownerId, Long creatorId, LocalDateTime createdAt,
 		LocalDateTime updatedAt, Long parentFolderId, String uploadFolderName, long size,
-		LocalDateTime sharingExpiredAt, PermissionType permissionType) {
+		LocalDateTime sharingExpiredAt, PermissionType permissionType, boolean isDeleted, long version) {
 
 		this.id = id;
 		this.rootId = rootId;
@@ -102,6 +102,8 @@ public class FolderMetadata {
 		this.size = size;
 		this.sharingExpiredAt = sharingExpiredAt;
 		this.permissionType = permissionType;
+		this.isDeleted = isDeleted;
+		this.version = version;
 	}
 
 	public void initOwnerId(Long ownerId) {
@@ -136,5 +138,23 @@ public class FolderMetadata {
 
 	public boolean isSharingExpired() {
 		return sharingExpiredAt.isBefore(LocalDateTime.now());
+	}
+
+	public FolderMetadata getCopy() {
+		return FolderMetadata.builder()
+			.id(this.id)
+			.rootId(this.rootId)
+			.ownerId(this.ownerId)
+			.creatorId(this.creatorId)
+			.createdAt(this.createdAt)
+			.updatedAt(this.updatedAt)
+			.parentFolderId(this.parentFolderId)
+			.uploadFolderName(this.uploadFolderName)
+			.size(this.size)
+			.sharingExpiredAt(this.sharingExpiredAt)
+			.permissionType(this.permissionType)
+			.isDeleted(this.isDeleted)
+			.version(this.version)
+			.build();
 	}
 }

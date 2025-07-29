@@ -13,13 +13,11 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
-import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.woowacamp.storage.domain.file.entity.FileMetadata;
 import com.woowacamp.storage.domain.file.repository.FileMetadataJpaRepository;
 import com.woowacamp.storage.domain.file.repository.FileMetadataRepository;
-import com.woowacamp.storage.domain.file.util.StringFormat;
 import com.woowacamp.storage.domain.folder.dto.CursorType;
 import com.woowacamp.storage.domain.folder.dto.FolderContentsDto;
 import com.woowacamp.storage.domain.folder.dto.FolderContentsSortField;
@@ -60,12 +58,14 @@ public class FolderService {
 	private final FolderSearchUtil folderSearchUtil;
 	private final Executor searchThreadPoolExecutor;
 	private final BackgroundJob backgroundJob;
+	private final FolderCommitService folderCommitService;
 
 	private final ApplicationEventPublisher publisher;
 
-
 	@Value("${constant.batchSize}")
 	private int pageSize;
+	@Value("${constant.retryCnt}")
+	private int retryCnt;
 
 	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public void checkFolderOwnedBy(long folderId, long userId) {
@@ -125,27 +125,12 @@ public class FolderService {
 		// 또한 트랜잭션 내부에서 락을 사용하면 커밋 전에 락이 해제되기 때문에 일관성이 깨질 수 있다.
 		String moveFolderLock = targetFolder.getId() + "/" + sourceFolder.getUploadFolderName();
 		redisLockService.runWithWatchdogLock(moveFolderLock,
-			() -> duplicatedCheckAndMoveCommit(targetFolder, sourceFolder));
-
+			() -> folderCommitService.duplicatedCheckAndMoveCommit(targetFolder.getCopy(), sourceFolder.getCopy()));
 
 		// TODO 하위 경로 공유 상태 변경 필요
 		// eventPublisher.publishEvent(
 		// 	new FolderMoveEvent(this, sourceFolder,
 		// 		folderMetadataJpaRepository.findById(dto.targetFolderId()).get()));
-	}
-
-	/**
-	 * 락 내부에서 커밋을 하기 위해 이름 중복 체크와 폴더 이동 적용을 별도의 트랜잭션에서 처리
-	 */
-	@Transactional(propagation = Propagation.REQUIRES_NEW)
-	protected void duplicatedCheckAndMoveCommit(FolderMetadata targetFolder, FolderMetadata sourceFolder) {
-		// 용량 업데이트 이벤트 발행.
-		publisher.publishEvent(new FolderSizeEvent(sourceFolder.getParentFolderId(), -sourceFolder.getSize()));
-		publisher.publishEvent(new FolderSizeEvent(targetFolder.getId(), sourceFolder.getSize()));
-
-		validateDuplicatedFolderName(targetFolder, sourceFolder);
-		sourceFolder.updateParentFolderId(targetFolder.getId());
-		folderMetadataJpaRepository.save(sourceFolder);
 	}
 
 	/**
@@ -198,16 +183,6 @@ public class FolderService {
 
 	private boolean isExistsPendingFile(long currentFolderId) {
 		return fileMetadataJpaRepository.existsByParentFolderIdAndUploadStatus(currentFolderId, UploadStatus.PENDING);
-	}
-
-	/**
-	 * 같은 폴더 내에 동일한 이름의 폴더가 있는지 확인
-	 */
-	private void validateDuplicatedFolderName(FolderMetadata targetFolder, FolderMetadata folderMetadata) {
-		if (folderMetadataJpaRepository.existsByParentFolderIdAndUploadFolderName(targetFolder.getId(),
-			folderMetadata.getUploadFolderName())) {
-			throw ErrorCode.FILE_NAME_DUPLICATE.baseException();
-		}
 	}
 
 	private List<FileMetadata> fetchFiles(Long folderId, Long cursorId, int limit, FolderContentsSortField sortBy,
