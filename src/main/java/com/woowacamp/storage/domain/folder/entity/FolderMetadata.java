@@ -140,21 +140,4 @@ public class FolderMetadata {
 		return sharingExpiredAt.isBefore(LocalDateTime.now());
 	}
 
-	public FolderMetadata getCopy() {
-		return FolderMetadata.builder()
-			.id(this.id)
-			.rootId(this.rootId)
-			.ownerId(this.ownerId)
-			.creatorId(this.creatorId)
-			.createdAt(this.createdAt)
-			.updatedAt(this.updatedAt)
-			.parentFolderId(this.parentFolderId)
-			.uploadFolderName(this.uploadFolderName)
-			.size(this.size)
-			.sharingExpiredAt(this.sharingExpiredAt)
-			.permissionType(this.permissionType)
-			.isDeleted(this.isDeleted)
-			.version(this.version)
-			.build();
-	}
 }

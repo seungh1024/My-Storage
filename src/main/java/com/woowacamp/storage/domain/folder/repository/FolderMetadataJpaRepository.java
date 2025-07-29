@@ -171,22 +171,22 @@ public interface FolderMetadataJpaRepository extends JpaRepository<FolderMetadat
 	""")
 	Optional<FolderMetadata> findByParentId(@Param("parentId") long parentId);
 
-	@Query("""
-		SELECT SUM(f.size)
-		FROM FolderMetadata f
-		WHERE f.parentFolderId = :parentId
-		AND f.isDeleted = false
-	""")
-	Optional<Long> sumChildFolderSize(@Param("parentId") long parentId);
-
-	@Transactional
 	@Modifying
 	@Query("""
-		UPDATE FolderMetadata f
-		SET f.size = f.size + :size, f.version = f.version+1
-		WHERE f.id = :id
-		and f.version = :version
-	""")
+			UPDATE FolderMetadata f
+			SET f.size = f.size + :size, f.version = f.version+1
+			WHERE f.id = :id
+			and f.version = :version
+		""")
 	int updateFolderSize(@Param("size") long size, @Param("id") long id, @Param("version") long version);
 
+	@Modifying
+	@Query("""
+			UPDATE FolderMetadata f
+			SET f.parentFolderId = :parentFolderId, f.version = f.version+1
+			WHERE f.id = :id
+			and f.version = :version
+		""")
+	int updateParentInfo(@Param("id") long id, @Param("parentFolderId") long parentFolderId,
+		@Param("version") long version);
 }

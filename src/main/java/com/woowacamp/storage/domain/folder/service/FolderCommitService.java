@@ -23,14 +23,22 @@ public class FolderCommitService {
 	 * 락 내부에서 커밋을 하기 위해 이름 중복 체크와 폴더 이동 적용을 별도의 트랜잭션에서 처리
 	 */
 	@Transactional(propagation = Propagation.REQUIRES_NEW)
-	protected void duplicatedCheckAndMoveCommit(FolderMetadata targetFolder, FolderMetadata sourceFolder) {
+	protected int duplicatedCheckAndMoveCommit(Long sourceId, Long targetId) {
+		FolderMetadata sourceFolder = folderMetadataJpaRepository.findById(sourceId)
+			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
+
+		FolderMetadata targetFolder = folderMetadataJpaRepository.findById(targetId)
+			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
+
+		validateDuplicatedFolderName(targetFolder, sourceFolder);
+
 		// 용량 업데이트 이벤트 발행.
 		publisher.publishEvent(new FolderSizeEvent(sourceFolder.getParentFolderId(), -sourceFolder.getSize()));
 		publisher.publishEvent(new FolderSizeEvent(targetFolder.getId(), sourceFolder.getSize()));
 
-		validateDuplicatedFolderName(targetFolder, sourceFolder);
-		sourceFolder.updateParentFolderId(targetFolder.getId());
-		folderMetadataJpaRepository.save(sourceFolder);
+
+		return folderMetadataJpaRepository.updateParentInfo(sourceFolder.getId(), targetFolder.getId(),
+			sourceFolder.getVersion());
 	}
 
 	/**

@@ -18,9 +18,11 @@ import org.springframework.transaction.annotation.Transactional;
 import com.woowacamp.storage.domain.file.entity.FileMetadata;
 import com.woowacamp.storage.domain.file.repository.FileMetadataJpaRepository;
 import com.woowacamp.storage.domain.file.repository.FileMetadataRepository;
+import com.woowacamp.storage.domain.file.util.StringFormat;
 import com.woowacamp.storage.domain.folder.dto.CursorType;
 import com.woowacamp.storage.domain.folder.dto.FolderContentsDto;
 import com.woowacamp.storage.domain.folder.dto.FolderContentsSortField;
+import com.woowacamp.storage.domain.folder.dto.message.FolderSizeMessageDto;
 import com.woowacamp.storage.domain.folder.dto.request.CreateFolderReqDto;
 import com.woowacamp.storage.domain.folder.dto.request.FolderMoveDto;
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
@@ -36,6 +38,7 @@ import com.woowacamp.storage.global.background.BackgroundJob;
 import com.woowacamp.storage.global.constant.CommonConstant;
 import com.woowacamp.storage.global.constant.PermissionType;
 import com.woowacamp.storage.global.constant.UploadStatus;
+import com.woowacamp.storage.global.error.CustomException;
 import com.woowacamp.storage.global.error.ErrorCode;
 
 import lombok.RequiredArgsConstructor;
@@ -125,12 +128,40 @@ public class FolderService {
 		// 또한 트랜잭션 내부에서 락을 사용하면 커밋 전에 락이 해제되기 때문에 일관성이 깨질 수 있다.
 		String moveFolderLock = targetFolder.getId() + "/" + sourceFolder.getUploadFolderName();
 		redisLockService.runWithWatchdogLock(moveFolderLock,
-			() -> folderCommitService.duplicatedCheckAndMoveCommit(targetFolder.getCopy(), sourceFolder.getCopy()));
+			() -> {
+				// 낙관적 락 적용으로 3회 반복
+				try {
+					boolean result = tryUpdateParentInfo(sourceFolder.getId(), targetFolder.getId());
+
+					if (!result) {
+						throw ErrorCode.TOO_MUCH_REQUEST.baseException(
+							StringFormat.format("폴더 이동 중 버전 충돌, Source Folder ID : {}, Target Folder ID : {}",
+								sourceFolder.getId(), targetFolder.getId()));
+					}
+				} catch (CustomException e) {
+					log.error(StringFormat.format("[ReceiveMessageService Size Event Error] Error Message : {}, DebugMessage : {}",e.getMessage(),e.getDebugMessage()));
+				} catch (Exception e) {
+					log.error(String.format(
+						"[Unhandled Exception] Folder Move Failed Source Folder ID : {}, Target Folder ID : {}",
+						sourceFolder.getId(), targetFolder.getId(), e));
+				}
+			});
 
 		// TODO 하위 경로 공유 상태 변경 필요
 		// eventPublisher.publishEvent(
 		// 	new FolderMoveEvent(this, sourceFolder,
 		// 		folderMetadataJpaRepository.findById(dto.targetFolderId()).get()));
+	}
+
+	private boolean tryUpdateParentInfo(Long sourceId, Long targetId) {
+		int cnt = retryCnt;
+		while (cnt-- > 0) {
+			int result = folderCommitService.duplicatedCheckAndMoveCommit(sourceId, targetId);
+			if (result == 1) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/**
@@ -358,7 +389,7 @@ public class FolderService {
 		FolderMetadata folderMetadata = folderMetadataJpaRepository.findById(id)
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
 
-		// 최상위 폴더라면 용량 처리할 필요가 없다
+		// 최상위 폴더라면 용량 처리할 필요가 없기 때문에 이벤트만 완료 처리를 해준다.
 		if (folderMetadata.getParentFolderId() == null) {
 			publisher.publishEvent(new MessageInfoEvent(uuid, folderMetadata.getId()));
 			return 1;

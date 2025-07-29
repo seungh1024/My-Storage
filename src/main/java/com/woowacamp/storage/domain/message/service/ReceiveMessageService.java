@@ -3,6 +3,7 @@ package com.woowacamp.storage.domain.message.service;
 import java.util.List;
 
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import com.woowacamp.storage.domain.file.util.StringFormat;
@@ -20,6 +21,9 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 public class ReceiveMessageService {
 	private final FolderService folderService;
+
+	@Value("${constant.retryCnt}")
+	private int retryCnt;
 
 	@RabbitListener(queues = "${spring.rabbitmq.folder-size-queue}", containerFactory = "folderSizeFactory")
 	public void handleFolderSizeEvent(List<FolderSizeMessageDto> messages) {
@@ -48,8 +52,8 @@ public class ReceiveMessageService {
 	}
 
 	private boolean tryUpdateFolderSize(FolderSizeMessageDto message) {
-		int attempts = 3;
-		while (attempts-- > 0) {
+		int cnt = retryCnt;
+		while (cnt-- > 0) {
 			int result = folderService.updateFolderSize(message.uuid(), message.folderMetadataId(), message.size());
 			if (result == 1) {
 				return true;
