@@ -6,10 +6,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.jupiter.api.AfterEach;
@@ -20,7 +18,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -56,7 +53,6 @@ class FolderServiceTest extends ContainerBaseConfig {
 
 	@Autowired
 	private FolderService folderService;
-
 
 	@Autowired
 	private RedisLockService redisLockService;
@@ -133,13 +129,11 @@ class FolderServiceTest extends ContainerBaseConfig {
 			id = targetId;
 			findSize(targetInfo, id);
 
-
 			folderService.moveFolder(sourceId, dto);
 			Thread.sleep(5000);
 
 			FolderMetadata targetFolder = folderMetadataRepository.findById(targetId).get();
 			FolderMetadata sourceFolder = folderMetadataRepository.findById(sourceId).get();
-
 
 			assertEquals(moveSize + targetSize, targetFolder.getSize());
 			assertEquals(targetId, sourceFolder.getParentFolderId());
@@ -153,18 +147,19 @@ class FolderServiceTest extends ContainerBaseConfig {
 				Long key = entry.getKey();
 				Long value = entry.getValue();
 				if (targetInfo.get(key) == null) {
-					assertEquals(movedSizeInfo.get(key),value-moveSize);
+					assertEquals(movedSizeInfo.get(key), value - moveSize);
 				}
 			}
 			for (Map.Entry<Long, Long> entry : targetInfo.entrySet()) {
 				Long key = entry.getKey();
 				Long value = entry.getValue();
 				if (sourceInfo.get(key) == null) {
-					assertEquals(movedSizeInfo.get(key),value+moveSize);
+					assertEquals(movedSizeInfo.get(key), value + moveSize);
 				}
 			}
 		}
-		void findSize(Map<Long,Long> map, Long id) {
+
+		void findSize(Map<Long, Long> map, Long id) {
 			while (id != null) {
 				FolderMetadata folderMetadata = folderMetadataRepository.findById(id).get();
 				map.put(id, folderMetadata.getSize());
@@ -473,7 +468,6 @@ class FolderServiceTest extends ContainerBaseConfig {
 
 			countDownLatch.await();
 			Thread.sleep(10000);
-
 
 			FolderMetadata findRootFolder = folderMetadataRepository.findById(rootId).get();
 

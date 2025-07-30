@@ -1,28 +1,34 @@
 package com.woowacamp.storage.domain.message.entity;
 
 import java.time.LocalDateTime;
-import java.util.UUID;
 
 import com.woowacamp.storage.domain.message.util.EventType;
 import com.woowacamp.storage.domain.message.util.MessageStatus;
 
 import jakarta.persistence.Column;
-import jakarta.persistence.EmbeddedId;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.Lob;
+import jakarta.persistence.Table;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 @Entity
 @Getter
+@Table(name = "message_info",indexes = {@Index(name = "message_idx_status_id", columnList = "status, message_info_id")})
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class MessageInfo {
 
-	@EmbeddedId
-	private MessageInfoId id;
+	@Id
+	@GeneratedValue(strategy = GenerationType.IDENTITY)
+	@Column(name = "message_info_id")
+	private Long id;
 
 	@Column(name = "aggregate_type", nullable = false)
 	private String aggregateType;
@@ -48,8 +54,7 @@ public class MessageInfo {
 	@Column(name = "retry_count", nullable = false)
 	private int retryCount;
 
-	public MessageInfo(UUID uuid, long folderMetadataId, String aggregateType, EventType eventType, String payload) {
-		this.id = new MessageInfoId(uuid, folderMetadataId);
+	public MessageInfo(String aggregateType, EventType eventType, String payload) {
 		this.aggregateType = aggregateType;
 		this.eventType = eventType;
 		this.payload = payload;

@@ -12,7 +12,6 @@ import com.woowacamp.storage.domain.folder.service.FolderService;
 import com.woowacamp.storage.global.error.CustomException;
 import com.woowacamp.storage.global.error.ErrorCode;
 
-import jodd.util.StringUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -27,34 +26,34 @@ public class ReceiveMessageService {
 
 	@RabbitListener(queues = "${spring.rabbitmq.folder-size-queue}", containerFactory = "folderSizeFactory")
 	public void handleFolderSizeEvent(List<FolderSizeMessageDto> messages) {
-		messages.stream()
-			.forEach(message -> {
-				log.info("uuid = {}, id = {}, event type = {}, size = {}", message.uuid(), message.folderMetadataId(),
-					message.eventType(), message.size());
+		messages.stream().forEach(message -> {
+			log.info("id = {}, FOLDER METADATA ID = {}, event type = {}, size = {}", message.id(),
+				message.folderMetadataId(), message.eventType(), message.size());
 
-				// 스케줄러가 처리되지 않은 메세지는 재발행을 할 것이기 때문에 error가 발생해도 ack는 진행한다.
-				try {
-					boolean result = tryUpdateFolderSize(message);
+			// 스케줄러가 처리되지 않은 메세지는 재발행을 할 것이기 때문에 error가 발생해도 ack는 진행한다.
+			try {
+				boolean result = tryUpdateFolderSize(message);
 
-					if (!result) {
-						throw ErrorCode.CANNOT_UPDATE_SIZE.baseException(
-							StringFormat.format("3회 재시도 실패, UUID : {}, FOLDER METADATA ID : {}", message.uuid(),
-								message.folderMetadataId()));
-					}
-				} catch (CustomException e) {
-					log.error(StringFormat.format("[ReceiveMessageService Size Event Error] Error Message : {}, DebugMessage : {}",e.getMessage(),e.getDebugMessage()));
-				} catch (Exception e) {
-					log.error(String.format("[Unhandled Exception] UUID: {}, FolderMetadataId: {}",
-						message.uuid(), message.folderMetadataId()), e);
+				if (!result) {
+					throw ErrorCode.CANNOT_UPDATE_SIZE.baseException(
+						StringFormat.format("3회 재시도 실패, ID = {},  FOLDER METADATA ID : {}", message.id(),
+							message.folderMetadataId()));
 				}
-			});
+			} catch (CustomException e) {
+				log.error(StringFormat.format(
+					"[ReceiveMessageService Size Event Error] Error Message : {}, DebugMessage : {}", e.getMessage(),
+					e.getDebugMessage()));
+			} catch (Exception e) {
+				log.error(String.format("[Unhandled Exception] FolderMetadataId: {}", message.folderMetadataId()), e);
+			}
+		});
 
 	}
 
 	private boolean tryUpdateFolderSize(FolderSizeMessageDto message) {
 		int cnt = retryCnt;
 		while (cnt-- > 0) {
-			int result = folderService.updateFolderSize(message.uuid(), message.folderMetadataId(), message.size());
+			int result = folderService.updateFolderSize(message.id(), message.folderMetadataId(), message.size());
 			if (result == 1) {
 				return true;
 			}

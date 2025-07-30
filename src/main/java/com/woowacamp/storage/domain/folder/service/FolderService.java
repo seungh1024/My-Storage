@@ -5,7 +5,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
-import java.util.UUID;
 import java.util.concurrent.Executor;
 
 import org.springframework.beans.factory.annotation.Value;
@@ -126,25 +125,26 @@ public class FolderService {
 		// 목적지에 동일 폴더를 생성하지 않도록 락이 필요하다. 누군가 폴더를 생성해서 같은 이름이 생길 수 있기 때문.
 		// 또한 트랜잭션 내부에서 락을 사용하면 커밋 전에 락이 해제되기 때문에 일관성이 깨질 수 있다.
 		String moveFolderLock = targetFolder.getId() + "/" + sourceFolder.getUploadFolderName();
-		redisLockService.runWithWatchdogLock(moveFolderLock,
-			() -> {
-				// 낙관적 락 적용으로 3회 반복
-				try {
-					boolean result = tryUpdateParentInfo(sourceFolder.getId(), targetFolder.getId());
+		redisLockService.runWithWatchdogLock(moveFolderLock, () -> {
+			// 낙관적 락 적용으로 3회 반복
+			try {
+				boolean result = tryUpdateParentInfo(sourceFolder.getId(), targetFolder.getId());
 
-					if (!result) {
-						throw ErrorCode.TOO_MUCH_REQUEST.baseException(
-							StringFormat.format("폴더 이동 중 버전 충돌, Source Folder ID : {}, Target Folder ID : {}",
-								sourceFolder.getId(), targetFolder.getId()));
-					}
-				} catch (CustomException e) {
-					log.error(StringFormat.format("[ReceiveMessageService Size Event Error] Error Message : {}, DebugMessage : {}",e.getMessage(),e.getDebugMessage()));
-				} catch (Exception e) {
-					log.error(String.format(
-						"[Unhandled Exception] Folder Move Failed Source Folder ID : {}, Target Folder ID : {}",
-						sourceFolder.getId(), targetFolder.getId(), e));
+				if (!result) {
+					throw ErrorCode.TOO_MUCH_REQUEST.baseException(
+						StringFormat.format("폴더 이동 중 버전 충돌, Source Folder ID : {}, Target Folder ID : {}",
+							sourceFolder.getId(), targetFolder.getId()));
 				}
-			});
+			} catch (CustomException e) {
+				log.error(StringFormat.format(
+					"[ReceiveMessageService Size Event Error] Error Message : {}, DebugMessage : {}", e.getMessage(),
+					e.getDebugMessage()));
+			} catch (Exception e) {
+				log.error(String.format(
+					"[Unhandled Exception] Folder Move Failed Source Folder ID : {}, Target Folder ID : {}",
+					sourceFolder.getId(), targetFolder.getId(), e));
+			}
+		});
 
 		// TODO 하위 경로 공유 상태 변경 필요
 		// eventPublisher.publishEvent(
@@ -384,13 +384,13 @@ public class FolderService {
 	}
 
 	@Transactional
-	public int updateFolderSize(UUID uuid, long id, long size) {
-		FolderMetadata folderMetadata = folderMetadataJpaRepository.findById(id)
+	public int updateFolderSize(Long id, Long folderId, long size) {
+		FolderMetadata folderMetadata = folderMetadataJpaRepository.findById(folderId)
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
 
 		// 최상위 폴더라면 용량 처리할 필요가 없기 때문에 이벤트만 완료 처리를 해준다.
 		if (folderMetadata.getParentFolderId() == null) {
-			publisher.publishEvent(new MessageInfoEvent(uuid, folderMetadata.getId()));
+			publisher.publishEvent(new MessageInfoEvent(id));
 			return 1;
 		}
 		// 사이즈 업데이트
@@ -401,7 +401,7 @@ public class FolderService {
 		}
 
 		// MessageInfo 완료 처리
-		publisher.publishEvent(new MessageInfoEvent(uuid, folderMetadata.getId()));
+		publisher.publishEvent(new MessageInfoEvent(id));
 
 		// 상위 폴더 이벤트 전파
 		publisher.publishEvent(new FolderSizeEvent(folderMetadata.getParentFolderId(), size));

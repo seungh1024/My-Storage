@@ -27,7 +27,8 @@ public class FolderMoveEventListener {
 	@TransactionalEventListener(phase = TransactionPhase.BEFORE_COMMIT)
 	public void recordMessageHandler(FolderSizeEvent folderSizeEvent) {
 		MessageInfo messageInfo = folderSizeEvent.toEntity(jsonSerializer.serialize(folderSizeEvent));
-		messageInfoJpaRepository.save(messageInfo);
+		MessageInfo savedMessageInfo = messageInfoJpaRepository.save(messageInfo);
+		folderSizeEvent.setId(savedMessageInfo.getId());
 	}
 
 	/**

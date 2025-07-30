@@ -178,7 +178,7 @@ public interface FolderMetadataJpaRepository extends JpaRepository<FolderMetadat
 			WHERE f.id = :id
 			and f.version = :version
 		""")
-	int updateFolderSize(@Param("size") long size, @Param("id") long id, @Param("version") long version);
+	int updateFolderSizeWithVersion(@Param("size") long size, @Param("id") long id, @Param("version") long version);
 
 	@Modifying
 	@Query("""
@@ -187,6 +187,6 @@ public interface FolderMetadataJpaRepository extends JpaRepository<FolderMetadat
 			WHERE f.id = :id
 			and f.version = :version
 		""")
-	int updateParentInfo(@Param("id") long id, @Param("parentFolderId") long parentFolderId,
+	int updateParentInfoWithVersion(@Param("id") long id, @Param("parentFolderId") long parentFolderId,
 		@Param("version") long version);
 }
