@@ -23,3 +23,4 @@ file:
 constant:
   batchSize: 10
   deleteSize: 5
+  maxRetry: 3

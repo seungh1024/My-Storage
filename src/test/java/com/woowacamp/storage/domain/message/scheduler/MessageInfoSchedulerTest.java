@@ -49,6 +49,9 @@ class MessageInfoSchedulerTest extends ContainerBaseConfig {
 	@Value("${constant.deleteSize}")
 	int deleteSize;
 
+	@Value("${constant.maxRetry}")
+	int maxRetry;
+
 	@Nested
 	@DisplayName("메세지 재발행 테스트")
 	class FolderMoveTest {
@@ -90,9 +93,32 @@ class MessageInfoSchedulerTest extends ContainerBaseConfig {
 			messageInfoScheduler.deleteSuccessMessage();
 
 			List<MessageInfo> messageInfoList = messageInfoJpaRepository.findAll();
-			messageInfoList.forEach(m-> System.out.println("id = "+m.getId() +", status = "+m.getStatus()));
 
 			assertTrue(messageInfoList.isEmpty());
+		}
+
+		@Test
+		@DisplayName("미처리가 최대치를 초과하면 FAILED 상태로 변한다.")
+		void message_will_be_failed_when_retryCnt_over_maxRetry() {
+			long temp = 1;
+			for (int i = 0; i < batchSize; i++) {
+				FolderSizeMessageDto dto = new FolderSizeMessageDto(temp,temp,temp,EventType.FOLDER_SIZE);
+				temp++;
+				MessageInfo messageInfo = new MessageInfo("FolderMove", EventType.FOLDER_SIZE, jsonSerializer.serialize(dto));
+				for (int j = 0; j <= maxRetry; j++) {
+					messageInfo.incrementRetryCount();
+				}
+				messageInfoJpaRepository.save(messageInfo);
+			}
+
+			messageInfoScheduler.failMessageHandler();
+
+			List<MessageInfo> messageInfoList = messageInfoJpaRepository.findAll()
+				.stream()
+				.filter(message -> message.getStatus().equals(MessageStatus.FAILED))
+				.toList();
+
+			assertEquals(batchSize, messageInfoList.size());
 		}
 	}
 

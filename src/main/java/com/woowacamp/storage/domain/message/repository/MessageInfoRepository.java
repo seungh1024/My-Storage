@@ -14,10 +14,18 @@ import lombok.RequiredArgsConstructor;
 public class MessageInfoRepository {
 	private final MessageInfoJpaRepository messageInfoJpaRepository;
 
-	public List<MessageInfo> findPendingMessageWithSize(Long id, int size) {
+	public List<MessageInfo> findPendingMessageWithSize(Long id, int size, int maxRetry) {
 		if (id == null) {
-			return messageInfoJpaRepository.findPendingMessageWithSize(MessageStatus.PENDING, size);
+			return messageInfoJpaRepository.findPendingMessageWithSize(MessageStatus.PENDING, maxRetry, size);
 		}
-		return messageInfoJpaRepository.findPendingMessageWithSize(id, MessageStatus.PENDING, size);
+		return messageInfoJpaRepository.findPendingMessageWithSize(id, MessageStatus.PENDING, maxRetry, size);
+	}
+
+	public List<MessageInfo> findMaxRetryMessageWithSize(Long id, int size, int maxRetry) {
+		if (id == null) {
+			return messageInfoJpaRepository.findMaxRetryMessageWithSize(MessageStatus.PENDING, maxRetry, size);
+		}
+
+		return messageInfoJpaRepository.findMaxRetryMessageWithSize(id, MessageStatus.PENDING, maxRetry, size);
 	}
 }

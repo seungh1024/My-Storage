@@ -43,13 +43,9 @@ public class MessageInfoScheduler {
 	public void retryMessage() {
 		QueryExecuteTemplate.<MessageInfo>selectFilesAndExecuteWithCursor(limit,
 			findMessage -> messageInfoRepository.findPendingMessageWithSize(
-				findMessage == null ? null : findMessage.getId(), limit),
+				findMessage == null ? null : findMessage.getId(), limit, maxRetry),
 			findMessageList -> findMessageList.stream().forEach(message -> {
-				MessageStatus status = MessageStatus.SUCCESS;
-				if (message.getRetryCount() > maxRetry) {
-					status = MessageStatus.FAILED;
-				}
-				messageInfoJpaRepository.updateMessageInfoStatus(message.getId(), status);
+				messageInfoJpaRepository.updateMessageInfoStatus(message.getId(), MessageStatus.SUCCESS);
 				sendMessage(message);
 			}));
 	}
@@ -71,6 +67,17 @@ public class MessageInfoScheduler {
 		while (result >= deleteSize) {
 			result = messageInfoJpaRepository.deleteMessagesWithSize(MessageStatus.SUCCESS.name(), deleteSize);
 		}
+	}
+
+	@Transactional
+	@Scheduled(fixedDelay = retryMessageDelay)
+	public void failMessageHandler() {
+		QueryExecuteTemplate.<MessageInfo>selectFilesAndExecuteWithCursor(limit,
+			findMessage -> messageInfoRepository.findMaxRetryMessageWithSize(
+				findMessage == null ? null : findMessage.getId(), limit, maxRetry),
+			findMessageList -> findMessageList.stream().forEach(message -> {
+				messageInfoJpaRepository.updateMessageInfoStatus(message.getId(), MessageStatus.FAILED);
+			}));
 	}
 }
 

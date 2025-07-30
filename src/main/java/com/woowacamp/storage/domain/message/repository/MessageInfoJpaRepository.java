@@ -27,11 +27,12 @@ public interface MessageInfoJpaRepository extends JpaRepository<MessageInfo, Lon
 	@Query("""
 			SELECT m
 			FROM MessageInfo m
-			WHERE m.status = :status
+			WHERE m.status = :status AND m.retryCount <= :retryCount
 			ORDER BY m.id
 			LIMIT :size
 		""")
-	List<MessageInfo> findPendingMessageWithSize(@Param("status") MessageStatus status, @Param("size") int size);
+	List<MessageInfo> findPendingMessageWithSize(@Param("status") MessageStatus status,
+		@Param("retryCount") int retryCount, @Param("size") int size);
 
 	/**
 	 * 두 번째 이상 페이징 처리 쿼리
@@ -39,12 +40,12 @@ public interface MessageInfoJpaRepository extends JpaRepository<MessageInfo, Lon
 	@Query("""
 			SELECT m
 			FROM MessageInfo m
-			WHERE m.status = :status AND m.id > :id
+			WHERE m.status = :status AND m.id > :id AND m.retryCount <= :retryCount
 			ORDER BY m.id
 			LIMIT :size
 		""")
 	List<MessageInfo> findPendingMessageWithSize(@Param("id") Long id, @Param("status") MessageStatus status,
-		@Param("size") int size);
+		@Param("retryCount") int retryCount, @Param("size") int size);
 
 	@Modifying
 	@Query("""
@@ -63,4 +64,24 @@ public interface MessageInfoJpaRepository extends JpaRepository<MessageInfo, Lon
 		   	LIMIT :size
 		""", nativeQuery = true)
 	int deleteMessagesWithSize(@Param("status") String status, @Param("size") int size);
+
+	@Query("""
+			SELECT m
+			FROM MessageInfo m
+			WHERE m.status = :status AND m.retryCount > :retryCount
+			ORDER BY m.id
+			LIMIT :size
+		""")
+	List<MessageInfo> findMaxRetryMessageWithSize(@Param("status") MessageStatus status,
+		@Param("retryCount") int retryCount, @Param("size") int size);
+
+	@Query("""
+			SELECT m
+			FROM MessageInfo m
+			WHERE m.status = :status AND m.id > :id AND m.retryCount > :retryCount
+			ORDER BY m.id
+			LIMIT :size
+		""")
+	List<MessageInfo> findMaxRetryMessageWithSize(@Param("id") Long id, @Param("status") MessageStatus status,
+		@Param("retryCount") int retryCount, @Param("size") int size);
 }
