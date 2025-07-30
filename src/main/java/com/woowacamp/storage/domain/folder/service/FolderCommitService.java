@@ -36,8 +36,7 @@ public class FolderCommitService {
 		publisher.publishEvent(new FolderSizeEvent(sourceFolder.getParentFolderId(), -sourceFolder.getSize()));
 		publisher.publishEvent(new FolderSizeEvent(targetFolder.getId(), sourceFolder.getSize()));
 
-
-		return folderMetadataJpaRepository.updateParentInfo(sourceFolder.getId(), targetFolder.getId(),
+		return folderMetadataJpaRepository.updateParentInfoWithVersion(sourceFolder.getId(), targetFolder.getId(),
 			sourceFolder.getVersion());
 	}
 

@@ -22,7 +22,6 @@ import com.woowacamp.storage.domain.file.util.StringFormat;
 import com.woowacamp.storage.domain.folder.dto.CursorType;
 import com.woowacamp.storage.domain.folder.dto.FolderContentsDto;
 import com.woowacamp.storage.domain.folder.dto.FolderContentsSortField;
-import com.woowacamp.storage.domain.folder.dto.message.FolderSizeMessageDto;
 import com.woowacamp.storage.domain.folder.dto.request.CreateFolderReqDto;
 import com.woowacamp.storage.domain.folder.dto.request.FolderMoveDto;
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
@@ -395,7 +394,7 @@ public class FolderService {
 			return 1;
 		}
 		// 사이즈 업데이트
-		int result = folderMetadataJpaRepository.updateFolderSize(size, folderMetadata.getId(),
+		int result = folderMetadataJpaRepository.updateFolderSizeWithVersion(size, folderMetadata.getId(),
 			folderMetadata.getVersion());
 		if (result == 0) {
 			return result;

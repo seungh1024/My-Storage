@@ -1,7 +1,9 @@
 package com.woowacamp.storage.domain.folder.service;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
@@ -121,16 +123,53 @@ class FolderServiceTest extends ContainerBaseConfig {
 
 			long moveSize = folderTreeSetUp.getSubFolders().get(1).getSize();
 			long targetSize = folderTreeSetUp.getSubFolders().get(2).getSize();
+
+			// source 폴더의 상위, target부터 상위 폴더 사이즈를 전부 기록
+			Map<Long, Long> sourceInfo = new HashMap<>();
+			Map<Long, Long> targetInfo = new HashMap<>();
+			Long parentFolderId = folderTreeSetUp.getSubFolders().get(1).getParentFolderId();
+			Long id = parentFolderId;
+			findSize(sourceInfo, id);
+			id = targetId;
+			findSize(targetInfo, id);
+
+
 			folderService.moveFolder(sourceId, dto);
 			Thread.sleep(5000);
 
 			FolderMetadata targetFolder = folderMetadataRepository.findById(targetId).get();
 			FolderMetadata sourceFolder = folderMetadataRepository.findById(sourceId).get();
 
-			List<FolderMetadata> byParentFolderId = folderMetadataRepository.findByParentFolderId(targetId, 10);
 
 			assertEquals(moveSize + targetSize, targetFolder.getSize());
 			assertEquals(targetId, sourceFolder.getParentFolderId());
+
+			Map<Long, Long> movedSizeInfo = new HashMap<>();
+			findSize(movedSizeInfo, parentFolderId); // 기존 부모부터 탐색
+			id = targetFolder.getId(); // 이동 부모부터 탐색
+			findSize(movedSizeInfo, id);
+
+			for (Map.Entry<Long, Long> entry : sourceInfo.entrySet()) {
+				Long key = entry.getKey();
+				Long value = entry.getValue();
+				if (targetInfo.get(key) == null) {
+					assertEquals(movedSizeInfo.get(key),value-moveSize);
+				}
+			}
+			for (Map.Entry<Long, Long> entry : targetInfo.entrySet()) {
+				Long key = entry.getKey();
+				Long value = entry.getValue();
+				if (sourceInfo.get(key) == null) {
+					assertEquals(movedSizeInfo.get(key),value+moveSize);
+				}
+			}
+		}
+		void findSize(Map<Long,Long> map, Long id) {
+			while (id != null) {
+				FolderMetadata folderMetadata = folderMetadataRepository.findById(id).get();
+				map.put(id, folderMetadata.getSize());
+				id = folderMetadata.getParentFolderId();
+			}
 		}
 
 		@Test
