@@ -19,3 +19,7 @@ file:
   request:
     maxFileSize: 524288000
     maxStorageSize: 1073741824
+
+constant:
+  batchSize: 10
+  deleteSize: 5
