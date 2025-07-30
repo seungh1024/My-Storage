@@ -16,6 +16,6 @@ public class MessageInfoEventListener {
 
 	@TransactionalEventListener(phase = TransactionPhase.BEFORE_COMMIT)
 	public void deleteMessageHandler(MessageInfoEvent event) {
-		messageInfoJpaRepository.updateMessageInfoSuccess(event.getId(), MessageStatus.SUCCESS);
+		messageInfoJpaRepository.updateMessageInfoStatus(event.getId(), MessageStatus.SUCCESS);
 	}
 }

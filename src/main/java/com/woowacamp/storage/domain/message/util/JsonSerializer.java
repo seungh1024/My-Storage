@@ -20,4 +20,12 @@ public class JsonSerializer {
 			throw new RuntimeException(e);
 		}
 	}
+
+	public <T> T deserialize(String data, Class<T> type) {
+		try {
+			return objectMapper.readValue(data, type);
+		} catch (JsonProcessingException e) {
+			throw new RuntimeException(e);
+		}
+	}
 }
