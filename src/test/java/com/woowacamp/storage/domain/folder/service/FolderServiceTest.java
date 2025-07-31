@@ -26,9 +26,15 @@ import com.woowacamp.storage.config.FolderTreeSetUp;
 import com.woowacamp.storage.container.ContainerBaseConfig;
 import com.woowacamp.storage.domain.file.entity.FileMetadata;
 import com.woowacamp.storage.domain.file.repository.FileMetadataJpaRepository;
+import com.woowacamp.storage.domain.folder.dto.message.FolderSizeMessageDto;
 import com.woowacamp.storage.domain.folder.dto.request.FolderMoveDto;
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
+import com.woowacamp.storage.domain.folder.event.FolderSizeEvent;
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
+import com.woowacamp.storage.domain.message.entity.MessageInfo;
+import com.woowacamp.storage.domain.message.repository.MessageInfoJpaRepository;
+import com.woowacamp.storage.domain.message.util.EventType;
+import com.woowacamp.storage.domain.message.util.JsonSerializer;
 import com.woowacamp.storage.global.constant.PermissionType;
 import com.woowacamp.storage.global.error.CustomException;
 import com.woowacamp.storage.global.error.ErrorCode;
@@ -56,6 +62,12 @@ class FolderServiceTest extends ContainerBaseConfig {
 
 	@Autowired
 	private RedisLockService redisLockService;
+
+	@Autowired
+	private JsonSerializer jsonSerializer;
+
+	@Autowired
+	private MessageInfoJpaRepository messageInfoJpaRepository;
 
 	private long userId = 1L;
 
@@ -277,6 +289,38 @@ class FolderServiceTest extends ContainerBaseConfig {
 
 			FolderMetadata folder = folderMetadataRepository.findById(childId).get();
 			assertEquals(targetId, folder.getParentFolderId());
+		}
+
+		@Test
+		@DisplayName("용량 업데이트와 폴더 이동이 충돌해도 3회 재시도하여 성공한다.")
+		void retry_size_update_success_test() {
+			FolderMetadata childFolder = folderTreeSetUp.getSubSubFolder();
+			FolderMetadata parentFolder = folderMetadataRepository.findById(childFolder.getParentFolderId()).get();
+			FolderMetadata rootFolder = folderMetadataRepository.findById(parentFolder.getParentFolderId()).get();
+			FolderMetadata otherFolder = folderTreeSetUp.getSubFolders().get(2);
+
+			long originVersion = parentFolder.getVersion();
+
+			folderMetadataRepository.updateParentInfoWithVersion(parentFolder.getId(),otherFolder.getId(),parentFolder.getVersion());
+
+			FolderMetadata temp = folderMetadataRepository.findById(parentFolder.getId()).get();
+			System.out.println("version = "+temp.getVersion());
+			long parentSize = parentFolder.getSize();
+			long rootSize = rootFolder.getSize();
+
+			long size = 100;
+			FolderSizeEvent event = new FolderSizeEvent(childFolder.getParentFolderId(), size);
+			MessageInfo messageInfo = event.toEntity(jsonSerializer.serialize(event));
+			messageInfoJpaRepository.save(messageInfo);
+
+			folderService.updateFolderSize(messageInfo.getId(), childFolder.getParentFolderId(), size);
+
+			parentFolder = folderMetadataRepository.findById(childFolder.getParentFolderId()).get();
+			rootFolder = folderMetadataRepository.findById(rootFolder.getId()).get();
+
+			assertEquals(parentSize + size, parentFolder.getSize());
+			assertEquals(rootSize, rootFolder.getSize());
+			assertEquals(originVersion+2 , parentFolder.getVersion());
 		}
 	}
 

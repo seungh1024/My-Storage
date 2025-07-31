@@ -180,6 +180,7 @@ public interface FolderMetadataJpaRepository extends JpaRepository<FolderMetadat
 		""")
 	int updateFolderSizeWithVersion(@Param("size") long size, @Param("id") long id, @Param("version") long version);
 
+	@Transactional
 	@Modifying
 	@Query("""
 			UPDATE FolderMetadata f
