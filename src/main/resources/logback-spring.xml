@@ -18,7 +18,7 @@
     <!-- 파일 출력 -->
     <appender name="FILE" class="ch.qos.logback.core.FileAppender">
         <file>${LOG_PATH}</file>
-        <append>false</append> <!-- 기존 파일에 이어쓰기 false-->
+        <append>true</append>
         <encoder>
             <pattern>${LOG_PATTERN}</pattern>
         </encoder>

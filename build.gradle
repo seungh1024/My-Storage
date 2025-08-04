@@ -36,8 +36,9 @@ dependencies {
 	// rabbitMQ amqp
 	implementation 'org.springframework.boot:spring-boot-starter-amqp'
 
-	// redisson
+	// redis
 	implementation 'org.redisson:redisson-spring-boot-starter:3.40.0'
+	implementation 'org.springframework.boot:spring-boot-starter-data-redis'
 
 
 	// queryDSL

@@ -24,6 +24,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+@Builder
 @Entity
 @Table(name = "folder_metadata", indexes = {
 	@Index(name = "folder_idx_parent_folder_id_created_at", columnList = "parent_folder_id, created_at"),
@@ -83,6 +84,7 @@ public class FolderMetadata {
 	@NotNull
 	private boolean isDeleted = false;
 
+	@Builder.Default
 	@Column(name = "version")
 	private long version = 0L;
 

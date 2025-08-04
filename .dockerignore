@@ -8,3 +8,9 @@ ceph/
 *.tar.gz
 *.db
 *.class
+
+target/
+build/
+.gradle/
+.idea/
+.vscode/
