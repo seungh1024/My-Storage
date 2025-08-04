@@ -6,6 +6,8 @@ import java.util.Optional;
 import java.util.Set;
 
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
@@ -100,21 +102,23 @@ public class FolderSearchUtil {
 	/**
 	 * 상위 폴더를 재귀적으로 탐색하며 이동이나 삭제 작업이 존재하지 않는지 확인하는 메서드
 	 */
+	@Transactional(propagation = Propagation.REQUIRES_NEW)
 	public int folderLockCheck(Long folderId, Long invalidId) {
 		int depth = 0;
 		FolderMetadata folderMetadata = folderMetadataJpaRepository.findById(folderId)
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
-		Long parentId = folderMetadata.getParentFolderId();
+		Long parentId = folderMetadata.getId();
 		while(parentId!=null){
 			if (parentId != null && parentId == invalidId) {
 				throw ErrorCode.FOLDER_MOVE_NOT_AVAILABLE.baseException();
 			}
 
+			// 부모가 이동이나 삭제 작업 중인지 확인 후 이미 진행 중이라면 예외 발생
+			boolean checkLockResult = redisLockService.checkLock(parentId.toString());
+
 			FolderMetadata parentFolder = folderMetadataJpaRepository.findById(parentId)
 				.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
 
-			// 부모가 이동이나 삭제 작업 중인지 확인 후 이미 진행 중이라면 예외 발생
-			boolean checkLockResult = redisLockService.checkLock(parentFolder.getId().toString());
 			if (checkLockResult) {
 				throw ErrorCode.PARENT_LOCKED.baseException("folder id = "+folderId + ", locked id = "+parentFolder.getId());
 			}

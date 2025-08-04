@@ -1,5 +1,6 @@
 package com.woowacamp.storage.domain.folder.service;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -10,6 +11,7 @@ import java.util.concurrent.Executor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Sort;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,6 +32,7 @@ import com.woowacamp.storage.domain.folder.repository.FolderMetadataRepository;
 import com.woowacamp.storage.domain.folder.utils.FolderSearchUtil;
 import com.woowacamp.storage.domain.folder.utils.QueryExecuteTemplate;
 import com.woowacamp.storage.domain.message.event.MessageInfoEvent;
+import com.woowacamp.storage.domain.message.util.JsonSerializer;
 import com.woowacamp.storage.domain.user.entity.User;
 import com.woowacamp.storage.domain.user.repository.UserRepository;
 import com.woowacamp.storage.global.background.BackgroundJob;
@@ -38,6 +41,7 @@ import com.woowacamp.storage.global.constant.PermissionType;
 import com.woowacamp.storage.global.constant.UploadStatus;
 import com.woowacamp.storage.global.error.CustomException;
 import com.woowacamp.storage.global.error.ErrorCode;
+import com.woowacamp.storage.global.util.CacheUtil;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -62,6 +66,8 @@ public class FolderService {
 	private final FolderCommitService folderCommitService;
 
 	private final ApplicationEventPublisher publisher;
+	private final RedisTemplate<String,String> redisTemplate;
+	private final JsonSerializer jsonSerializer;
 
 	@Value("${constant.batchSize}")
 	private int pageSize;
@@ -95,7 +101,11 @@ public class FolderService {
 			}
 		}
 
-		return new FolderContentsDto(folders, files);
+		FolderContentsDto folderContentsDto = new FolderContentsDto(folders, files);
+		redisTemplate.opsForValue().set(CacheUtil.generateKey(folderId), jsonSerializer.serialize(folderContentsDto),
+			Duration.ofMinutes(10));
+
+		return folderContentsDto;
 	}
 
 	/**
@@ -110,15 +120,16 @@ public class FolderService {
 		FolderMetadata targetFolder = folderMetadataJpaRepository.findByIdNotDeleted(dto.targetFolderId())
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
 
-		folderSearchUtil.folderLockCheck(sourceFolder.getId(), null);
-		int targetFolderDepth = folderSearchUtil.folderLockCheck(targetFolder.getId(),
-			sourceFolderId);// target은 source의 자식이면 안된다.
 
-		// 락을 건 후에 삭제되지 않았는지 체크
+		// 락을 건 후에 삭제되지 않았는지 체크ㅇ
 		folderMetadataJpaRepository.findByIdNotDeleted(targetFolder.getId())
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
 
 		validateInvalidMove(targetFolder, sourceFolder);
+
+		folderSearchUtil.folderLockCheck(sourceFolder.getParentFolderId(), null);
+		int targetFolderDepth = folderSearchUtil.folderLockCheck(targetFolder.getId(),
+			sourceFolderId);// target은 source의 자식이면 안된다.
 
 		validateFolderDepth(sourceFolder.getId(), targetFolder.getId(), targetFolderDepth);
 
