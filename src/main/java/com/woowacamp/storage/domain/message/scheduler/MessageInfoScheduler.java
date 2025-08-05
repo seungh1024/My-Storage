@@ -1,5 +1,7 @@
 package com.woowacamp.storage.domain.message.scheduler;
 
+import java.util.stream.Collectors;
+
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -63,10 +65,11 @@ public class MessageInfoScheduler {
 
 	@Scheduled(fixedDelay = deleteMessageDelay)
 	public void deleteSuccessMessage() {
-		int result = deleteSize;
-		while (result >= deleteSize) {
-			result = messageInfoJpaRepository.deleteMessagesWithSize(MessageStatus.SUCCESS.name(), deleteSize);
-		}
+		QueryExecuteTemplate.<MessageInfo>selectFilesAndExecuteWithCursor(deleteSize,
+			messageList -> messageInfoRepository.findSuccessMessageWithSize(messageList==null?null:messageList.getId(),deleteSize),
+			messageList->messageInfoJpaRepository.deleteMessagesInId(messageList.stream()
+				.map(MessageInfo::getId)
+				.collect(Collectors.toList())));
 	}
 
 	@Transactional

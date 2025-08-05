@@ -190,4 +190,7 @@ public interface FolderMetadataJpaRepository extends JpaRepository<FolderMetadat
 		""")
 	int updateParentInfoWithVersion(@Param("id") long id, @Param("parentFolderId") long parentFolderId,
 		@Param("version") long version);
+
+	@Query(value = "SELECT * FROM folder_metadata WHERE folder_metadata_id = :id", nativeQuery = true)
+	Optional<FolderMetadata> findByIdNative(@Param("id") Long id);
 }
