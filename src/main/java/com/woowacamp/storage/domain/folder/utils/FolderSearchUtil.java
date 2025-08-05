@@ -102,28 +102,25 @@ public class FolderSearchUtil {
 	/**
 	 * 상위 폴더를 재귀적으로 탐색하며 이동이나 삭제 작업이 존재하지 않는지 확인하는 메서드
 	 */
-	@Transactional(propagation = Propagation.REQUIRES_NEW)
 	public int folderLockCheck(Long folderId, Long invalidId) {
 		int depth = 0;
-		FolderMetadata folderMetadata = folderMetadataJpaRepository.findById(folderId)
-			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
-		Long parentId = folderMetadata.getId();
-		while(parentId!=null){
-			if (parentId != null && parentId == invalidId) {
+
+		while(folderId!=null){
+			if (folderId != null && folderId == invalidId) {
 				throw ErrorCode.FOLDER_MOVE_NOT_AVAILABLE.baseException();
 			}
 
 			// 부모가 이동이나 삭제 작업 중인지 확인 후 이미 진행 중이라면 예외 발생
-			boolean checkLockResult = redisLockService.checkLock(parentId.toString());
+			boolean checkLockResult = redisLockService.checkLock(folderId.toString());
 
-			FolderMetadata parentFolder = folderMetadataJpaRepository.findById(parentId)
+			FolderMetadata folderMetadata = folderMetadataJpaRepository.findByIdNative(folderId)
 				.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
 
 			if (checkLockResult) {
-				throw ErrorCode.PARENT_LOCKED.baseException("folder id = "+folderId + ", locked id = "+parentFolder.getId());
+				throw ErrorCode.PARENT_LOCKED.baseException("folder id = "+folderId + ", locked id = "+folderMetadata.getId());
 			}
 
-			parentId = parentFolder.getParentFolderId(); // 부모 갱신하여 상위로 탐색
+			folderId = folderMetadata.getParentFolderId(); // 부모 갱신하여 상위로 탐색
 			depth++;
 		}
 

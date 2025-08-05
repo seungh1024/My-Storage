@@ -113,7 +113,7 @@ public class FolderService {
 	 * 따라서 폴더 이동의 경우는 동시에 처리되지 않는다.
 	 * 동시에 여러 폴더 이동이 진행될때 싸이클이 발생할 수 있기 때문에 락을 걸고 진행.
 	 */
-	@Transactional
+	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public void moveFolder(Long sourceFolderId, FolderMoveDto dto) {
 		FolderMetadata sourceFolder = folderMetadataJpaRepository.findByIdNotDeleted(sourceFolderId)
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
@@ -121,7 +121,7 @@ public class FolderService {
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
 
 
-		// 락을 건 후에 삭제되지 않았는지 체크ㅇ
+		// 락을 건 후에 삭제되지 않았는지 체크
 		folderMetadataJpaRepository.findByIdNotDeleted(targetFolder.getId())
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
 
