@@ -58,12 +58,10 @@ public interface MessageInfoJpaRepository extends JpaRepository<MessageInfo, Lon
 	@Transactional
 	@Modifying
 	@Query(value = """
-			DELETE FROM message_info
-		   	WHERE status = :status
-		   	ORDER BY message_info_id
-		   	LIMIT :size
-		""", nativeQuery = true)
-	int deleteMessagesWithSize(@Param("status") String status, @Param("size") int size);
+			DELETE FROM MessageInfo m
+			WHERE m.id IN :ids
+		""")
+	int deleteMessagesInId(@Param("ids") List<Long> ids);
 
 	@Query("""
 			SELECT m
@@ -84,4 +82,23 @@ public interface MessageInfoJpaRepository extends JpaRepository<MessageInfo, Lon
 		""")
 	List<MessageInfo> findMaxRetryMessageWithSize(@Param("id") Long id, @Param("status") MessageStatus status,
 		@Param("retryCount") int retryCount, @Param("size") int size);
+
+	@Query("""
+			SELECT m
+			FROM MessageInfo m
+			WHERE m.status = :status
+			ORDER BY m.id
+			LIMIT :size
+		""")
+	List<MessageInfo> findSuccessMessageWithSize(@Param("status") MessageStatus messageStatus, @Param("size") int size);
+
+	@Query("""
+			SELECT m
+			FROM MessageInfo m
+			WHERE m.status = :status AND m.id > :id
+			ORDER BY m.id
+			LIMIT :size
+		""")
+	List<MessageInfo> findSuccessMessageWithSize(@Param("id") Long id, @Param("status") MessageStatus messageStatus,
+		@Param("size") int size);
 }

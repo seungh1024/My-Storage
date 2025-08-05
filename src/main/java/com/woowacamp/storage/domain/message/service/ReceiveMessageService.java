@@ -27,8 +27,8 @@ public class ReceiveMessageService {
 	@RabbitListener(queues = "${spring.rabbitmq.folder-size-queue}", containerFactory = "folderSizeFactory")
 	public void handleFolderSizeEvent(List<FolderSizeMessageDto> messages) {
 		messages.stream().forEach(message -> {
-			log.info("id = {}, FOLDER METADATA ID = {}, event type = {}, size = {}", message.id(),
-				message.folderMetadataId(), message.eventType(), message.size());
+			// log.info("id = {}, FOLDER METADATA ID = {}, event type = {}, size = {}", message.id(),
+			// 	message.folderMetadataId(), message.eventType(), message.size());
 
 			// 스케줄러가 처리되지 않은 메세지는 재발행을 할 것이기 때문에 error가 발생해도 ack는 진행한다.
 			try {

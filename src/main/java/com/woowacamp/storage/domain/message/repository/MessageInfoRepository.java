@@ -28,4 +28,11 @@ public class MessageInfoRepository {
 
 		return messageInfoJpaRepository.findMaxRetryMessageWithSize(id, MessageStatus.PENDING, maxRetry, size);
 	}
+
+	public List<MessageInfo> findSuccessMessageWithSize(Long id, int size) {
+		if (id == null) {
+			return messageInfoJpaRepository.findSuccessMessageWithSize(MessageStatus.SUCCESS, size);
+		}
+		return messageInfoJpaRepository.findSuccessMessageWithSize(id, MessageStatus.SUCCESS, size);
+	}
 }
