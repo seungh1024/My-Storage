@@ -32,7 +32,9 @@ import com.woowacamp.storage.domain.folder.repository.FolderMetadataRepository;
 import com.woowacamp.storage.domain.folder.utils.FolderSearchUtil;
 import com.woowacamp.storage.domain.folder.utils.QueryExecuteTemplate;
 import com.woowacamp.storage.domain.message.event.MessageInfoEvent;
+import com.woowacamp.storage.domain.message.repository.MessageInfoJpaRepository;
 import com.woowacamp.storage.domain.message.util.JsonSerializer;
+import com.woowacamp.storage.domain.message.util.MessageStatus;
 import com.woowacamp.storage.domain.user.entity.User;
 import com.woowacamp.storage.domain.user.repository.UserRepository;
 import com.woowacamp.storage.global.background.BackgroundJob;
@@ -68,6 +70,7 @@ public class FolderService {
 	private final ApplicationEventPublisher publisher;
 	private final RedisTemplate<String,String> redisTemplate;
 	private final JsonSerializer jsonSerializer;
+	private final MessageInfoJpaRepository messageInfoJpaRepository;
 
 	@Value("${constant.batchSize}")
 	private int pageSize;
@@ -404,6 +407,11 @@ public class FolderService {
 			publisher.publishEvent(new MessageInfoEvent(id));
 			return 1;
 		}
+		// 처리되지 않은 메세지가 없다면 리턴
+		if (!messageInfoJpaRepository.existsByIdAndStatus(id, MessageStatus.PENDING)) {
+			return 1;
+		}
+
 		// 사이즈 업데이트
 		int result = folderMetadataJpaRepository.updateFolderSizeWithVersion(size, folderMetadata.getId(),
 			folderMetadata.getVersion());

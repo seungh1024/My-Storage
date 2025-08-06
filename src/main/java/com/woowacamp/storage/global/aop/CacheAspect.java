@@ -31,7 +31,6 @@ public class CacheAspect {
 
 		String cacheData = redisTemplate.opsForValue().get(key);
 		if (cacheData != null) {
-			log.info("[Cache Hit !!!]");
 			Class<?> type = ((MethodSignature)joinPoint.getSignature()).getMethod().getReturnType();
 			Object dto = jsonSerializer.deserialize(cacheData, type);
 			return dto;
