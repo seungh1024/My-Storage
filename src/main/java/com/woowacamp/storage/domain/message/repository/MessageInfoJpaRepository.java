@@ -101,4 +101,7 @@ public interface MessageInfoJpaRepository extends JpaRepository<MessageInfo, Lon
 		""")
 	List<MessageInfo> findSuccessMessageWithSize(@Param("id") Long id, @Param("status") MessageStatus messageStatus,
 		@Param("size") int size);
+
+
+	boolean existsByIdAndStatus(Long id, MessageStatus status);
 }
