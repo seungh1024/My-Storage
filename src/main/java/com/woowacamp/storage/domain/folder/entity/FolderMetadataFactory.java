@@ -16,6 +16,7 @@ public class FolderMetadataFactory {
 			.uploadFolderName(folderName)
 			.sharingExpiredAt(CommonConstant.UNAVAILABLE_TIME)
 			.permissionType(PermissionType.NONE)
+			.nameFullPath("/")
 			.build();
 	}
 

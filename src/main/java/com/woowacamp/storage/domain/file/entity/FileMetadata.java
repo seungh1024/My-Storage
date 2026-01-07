@@ -100,6 +100,17 @@ public class FileMetadata {
 	@NotNull
 	private boolean isDeleted = false;
 
+	// 폴더명 기반의 전체 경로
+	@Column(name = "name_full_path",columnDefinition = "VARCHAR(250)")
+	@NotNull
+	private String nameFullPath;
+
+	// pk로 만들어진 전체 경로
+	@Column(name = "id_full_path",columnDefinition = "VARCHAR(250)")
+	@NotNull
+	private String idFullPath;
+
+
 	@Builder
 	public FileMetadata(Long id, Long rootId, Long creatorId, Long ownerId, String fileType, LocalDateTime createdAt,
 		LocalDateTime updatedAt, Long parentFolderId, Long fileSize, String uploadFileName, String uuidFileName,

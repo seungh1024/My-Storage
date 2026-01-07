@@ -24,7 +24,6 @@ import com.woowacamp.storage.domain.folder.service.FolderService;
 import com.woowacamp.storage.domain.folder.service.RedisLockService;
 import com.woowacamp.storage.global.annotation.CheckDto;
 import com.woowacamp.storage.global.annotation.CheckField;
-import com.woowacamp.storage.global.annotation.FolderListCache;
 import com.woowacamp.storage.global.annotation.RequestType;
 import com.woowacamp.storage.global.aop.type.FieldType;
 import com.woowacamp.storage.global.aop.type.FileType;
@@ -52,7 +51,6 @@ public class FolderController {
 		// response.setHeader("Location", UrlUtil.getAbsoluteUrl("/api/v1/folders/" + folder));
 	}
 
-	@FolderListCache
 	@RequestType(permission = PermissionType.READ, fileType = FileType.FOLDER)
 	@GetMapping("/{folderId}")
 	public FolderContentsDto getFolderContents(@CheckField(value = FieldType.FOLDER_ID) @PathVariable Long folderId,

@@ -88,10 +88,20 @@ public class FolderMetadata {
 	@Column(name = "version")
 	private long version = 0L;
 
+	// 폴더명 기반의 전체 경로
+	@Column(name = "name_full_path",columnDefinition = "VARCHAR(250)")
+	@NotNull
+	private String nameFullPath;
+
+	// pk로 만들어진 전체 경로
+	@Column(name = "id_full_path",columnDefinition = "VARCHAR(250)")
+	@NotNull
+	private String idFullPath;
+
 	@Builder
 	public FolderMetadata(Long id, Long rootId, Long ownerId, Long creatorId, LocalDateTime createdAt,
 		LocalDateTime updatedAt, Long parentFolderId, String uploadFolderName, long size,
-		LocalDateTime sharingExpiredAt, PermissionType permissionType, boolean isDeleted, long version) {
+		LocalDateTime sharingExpiredAt, PermissionType permissionType, boolean isDeleted, long version, String nameFullPath, String idFullPath) {
 
 		this.id = id;
 		this.rootId = rootId;
@@ -106,6 +116,8 @@ public class FolderMetadata {
 		this.permissionType = permissionType;
 		this.isDeleted = isDeleted;
 		this.version = version;
+		this.nameFullPath = nameFullPath;
+		this.idFullPath = idFullPath;
 	}
 
 	public void initOwnerId(Long ownerId) {
