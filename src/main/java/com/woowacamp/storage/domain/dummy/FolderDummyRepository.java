@@ -21,9 +21,11 @@ import jakarta.persistence.Enumerated;
 import jakarta.validation.constraints.NotNull;
 import lombok.Builder;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @Repository
 @RequiredArgsConstructor
+@Slf4j
 public class FolderDummyRepository {
 	private final JdbcTemplate jdbcTemplate;
 
@@ -31,11 +33,11 @@ public class FolderDummyRepository {
 		String sql = StorageStringUtil.format("""
 			INSERT INTO folder_metadata (folder_metadata_id, root_id, owner_id, creator_id, created_at,
 			updated_at, parent_folder_id, upload_folder_name, folder_size, sharing_expired_at,
-			permission_type, is_deleted, name_full_path, id_full_path)
+			permission_type, is_deleted, name_full_path, id_full_path,version)
 			
 			VALUES(?,?,?,?,?,
 			?,?,?,?,?,
-			?,?,?,?)
+			?,?,?,?,0)
 			""");
 
 		jdbcTemplate.batchUpdate(sql,folderMetadataList,folderMetadataList.size(),(PreparedStatement ps, FolderMetadata folderMetadata)->{
@@ -49,12 +51,15 @@ public class FolderDummyRepository {
 			ps.setString(8, folderMetadata.getUploadFolderName());
 			ps.setLong(9, folderMetadata.getSize());
 			ps.setTimestamp(10, Timestamp.valueOf(folderMetadata.getSharingExpiredAt()));
-			ps.setString(11, folderMetadata.getPermissionType().getValue());
+			ps.setString(11, folderMetadata.getPermissionType().name());
 			ps.setBoolean(12, folderMetadata.isDeleted());
 			ps.setString(13, folderMetadata.getNameFullPath());
 			ps.setString(14, folderMetadata.getIdFullPath());
 		});
+
+		log.info("[Batch FolderMetadata Insert] last id: {}",folderMetadataList.get(folderMetadataList.size()-1).getId());
 	}
+
 
 	private void setNullableLong(PreparedStatement ps, int idx, Long value) throws SQLException {
 		if (value == null) ps.setNull(idx, java.sql.Types.BIGINT);

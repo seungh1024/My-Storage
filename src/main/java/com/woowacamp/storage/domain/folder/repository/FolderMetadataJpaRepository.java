@@ -193,4 +193,13 @@ public interface FolderMetadataJpaRepository extends JpaRepository<FolderMetadat
 
 	@Query(value = "SELECT * FROM folder_metadata WHERE folder_metadata_id = :id", nativeQuery = true)
 	Optional<FolderMetadata> findByIdNative(@Param("id") Long id);
+
+	@Query(value = """
+		SELECT *
+		FROM folder_metadata
+		WHERE folder_metadata_id > :id
+		ORDER BY folder_metadata_id ASC
+		LIMIT :limit
+	""", nativeQuery = true)
+	List<FolderMetadata> findIdListById(@Param("id") Long id, @Param("limit") Long limit);
 }

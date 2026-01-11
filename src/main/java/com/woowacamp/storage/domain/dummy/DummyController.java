@@ -23,8 +23,8 @@ public class DummyController {
 
 	@ResponseStatus(HttpStatus.ACCEPTED)
 	@PostMapping("/folder")
-	public void createFolderDummy() {
-
+	public void createFolderDummy(@RequestBody DummyRequestFolderDto folderDto) {
+		dummyService.createFolderDummy(folderDto.startId());
 	}
 
 }
