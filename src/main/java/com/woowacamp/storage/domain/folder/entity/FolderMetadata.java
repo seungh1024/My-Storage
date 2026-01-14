@@ -7,6 +7,7 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import com.woowacamp.storage.global.constant.CommonConstant;
 import com.woowacamp.storage.global.constant.PermissionType;
+import com.woowacamp.storage.global.util.StorageStringUtil;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -154,4 +155,7 @@ public class FolderMetadata {
 		return sharingExpiredAt.isBefore(LocalDateTime.now());
 	}
 
+	public void updateIdFullPath(String parentIdPath) {
+		this.idFullPath = StorageStringUtil.format("{}{}/", parentIdPath, this.id);
+	}
 }

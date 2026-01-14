@@ -13,6 +13,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.EnableTransactionManagement;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -39,11 +40,12 @@ import com.woowacamp.storage.domain.user.entity.User;
 import com.woowacamp.storage.domain.user.repository.UserRepository;
 import com.woowacamp.storage.global.background.BackgroundJob;
 import com.woowacamp.storage.global.constant.CommonConstant;
-import com.woowacamp.storage.global.constant.PermissionType;
 import com.woowacamp.storage.global.constant.UploadStatus;
 import com.woowacamp.storage.global.error.CustomException;
 import com.woowacamp.storage.global.error.ErrorCode;
 import com.woowacamp.storage.global.util.CacheUtil;
+import com.woowacamp.storage.lock.annotation.DistributedLock;
+import com.woowacamp.storage.lock.util.CustomOrdered;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -68,7 +70,7 @@ public class FolderService {
 	private final FolderCommitService folderCommitService;
 
 	private final ApplicationEventPublisher publisher;
-	private final RedisTemplate<String,String> redisTemplate;
+	private final RedisTemplate<String, String> redisTemplate;
 	private final JsonSerializer jsonSerializer;
 	private final MessageInfoJpaRepository messageInfoJpaRepository;
 
@@ -122,7 +124,6 @@ public class FolderService {
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
 		FolderMetadata targetFolder = folderMetadataJpaRepository.findByIdNotDeleted(dto.targetFolderId())
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
-
 
 		// 락을 건 후에 삭제되지 않았는지 체크
 		folderMetadataJpaRepository.findByIdNotDeleted(targetFolder.getId())
@@ -254,18 +255,20 @@ public class FolderService {
 	 */
 
 	// TODO : 현재 테스트를 위해 쓰기 권한으로 생성한다. 테스트가 끝나면 제거 필요
-	@Transactional
+	@DistributedLock(keys = "'folder name:'+ #req.parentFolderId().concat('/').concat(#req.uploadFolderName()")
 	public Long createFolder(CreateFolderReqDto req) {
 		User user = userRepository.findById(req.userId()).orElseThrow(ErrorCode.USER_NOT_FOUND::baseException);
-		validateFolderName(req);
 
 		long parentFolderId = req.parentFolderId();
 		FolderMetadata parentFolder = folderMetadataJpaRepository.findById(parentFolderId)
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
+		validateFolderName(req);
 		validateFolder(req);
 		FolderMetadata folderMetadata = createFolderMetadata(user, parentFolder, req);
-		folderMetadata.updateShareStatus(PermissionType.WRITE, LocalDateTime.now().plusYears(1));
+
+		// 저장 및 pk 전체 경로 업데이트
 		FolderMetadata newFolder = folderMetadataJpaRepository.save(folderMetadata);
+		newFolder.updateIdFullPath(parentFolder.getIdFullPath());
 
 		return newFolder.getId();
 	}

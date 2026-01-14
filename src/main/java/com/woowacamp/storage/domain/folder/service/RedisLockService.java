@@ -1,11 +1,8 @@
 package com.woowacamp.storage.domain.folder.service;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
-import org.redisson.RedissonMultiLock;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.stereotype.Service;
@@ -21,7 +18,6 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 public class RedisLockService {
 	private static String LOCK_FORMAT = "LOCK NAME : {}";
-	private static String MULTI_LOCK_FORMAT = "LOCK NAME 1 : {}, LOCK NAME 2 : {}";
 
 	private final RedissonClient redissonClient;
 
@@ -67,7 +63,7 @@ public class RedisLockService {
 			if (!isLocked) {
 				throw ErrorCode.TOO_MUCH_REQUEST.baseException(StringFormat.format(LOCK_FORMAT, lockName));
 			}
-			lock.lock();
+			
 
 			result = task.get();
 		} catch (InterruptedException e) {

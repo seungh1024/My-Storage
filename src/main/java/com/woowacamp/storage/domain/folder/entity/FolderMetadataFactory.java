@@ -6,6 +6,7 @@ import com.woowacamp.storage.domain.folder.dto.request.CreateFolderReqDto;
 import com.woowacamp.storage.domain.user.entity.User;
 import com.woowacamp.storage.global.constant.CommonConstant;
 import com.woowacamp.storage.global.constant.PermissionType;
+import com.woowacamp.storage.global.util.StorageStringUtil;
 
 public class FolderMetadataFactory {
 	public static FolderMetadata createFolderMetadataBySignup(String folderName) {
@@ -33,6 +34,7 @@ public class FolderMetadataFactory {
 			.uploadFolderName(req.uploadFolderName())
 			.sharingExpiredAt(parentFolder.getSharingExpiredAt())
 			.permissionType(parentFolder.getPermissionType())
+			.nameFullPath(StorageStringUtil.format("{}{}/",parentFolder.getNameFullPath(),req.uploadFolderName()))
 			.build();
 	}
 }
