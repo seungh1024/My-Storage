@@ -1,6 +1,7 @@
 package com.woowacamp.storage.domain.dummy;
 
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -25,6 +26,12 @@ public class DummyController {
 	@PostMapping("/folder")
 	public void createFolderDummy(@RequestBody DummyRequestFolderDto folderDto) {
 		dummyService.createFolderDummy(folderDto.startId());
+	}
+
+	@ResponseStatus(HttpStatus.ACCEPTED)
+	@PatchMapping("/folder/path/length")
+	public void updateFolderPathLength(@RequestBody DummyRequestFolderDto folderDto) {
+		dummyService.updateFolderPathLength(folderDto);
 	}
 
 }

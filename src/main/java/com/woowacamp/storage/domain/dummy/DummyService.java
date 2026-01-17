@@ -4,7 +4,6 @@ import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Queue;
 
@@ -77,7 +76,7 @@ public class DummyService {
 		long minSize = 100;
 		long id = 0;
 		System.out.println("id = "+id);
-		List<FolderMetadata> idListById = folderMetadataJpaRepository.findIdListById(id, size);
+		List<FolderMetadata> idListById = folderMetadataJpaRepository.findFolderListById(id, size);
 		idQueue.addAll(idListById);
 		id = idListById.get(idListById.size() - 1).getId();
 
@@ -121,7 +120,7 @@ public class DummyService {
 				childList.clear();
 			}
 			while (idQueue.size()<=minSize) {
-				idListById = folderMetadataJpaRepository.findIdListById(id,size);
+				idListById = folderMetadataJpaRepository.findFolderListById(id,size);
 				if (idListById.size() != 0) {
 					idQueue.addAll(idListById);
 					id = idListById.get(idListById.size() - 1).getId();
@@ -129,6 +128,28 @@ public class DummyService {
 				}
 			}
 		}
+
+		threadPoolExecutor.waitToEnd();
+	}
+
+	public void updateFolderPathLength(DummyRequestFolderDto userDto) {
+		threadPoolExecutor.init();
+
+		long id = userDto.startId();
+		long size = 1000;
+		List<FolderMetadata> folderList = new ArrayList<>();
+		do {
+			folderList = folderMetadataJpaRepository.findFolderListById(id, size);
+			folderList.stream()
+				.forEach(folder -> folder.updateNamePathLength(
+					folder.getNameFullPath() == null ? 0 : folder.getNameFullPath().length()
+				));
+
+			List<FolderMetadata> updateList = new ArrayList<>(folderList);
+			threadPoolExecutor.execute(() -> folderDummyRepository.batchUpdateNamePathLength(updateList));
+			id = folderList.get(folderList.size()-1).getId();
+
+		} while (folderList.size() == size);
 
 		threadPoolExecutor.waitToEnd();
 	}
