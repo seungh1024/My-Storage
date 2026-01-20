@@ -11,6 +11,8 @@ import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.reflect.MethodSignature;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.expression.BeanFactoryResolver;
 import org.springframework.core.DefaultParameterNameDiscoverer;
 import org.springframework.core.ParameterNameDiscoverer;
 import org.springframework.core.annotation.Order;
@@ -39,6 +41,7 @@ public class DistributedLockAspect {
 	private final ExpressionParser parser = new SpelExpressionParser(); // SpEL(Spring Expression Language) 표현식 파서
 	private final ParameterNameDiscoverer nameDiscoverer = new DefaultParameterNameDiscoverer(); // 메서드와 생성자의 파라미터 이름을 찾기 위한 인터페이스
 	private final AopTxManager aopTxManager;
+	private final ApplicationContext applicationContext;
 
 	@Around("@annotation(ann)")
 	public Object around(ProceedingJoinPoint pjp, DistributedLock ann) throws Throwable {
@@ -72,7 +75,7 @@ public class DistributedLockAspect {
 			}
 
 			if (!acquired) {
-				throw ErrorCode.DISTRIBUTED_LOCK_CONFLICT.baseException(StorageStringUtil.format("락 획득 실패: {}",lockKeys));
+				throw ErrorCode.FOLDER_LOCK_CONFLICT.baseException(StorageStringUtil.format("락 획득 실패: {}",lockKeys));
 			}
 
 
@@ -107,6 +110,7 @@ public class DistributedLockAspect {
 	 */
 	private EvaluationContext buildContext(Method method, Object[] args) {
 		StandardEvaluationContext ctx = new StandardEvaluationContext();
+		ctx.setBeanResolver(new BeanFactoryResolver(applicationContext));
 		String[] paramNames = nameDiscoverer.getParameterNames(method);
 
 		// paramNames가 null이면(#folderId를 못 씀) -> #p0 같은 방식으로 접근해야 함

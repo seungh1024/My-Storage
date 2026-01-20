@@ -10,6 +10,9 @@ public class LockKeys {
 	public String folderJob(Long id) {
 		return FOLDER_JOB.concat(id.toString());
 	}
+	public String folderJob(String id) {
+		return FOLDER_JOB.concat(id);
+	}
 
 	public String folderName(Long parentId, String folderName) {
 		return FOLDER_NAME.concat(parentId.toString()).concat("/").concat(folderName);

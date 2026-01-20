@@ -379,7 +379,7 @@ class DistributedLockAspectTest {
 			CustomException ex = assertThrows(CustomException.class, () -> proxy.emptyKeys());
 
 			// Then
-			assertTrue(ex.getMessage().contains("잘못된 락 형식입니다."));
+			assertTrue(ex.getMessage().contains("서버 처리 중 예외가 발생했습니다."));
 			then(redissonClient).shouldHaveNoInteractions();
 			then(aopTxManager).should(never()).proceed(any());
 		}
@@ -391,7 +391,7 @@ class DistributedLockAspectTest {
 			CustomException ex = assertThrows(CustomException.class, () -> proxy.unsupportedType());
 
 			// Then
-			assertTrue(ex.getMessage().contains("잘못된 락 형식입니다."));
+			assertTrue(ex.getMessage().contains("서버 처리 중 예외가 발생했습니다."));
 			then(redissonClient).shouldHaveNoInteractions();
 			then(aopTxManager).should(never()).proceed(any());
 		}
