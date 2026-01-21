@@ -18,6 +18,7 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class RabbitMqConfig {
 
+	// connection
 	@Value("${spring.rabbitmq.addresses}")
 	private String addresses;
 	@Value("${spring.rabbitmq.username}")
@@ -26,90 +27,137 @@ public class RabbitMqConfig {
 	private String password;
 	@Value("${spring.rabbitmq.virtual-host}")
 	private String virtualHost;
-	@Value("${spring.rabbitmq.folder-size-queue}")
-	private String folderSizeQueue;
-	@Value("${spring.rabbitmq.folder-size-exchange}")
-	private String folderSizeExchange;
-	@Value("${spring.rabbitmq.folder-size-key}")
-	private String folderSizeKey;
 
-	@Value("${spring.rabbitmq.folder-size-dlx-queue}")
-	private String folderSizeDlxQueue;
-	@Value("${spring.rabbitmq.folder-size-dlx-exchange}")
-	private String folderSizeDlxExchange;
-	@Value("${spring.rabbitmq.folder-size-dlx-key}")
-	private String folderSizeDlxKey;
+	// common exchange (one)
+	@Value("${spring.rabbitmq.folder.exchange}")
+	private String folderExchangeName;
+
+	// ===== common =====
+	@Value("${spring.rabbitmq.folder.ttl}")
+	private Integer folderMessageTtl;
+
+	// ===== size =====
+	@Value("${spring.rabbitmq.folder.size.queue}")
+	private String folderSizeQueueName;
+	@Value("${spring.rabbitmq.folder.size.key}")
+	private String folderSizeBindingKey;
+
+	@Value("${spring.rabbitmq.folder.size.dlx.exchange}")
+	private String folderSizeDlxExchangeName;
+	@Value("${spring.rabbitmq.folder.size.dlx.queue}")
+	private String folderSizeDlqName;
+	@Value("${spring.rabbitmq.folder.size.dlx.key}")
+	private String folderSizeDlxRoutingKey;
+
+	// ===== move =====
+	@Value("${spring.rabbitmq.folder.move.queue}")
+	private String folderMoveQueueName;
+	@Value("${spring.rabbitmq.folder.move.key}")
+	private String folderMoveBindingKey;
+
+	@Value("${spring.rabbitmq.folder.move.dlx.exchange}")
+	private String folderMoveDlxExchangeName;
+	@Value("${spring.rabbitmq.folder.move.dlx.queue}")
+	private String folderMoveDlqName;
+	@Value("${spring.rabbitmq.folder.move.dlx.key}")
+	private String folderMoveDlxRoutingKey;
 
 	@Bean
 	public ConnectionFactory connectionFactory() {
-		CachingConnectionFactory connectionFactory = new CachingConnectionFactory();
-		connectionFactory.setAddresses(addresses);
-		connectionFactory.setUsername(userName);
-		connectionFactory.setPassword(password);
-		connectionFactory.setVirtualHost(virtualHost);
-		connectionFactory.setConnectionTimeout(3000);
-
-		return connectionFactory;
+		CachingConnectionFactory cf = new CachingConnectionFactory();
+		cf.setAddresses(addresses);
+		cf.setUsername(userName);
+		cf.setPassword(password);
+		cf.setVirtualHost(virtualHost);
+		cf.setConnectionTimeout(3000);
+		return cf;
 	}
 
+	/**
+	 * 메인 Exchange: Topic (folder.size.* / folder.move.* 같은 패턴 바인딩용)
+	 */
+	@Bean
+	public TopicExchange folderExchange() {
+		return new TopicExchange(folderExchangeName);
+	}
+
+	// =========================
+	// Size Queue / Binding / DLX
+	// =========================
 	@Bean
 	public Queue folderSizeQueue() {
-		return QueueBuilder.durable(folderSizeQueue)
-			.withArgument("x-message-ttl", 60000)  // 메시지 TTL 60000ms = 1분
-			.withArgument("x-dead-letter-exchange", folderSizeDlxExchange)  // DLX 설정
-			.withArgument("x-dead-letter-routing-key", folderSizeDlxKey)  // DLX 라우팅 키
+		return QueueBuilder.durable(folderSizeQueueName)
+			// 필요하면 TTL도 yml로 빼서 주는 걸 추천. 우선 기존 유지 예시:
+			.withArgument("x-message-ttl", folderMessageTtl)
+			.withArgument("x-dead-letter-exchange", folderSizeDlxExchangeName)
+			.withArgument("x-dead-letter-routing-key", folderSizeDlxRoutingKey)
 			.build();
 	}
 
-	/**
-	 * 라우팅 키에 따라 메세지를 특정 큐로 라우팅하기 위해 TopicExchange 사용.
-	 * 라우팅 키와 정확히 일치하는 큐로 메세지 전달하려면 DirecExchange, Broadcast 하려면 FanoutExchange 사용.
-	 * @return
-	 */
 	@Bean
-	public TopicExchange folderSizeExchange() {
-		return new TopicExchange(folderSizeExchange);
+	public Binding folderSizeBinding(TopicExchange folderExchange, Queue folderSizeQueue) {
+		return BindingBuilder.bind(folderSizeQueue).to(folderExchange).with(folderSizeBindingKey);
 	}
 
 	@Bean
-	public Binding folderSizeBinding(TopicExchange folderSizeExchange, Queue folderSizeQueue) {
-		return BindingBuilder.bind(folderSizeQueue).to(folderSizeExchange).with(folderSizeKey);
+	public DirectExchange folderSizeDlxExchange() {
+		return new DirectExchange(folderSizeDlxExchangeName);
 	}
 
 	@Bean
-	public DirectExchange dlxExchange() {
-		return new DirectExchange(folderSizeDlxExchange);
+	public Queue folderSizeDlq() {
+		return QueueBuilder.durable(folderSizeDlqName).build();
 	}
 
 	@Bean
-	public Queue dlq() {
-		return QueueBuilder.durable(folderSizeDlxQueue).build();
+	public Binding folderSizeDlqBinding(Queue folderSizeDlq, DirectExchange folderSizeDlxExchange) {
+		return BindingBuilder.bind(folderSizeDlq).to(folderSizeDlxExchange).with(folderSizeDlxRoutingKey);
+	}
+
+	// =========================
+	// Move Queue / Binding / DLX
+	// =========================
+	@Bean
+	public Queue folderMoveQueue() {
+		return QueueBuilder.durable(folderMoveQueueName)
+			.withArgument("x-message-ttl", folderMessageTtl)
+			.withArgument("x-dead-letter-exchange", folderMoveDlxExchangeName)
+			.withArgument("x-dead-letter-routing-key", folderMoveDlxRoutingKey)
+			.build();
 	}
 
 	@Bean
-	public Binding dlqBinding(Queue dlq, DirectExchange dlxExchange) {
-		return BindingBuilder.bind(dlq).to(dlxExchange).with(folderSizeDlxKey);
+	public Binding folderMoveBinding(TopicExchange folderExchange, Queue folderMoveQueue) {
+		return BindingBuilder.bind(folderMoveQueue).to(folderExchange).with(folderMoveBindingKey);
 	}
 
-	/**
-	 * json 형태로 메세지 변경
-	 * @return
-	 */
 	@Bean
-	MessageConverter messageConverter() {
+	public DirectExchange folderMoveDlxExchange() {
+		return new DirectExchange(folderMoveDlxExchangeName);
+	}
+
+	@Bean
+	public Queue folderMoveDlq() {
+		return QueueBuilder.durable(folderMoveDlqName).build();
+	}
+
+	@Bean
+	public Binding folderMoveDlqBinding(Queue folderMoveDlq, DirectExchange folderMoveDlxExchange) {
+		return BindingBuilder.bind(folderMoveDlq).to(folderMoveDlxExchange).with(folderMoveDlxRoutingKey);
+	}
+
+	// =========================
+	// Converter / Template
+	// =========================
+	@Bean
+	public MessageConverter messageConverter() {
 		return new Jackson2JsonMessageConverter();
 	}
 
-	/**
-	 * 구성한 connection factory, message converter로 템플릿 구성
-	 * @param connectionFactory
-	 * @param messageConverter
-	 * @return
-	 */
 	@Bean
-	RabbitTemplate rabbitTemplate(ConnectionFactory connectionFactory, MessageConverter messageConverter) {
-		RabbitTemplate rabbitTemplate = new RabbitTemplate(connectionFactory);
-		rabbitTemplate.setMessageConverter(messageConverter);
-		return rabbitTemplate;
+	public RabbitTemplate rabbitTemplate(ConnectionFactory connectionFactory, MessageConverter messageConverter) {
+		RabbitTemplate template = new RabbitTemplate(connectionFactory);
+		template.setMessageConverter(messageConverter);
+		return template;
 	}
 }

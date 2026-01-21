@@ -14,7 +14,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import com.woowacamp.storage.container.ContainerBaseConfig;
-import com.woowacamp.storage.domain.folder.dto.message.FolderSizeMessageDto;
+import com.woowacamp.storage.domain.message.dto.FolderSizeMessageDto;
 import com.woowacamp.storage.domain.message.entity.MessageInfo;
 import com.woowacamp.storage.domain.message.repository.MessageInfoJpaRepository;
 import com.woowacamp.storage.domain.message.repository.MessageInfoRepository;

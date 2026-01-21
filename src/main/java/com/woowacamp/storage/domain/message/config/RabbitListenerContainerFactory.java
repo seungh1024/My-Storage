@@ -10,32 +10,70 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class RabbitListenerContainerFactory {
 
-	@Value("${spring.rabbitmq.folder-size-consumerSize}")
-	private int consumerSize;
-	@Value("${spring.rabbitmq.folder-size-maxConsumerSize}")
-	private int maxConsumerSize;
-	@Value("${spring.rabbitmq.folder-size-batchSize}")
-	private int batchSize;
-	@Value("${spring.rabbitmq.folder-size-receiveTimeout}")
-	private long receiveTimeout;
+	@Configuration
+	public class RabbitListenerContainerFactoryConfig {
 
+		// ===== size =====
+		@Value("${spring.rabbitmq.folder.size.consumerSize}")
+		private int sizeConsumerSize;
+		@Value("${spring.rabbitmq.folder.size.maxConsumerSize}")
+		private int sizeMaxConsumerSize;
+		@Value("${spring.rabbitmq.folder.size.batchSize}")
+		private int sizeBatchSize;
+		@Value("${spring.rabbitmq.folder.size.receiveTimeout}")
+		private long sizeReceiveTimeout;
 
-	@Bean
-	public SimpleRabbitListenerContainerFactory folderSizeFactory(ConnectionFactory connectionFactory, MessageConverter messageConverter) {
-		SimpleRabbitListenerContainerFactory factory = new SimpleRabbitListenerContainerFactory();
-		factory.setConnectionFactory(connectionFactory);
-		factory.setMessageConverter(messageConverter);
-		factory.setConcurrentConsumers(consumerSize);   // 동시에 처리할 소비자 수
-		factory.setMaxConcurrentConsumers(maxConsumerSize);
+		// ===== move =====
+		@Value("${spring.rabbitmq.folder.move.consumerSize}")
+		private int moveConsumerSize;
+		@Value("${spring.rabbitmq.folder.move.maxConsumerSize}")
+		private int moveMaxConsumerSize;
+		@Value("${spring.rabbitmq.folder.move.batchSize}")
+		private int moveBatchSize;
+		@Value("${spring.rabbitmq.folder.move.receiveTimeout}")
+		private long moveReceiveTimeout;
 
-		// batch listener 활성화
-		factory.setBatchListener(true);
-		factory.setConsumerBatchEnabled(true);
+		@Bean(name = "folderSizeFactory")
+		public SimpleRabbitListenerContainerFactory folderSizeFactory(
+			ConnectionFactory connectionFactory,
+			MessageConverter messageConverter
+		) {
+			return buildFactory(connectionFactory, messageConverter,
+				sizeConsumerSize, sizeMaxConsumerSize, sizeBatchSize, sizeReceiveTimeout);
+		}
 
-		// batch 크기, 타임아웃 설정
-		factory.setBatchSize(batchSize); // n개씩 모아서 처리
-		factory.setReceiveTimeout(receiveTimeout); // 안모이면 100ms 이후 수신
+		@Bean(name = "folderMoveFactory")
+		public SimpleRabbitListenerContainerFactory folderMoveFactory(
+			ConnectionFactory connectionFactory,
+			MessageConverter messageConverter
+		) {
+			return buildFactory(connectionFactory, messageConverter,
+				moveConsumerSize, moveMaxConsumerSize, moveBatchSize, moveReceiveTimeout);
+		}
 
-		return factory;
+		private SimpleRabbitListenerContainerFactory buildFactory(
+			ConnectionFactory connectionFactory,
+			MessageConverter messageConverter,
+			int consumerSize,
+			int maxConsumerSize,
+			int batchSize,
+			long receiveTimeout
+		) {
+			SimpleRabbitListenerContainerFactory factory = new SimpleRabbitListenerContainerFactory();
+			factory.setConnectionFactory(connectionFactory);
+			factory.setMessageConverter(messageConverter);
+
+			factory.setConcurrentConsumers(consumerSize);
+			factory.setMaxConcurrentConsumers(maxConsumerSize);
+
+			// batch listener 활성화
+			factory.setBatchListener(true);
+			factory.setConsumerBatchEnabled(true);
+
+			factory.setBatchSize(batchSize);
+			factory.setReceiveTimeout(receiveTimeout);
+
+			return factory;
+		}
 	}
 }

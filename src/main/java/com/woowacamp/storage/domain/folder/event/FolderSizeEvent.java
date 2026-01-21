@@ -1,6 +1,6 @@
 package com.woowacamp.storage.domain.folder.event;
 
-import com.woowacamp.storage.domain.folder.dto.message.FolderSizeMessageDto;
+import com.woowacamp.storage.domain.message.dto.FolderSizeMessageDto;
 import com.woowacamp.storage.domain.message.entity.MessageInfo;
 import com.woowacamp.storage.domain.message.util.EventType;
 
@@ -29,7 +29,7 @@ public class FolderSizeEvent {
 		);
 	}
 
-	public FolderSizeMessageDto toDto(EventType eventType) {
-		return new FolderSizeMessageDto(this.id, this.folderMetadataId, this.size, eventType);
+	public FolderSizeMessageDto message() {
+		return new FolderSizeMessageDto(this.id, this.folderMetadataId, this.size, EventType.FOLDER_SIZE);
 	}
 }

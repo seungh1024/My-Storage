@@ -8,8 +8,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.woowacamp.storage.domain.file.util.StringFormat;
-import com.woowacamp.storage.domain.folder.dto.message.FolderSizeMessageDto;
 import com.woowacamp.storage.domain.folder.utils.QueryExecuteTemplate;
+import com.woowacamp.storage.domain.message.dto.FolderSizeMessageDto;
 import com.woowacamp.storage.domain.message.entity.MessageInfo;
 import com.woowacamp.storage.domain.message.repository.MessageInfoJpaRepository;
 import com.woowacamp.storage.domain.message.repository.MessageInfoRepository;
@@ -56,7 +56,7 @@ public class MessageInfoScheduler {
 		FolderSizeMessageDto folderSizeMessageDto = jsonSerializer.deserialize(message.getPayload(),
 			FolderSizeMessageDto.class);
 		try {
-			sendMessageService.sendMessage(folderSizeMessageDto);
+			sendMessageService.send(folderSizeMessageDto);
 		} catch (Exception e) {
 			messageInfoJpaRepository.updateRetryCount(message.getId());
 			log.error(StringFormat.format("[SEND MESSAGE SCHEDULER ERROR] ID = {}", message.getId()), e);
@@ -66,8 +66,9 @@ public class MessageInfoScheduler {
 	@Scheduled(fixedDelay = deleteMessageDelay)
 	public void deleteSuccessMessage() {
 		QueryExecuteTemplate.<MessageInfo>selectFilesAndExecuteWithCursor(deleteSize,
-			messageList -> messageInfoRepository.findSuccessMessageWithSize(messageList==null?null:messageList.getId(),deleteSize),
-			messageList->messageInfoJpaRepository.deleteMessagesInId(messageList.stream()
+			messageList -> messageInfoRepository.findSuccessMessageWithSize(
+				messageList == null ? null : messageList.getId(), deleteSize),
+			messageList -> messageInfoJpaRepository.deleteMessagesInId(messageList.stream()
 				.map(MessageInfo::getId)
 				.collect(Collectors.toList())));
 	}

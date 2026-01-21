@@ -1,27 +1,29 @@
 package com.woowacamp.storage.domain.message.service;
 
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import com.woowacamp.storage.domain.folder.dto.message.FolderSizeMessageDto;
+import com.woowacamp.storage.domain.message.dto.FolderMoveMessageDto;
+import com.woowacamp.storage.domain.message.dto.FolderSizeMessageDto;
+import com.woowacamp.storage.domain.message.routing.RabbitRoute;
+import com.woowacamp.storage.domain.message.routing.RabbitRoutesProperties;
+import com.woowacamp.storage.domain.message.util.EventType;
+
+import lombok.RequiredArgsConstructor;
 
 @Service
+@RequiredArgsConstructor
 public class SendMessageService {
 	private final RabbitTemplate rabbitTemplate;
-	private final String exchangeName;
-	private final String routingKey;
+	private final RabbitRoutesProperties routes;
 
-	public SendMessageService(RabbitTemplate rabbitTemplate,
-		@Value("${spring.rabbitmq.folder-size-exchange}") String exchangeName,
-		@Value("${spring.rabbitmq.folder-size-key}") String routingKey) {
-		this.rabbitTemplate = rabbitTemplate;
-		this.exchangeName = exchangeName;
-		this.routingKey = routingKey;
+	public void send(FolderSizeMessageDto message) {
+		RabbitRoute r = routes.route(EventType.FOLDER_SIZE);
+		rabbitTemplate.convertAndSend(r.exchange(), r.routingKey(), message);
 	}
 
-	public void sendMessage(FolderSizeMessageDto message) {
-		rabbitTemplate.convertAndSend(exchangeName, routingKey, message);
+	public void send(FolderMoveMessageDto message) {
+		RabbitRoute r = routes.route(EventType.FOLDER_MOVE);
+		rabbitTemplate.convertAndSend(r.exchange(), r.routingKey(), message);
 	}
-
 }

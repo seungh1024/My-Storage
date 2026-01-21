@@ -39,6 +39,12 @@ public class FolderMoveEventListener {
 	@Async(value = "SEND_MESSAGE_EXECUTOR")
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 	public void sendMessageHandler(FolderSizeEvent folderSizeEvent) {
-		sendMessageService.sendMessage(folderSizeEvent.toDto(EventType.FOLDER_SIZE));
+		sendMessageService.send(folderSizeEvent.message());
+	}
+
+	@Async(value = "SEND_MESSAGE_EXECUTOR")
+	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+	public void sendMessageHandler(FolderMoveEvent folderMoveEvent) {
+		sendMessageService.send(folderMoveEvent.message());
 	}
 }

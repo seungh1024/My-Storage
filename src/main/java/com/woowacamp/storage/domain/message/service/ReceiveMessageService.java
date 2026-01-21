@@ -7,7 +7,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import com.woowacamp.storage.domain.file.util.StringFormat;
-import com.woowacamp.storage.domain.folder.dto.message.FolderSizeMessageDto;
+import com.woowacamp.storage.domain.message.dto.FolderSizeMessageDto;
 import com.woowacamp.storage.domain.folder.service.FolderService;
 import com.woowacamp.storage.global.error.CustomException;
 import com.woowacamp.storage.global.error.ErrorCode;
