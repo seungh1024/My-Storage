@@ -90,19 +90,26 @@ public class FolderMetadata {
 	private long version = 0L;
 
 	// 폴더명 기반의 전체 경로
-	@Column(name = "name_full_path",columnDefinition = "VARCHAR(250)")
+	@Column(name = "name_full_path", columnDefinition = "VARCHAR(250)")
 	@NotNull
 	private String nameFullPath;
 
 	// pk로 만들어진 전체 경로
-	@Column(name = "id_full_path",columnDefinition = "VARCHAR(250)")
+	@Column(name = "id_full_path", columnDefinition = "VARCHAR(250)")
 	@NotNull
 	private String idFullPath;
+
+	@Column(name = "name_path_length", columnDefinition = "INT NOT NULL DEFAULT 0")
+	private int namePathLength;
+
+	@Column(name = "is_moving", columnDefinition = "BOOLEAN DEFAULT false")
+	private boolean isMoving = false;
 
 	@Builder
 	public FolderMetadata(Long id, Long rootId, Long ownerId, Long creatorId, LocalDateTime createdAt,
 		LocalDateTime updatedAt, Long parentFolderId, String uploadFolderName, long size,
-		LocalDateTime sharingExpiredAt, PermissionType permissionType, boolean isDeleted, long version, String nameFullPath, String idFullPath) {
+		LocalDateTime sharingExpiredAt, PermissionType permissionType, boolean isDeleted, long version,
+		String nameFullPath, String idFullPath, Integer namePathLength, boolean isMoving) {
 
 		this.id = id;
 		this.rootId = rootId;
@@ -119,6 +126,8 @@ public class FolderMetadata {
 		this.version = version;
 		this.nameFullPath = nameFullPath;
 		this.idFullPath = idFullPath;
+		this.namePathLength = namePathLength;
+		this.isMoving = isMoving;
 	}
 
 	public void initOwnerId(Long ownerId) {
@@ -157,5 +166,17 @@ public class FolderMetadata {
 
 	public void updateIdFullPath(String parentIdPath) {
 		this.idFullPath = StorageStringUtil.format("{}{}/", parentIdPath, this.id);
+	}
+
+	public void updateNameFullPath(String parentNamePath) {
+		this.nameFullPath = StorageStringUtil.format("{}{}/", parentNamePath, this.uploadFolderName);
+	}
+
+	public void updateNamePathLength(int namePathLength) {
+		this.namePathLength = namePathLength;
+	}
+
+	public void markMoving() {
+		this.isMoving = true;
 	}
 }

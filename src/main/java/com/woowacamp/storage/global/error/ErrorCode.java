@@ -41,14 +41,18 @@ public enum ErrorCode {
 	WRONG_OBJECT_KEY(HttpStatus.BAD_REQUEST, "OBJECT KEY가 일치하지 않습니다. 요청 데이터를 다시 확인해 주세요."),
 	PARENT_LOCKED(HttpStatus.CONFLICT, "상위에 이동이나 삭제 작업 중인 폴더가 있습니다."),
 	CANNOT_UPDATE_SIZE(HttpStatus.NOT_FOUND, "폴더를 찾을 수 없습니다."),
-	DISTRIBUTED_LOCK_CONFLICT(HttpStatus.CONFLICT, "분산락 획득에 실패했습니다>"),
+	FOLDER_LOCK_CONFLICT(HttpStatus.CONFLICT, "폴더락 획득에 실패했습니다>"),
+	PATH_TOO_LONG(HttpStatus.BAD_REQUEST, "전체 경로가 제한을 넘었습니다. 250자 이내로 생성해 주세요."),
+	FOLDER_JOB_CREATE_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "폴더 작업 생성에 실패했습니다."),
+	FOLDER_JOB_CONFLICT(HttpStatus.CONFLICT, "폴더 작업이 이미 존재합니다."),
 	// 500,
 	FILE_UPLOAD_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "파일 업로드에 실패했습니다."),
 	FILE_DELETE_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "파일 삭제에 실패했습니다."),
 	PERMISSION_CHECK_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "권한 확인 중 예외가 발생했습니다."),
 	FILE_MOVE_FAILED(HttpStatus.INTERNAL_SERVER_ERROR,"파일 이동에 실패했습니다"),
 	TOO_MUCH_REQUEST(HttpStatus.INTERNAL_SERVER_ERROR, "요청이 많습니다. 잠시 후에 다시 시도해주세요."),
-	LOCK_KEY_EXPRESSION_EXCEPTION(HttpStatus.INTERNAL_SERVER_ERROR,"잘못된 락 형식입니다.");
+	LOCK_KEY_EXPRESSION_EXCEPTION(HttpStatus.INTERNAL_SERVER_ERROR,"서버 처리 중 예외가 발생했습니다."),
+	FOLDER_PATH_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "사용자 데이터 처리 중 예외가 발생했습니다.");
 	private final HttpStatus status;
 	private final String message;
 

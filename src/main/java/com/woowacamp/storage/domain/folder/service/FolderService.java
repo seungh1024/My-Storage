@@ -1,51 +1,49 @@
 package com.woowacamp.storage.domain.folder.service;
 
-import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.Executor;
+import java.util.stream.Stream;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Sort;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.EnableTransactionManagement;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.woowacamp.storage.domain.file.entity.FileMetadata;
 import com.woowacamp.storage.domain.file.repository.FileMetadataJpaRepository;
 import com.woowacamp.storage.domain.file.repository.FileMetadataRepository;
-import com.woowacamp.storage.domain.file.util.StringFormat;
 import com.woowacamp.storage.domain.folder.dto.CursorType;
 import com.woowacamp.storage.domain.folder.dto.FolderContentsDto;
 import com.woowacamp.storage.domain.folder.dto.FolderContentsSortField;
 import com.woowacamp.storage.domain.folder.dto.request.CreateFolderReqDto;
 import com.woowacamp.storage.domain.folder.dto.request.FolderMoveDto;
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
+import com.woowacamp.storage.domain.folder.event.FolderMoveEvent;
 import com.woowacamp.storage.domain.folder.event.FolderSizeEvent;
+import com.woowacamp.storage.domain.folder.repository.FolderJobJpaRepository;
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataRepository;
-import com.woowacamp.storage.domain.folder.utils.FolderSearchUtil;
+import com.woowacamp.storage.domain.folder.utils.FolderJobStatus;
+import com.woowacamp.storage.domain.folder.utils.FolderPathParser;
 import com.woowacamp.storage.domain.folder.utils.QueryExecuteTemplate;
 import com.woowacamp.storage.domain.message.event.MessageInfoEvent;
 import com.woowacamp.storage.domain.message.repository.MessageInfoJpaRepository;
-import com.woowacamp.storage.domain.message.util.JsonSerializer;
 import com.woowacamp.storage.domain.message.util.MessageStatus;
 import com.woowacamp.storage.domain.user.entity.User;
 import com.woowacamp.storage.domain.user.repository.UserRepository;
 import com.woowacamp.storage.global.background.BackgroundJob;
 import com.woowacamp.storage.global.constant.CommonConstant;
-import com.woowacamp.storage.global.constant.UploadStatus;
-import com.woowacamp.storage.global.error.CustomException;
 import com.woowacamp.storage.global.error.ErrorCode;
-import com.woowacamp.storage.global.util.CacheUtil;
+import com.woowacamp.storage.global.util.StorageStringUtil;
 import com.woowacamp.storage.lock.annotation.DistributedLock;
-import com.woowacamp.storage.lock.util.CustomOrdered;
+import com.woowacamp.storage.lock.util.LockKeys;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -62,16 +60,13 @@ public class FolderService {
 	private final FileMetadataRepository fileMetadataRepository;
 	private final FolderMetadataJpaRepository folderMetadataJpaRepository;
 	private final FolderMetadataRepository folderMetadataRepository;
-	private final RedisLockService redisLockService;
 	private final UserRepository userRepository;
-	private final FolderSearchUtil folderSearchUtil;
 	private final Executor searchThreadPoolExecutor;
 	private final BackgroundJob backgroundJob;
-	private final FolderCommitService folderCommitService;
+	private final LockKeys lockKeys;
+	private final FolderJobJpaRepository folderJobJpaRepository;
 
 	private final ApplicationEventPublisher publisher;
-	private final RedisTemplate<String, String> redisTemplate;
-	private final JsonSerializer jsonSerializer;
 	private final MessageInfoJpaRepository messageInfoJpaRepository;
 
 	@Value("${constant.batchSize}")
@@ -79,8 +74,12 @@ public class FolderService {
 	@Value("${constant.retryCnt}")
 	private int retryCnt;
 
+	@Value("${folder.path.maxLength}")
+	private int maxPathLength;
+
 	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public void checkFolderOwnedBy(long folderId, long userId) {
+
 		FolderMetadata folderMetadata = folderMetadataJpaRepository.findByIdForUpdate(folderId)
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
 
@@ -107,82 +106,69 @@ public class FolderService {
 		}
 
 		FolderContentsDto folderContentsDto = new FolderContentsDto(folders, files);
-		redisTemplate.opsForValue().set(CacheUtil.generateKey(folderId), jsonSerializer.serialize(folderContentsDto),
-			Duration.ofMinutes(10));
 
 		return folderContentsDto;
 	}
 
 	/**
-	 * 폴더 단위가 아닌, 사용자 기준으로 락을 걸고 작업을 한다.
-	 * 따라서 폴더 이동의 경우는 동시에 처리되지 않는다.
-	 * 동시에 여러 폴더 이동이 진행될때 싸이클이 발생할 수 있기 때문에 락을 걸고 진행.
+	 * 폴더 단위 락을 획득한 이후 폴더의 추가 검증과 실제 이동 작업 이벤트를 생성.
+	 * 이동 시 중복 이름을 허용하지 않으므로 분산락 획득 후 진행
+	 *
 	 */
-	@Transactional(isolation = Isolation.READ_COMMITTED)
-	public void moveFolder(Long sourceFolderId, FolderMoveDto dto) {
-		FolderMetadata sourceFolder = folderMetadataJpaRepository.findByIdNotDeleted(sourceFolderId)
-			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
-		FolderMetadata targetFolder = folderMetadataJpaRepository.findByIdNotDeleted(dto.targetFolderId())
-			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
-
-		// 락을 건 후에 삭제되지 않았는지 체크
-		folderMetadataJpaRepository.findByIdNotDeleted(targetFolder.getId())
-			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
-
-		validateInvalidMove(targetFolder, sourceFolder);
-
-		folderSearchUtil.folderLockCheck(sourceFolder.getParentFolderId(), null);
-		int targetFolderDepth = folderSearchUtil.folderLockCheck(targetFolder.getId(),
-			sourceFolderId);// target은 source의 자식이면 안된다.
-
-		validateFolderDepth(sourceFolder.getId(), targetFolder.getId(), targetFolderDepth);
-
-		// 목적지에 동일 폴더를 생성하지 않도록 락이 필요하다. 누군가 폴더를 생성해서 같은 이름이 생길 수 있기 때문.
-		// 또한 트랜잭션 내부에서 락을 사용하면 커밋 전에 락이 해제되기 때문에 일관성이 깨질 수 있다.
-		String moveFolderLock = targetFolder.getId() + "/" + sourceFolder.getUploadFolderName();
-		redisLockService.runWithWatchdogLock(moveFolderLock, () -> {
-			// 낙관적 락 적용으로 3회 반복
-			try {
-				boolean result = tryUpdateParentInfo(sourceFolder.getId(), targetFolder.getId());
-
-				if (!result) {
-					throw ErrorCode.TOO_MUCH_REQUEST.baseException(
-						StringFormat.format("폴더 이동 중 버전 충돌, Source Folder ID : {}, Target Folder ID : {}",
-							sourceFolder.getId(), targetFolder.getId()));
-				}
-			} catch (CustomException e) {
-				log.error(StringFormat.format(
-					"[ReceiveMessageService Size Event Error] Error Message : {}, DebugMessage : {}", e.getMessage(),
-					e.getDebugMessage()));
-			} catch (Exception e) {
-				log.error(String.format(
-					"[Unhandled Exception] Folder Move Failed Source Folder ID : {}, Target Folder ID : {}",
-					sourceFolder.getId(), targetFolder.getId(), e));
-			}
-		});
-
-		// TODO 하위 경로 공유 상태 변경 필요
-		// eventPublisher.publishEvent(
-		// 	new FolderMoveEvent(this, sourceFolder,
-		// 		folderMetadataJpaRepository.findById(dto.targetFolderId()).get()));
-	}
-
-	private boolean tryUpdateParentInfo(Long sourceId, Long targetId) {
-		int cnt = retryCnt;
-		while (cnt-- > 0) {
-			int result = folderCommitService.duplicatedCheckAndMoveCommit(sourceId, targetId);
-			if (result == 1) {
-				return true;
-			}
+	@DistributedLock(keys = """
+		{
+			@lockKeys.folderJob(#rootId),
+		   	@lockKeys.folderName(#dto.targetFolderId(), #dto.folderName())
 		}
-		return false;
+		""")
+	public void moveFolder(Long rootId, Long sourceFolderId, FolderMoveDto dto) {
+		// is_moving 플래그 설정 및 job_table에 작업 등록
+		getFolderJobLock(sourceFolderId);
+
+		FolderMetadata sourceFolder = folderMetadataJpaRepository.findByIdNotDeleted(sourceFolderId)
+			.orElseThrow(() -> ErrorCode.FOLDER_NOT_FOUND.baseException(
+				StorageStringUtil.format("Folder id: {}", sourceFolderId)));
+		validateFolderOwner(sourceFolder, dto.userId());
+
+		FolderMetadata targetFolder = folderMetadataJpaRepository.findByIdNotDeleted(dto.targetFolderId())
+			.orElseThrow(() -> ErrorCode.FOLDER_NOT_FOUND.baseException(
+				StorageStringUtil.format("Folder id: {}", dto.targetFolderId())));
+		validateFolderOwner(targetFolder, dto.userId());
+
+		validateInvalidMove(rootId, targetFolder, sourceFolder);
+		validatePathLength(sourceFolder, targetFolder);
+		validateParentsFolderLock(sourceFolder, targetFolder);
+
+
+		Long originalParentId = sourceFolder.getParentFolderId();
+
+		sourceFolder.updateParentFolderId(targetFolder.getId()); // 부모 변경
+		sourceFolder.updateIdFullPath(targetFolder.getIdFullPath()); // pk 전체 경로 변경
+		sourceFolder.updateNameFullPath(targetFolder.getNameFullPath()); // 이름 전체 경로 변경
+		sourceFolder.updateNamePathLength(sourceFolder.getNameFullPath().length()); // 이름 전체 경로 길이 변경
+		sourceFolder.markMoving(); // 영속성 컨텍스트 이슈로 같이 true로 맞춰주기
+
+		folderMetadataJpaRepository.save(sourceFolder);
+
+		// 현재 폴더의 부모 폴더에 감소하는 용량 처리 이벤트 발행
+		publisher.publishEvent(new FolderSizeEvent(originalParentId, -sourceFolder.getSize()));
+		// 이동한 폴더의 대상 폴더에 증가하는 용량 처리 이벤트 발행
+		publisher.publishEvent(new FolderSizeEvent(targetFolder.getId(), sourceFolder.getSize()));
+		// 폴더 이동 이벤트 발행
+		publisher.publishEvent(new FolderMoveEvent(sourceFolderId, sourceFolderId, null));
 	}
 
 	/**
 	 * root folder를 이동하려하는지 확인
 	 * 같은 폴더 내에서 이동하려하는지 확인
+	 * 이미 작업 중인 폴더인지 확인(source, target 모두 확인한다. source,target의 상위 작업 보장과 순환 구조 방지를 위함이다.)
 	 */
-	private void validateInvalidMove(FolderMetadata targetFolder, FolderMetadata sourceFolder) {
+	private void validateInvalidMove(Long rootId, FolderMetadata targetFolder, FolderMetadata sourceFolder) {
+		if (!Objects.equals(rootId, sourceFolder.getRootId()) || !Objects.equals(rootId, targetFolder.getRootId())) {
+			throw ErrorCode.FOLDER_MOVE_NOT_AVAILABLE.baseException(
+				StorageStringUtil.format("Root id mismatch. rootId: {} , sourceRootId: {}, targetRootId: {}",
+					rootId, sourceFolder.getRootId(), targetFolder.getRootId()));
+		}
 		if (Objects.equals(sourceFolder.getId(), targetFolder.getId())) {
 			throw ErrorCode.FOLDER_MOVE_NOT_AVAILABLE.baseException();
 		}
@@ -192,42 +178,74 @@ public class FolderService {
 		if (Objects.equals(sourceFolder.getParentFolderId(), targetFolder.getId())) {
 			throw ErrorCode.FOLDER_MOVE_NOT_AVAILABLE.baseException();
 		}
+		// target folder가 source folder의 하위 폴더인지 확인
+		if (targetFolder.getIdFullPath().startsWith(sourceFolder.getIdFullPath())) {
+			throw ErrorCode.FOLDER_MOVE_NOT_AVAILABLE.baseException();
+		}
+
+		validateDuplicatedFolderName(targetFolder.getId(), sourceFolder.getUploadFolderName());
+	}
+
+	public void validateFolderOwner(FolderMetadata folderMetadata, long userId) {
+		if (!folderMetadata.getOwnerId().equals(userId)) {
+			throw ErrorCode.ACCESS_DENIED.baseException();
+		}
+	}
+
+	private void validateDuplicatedFolderName(Long parentFolderId, String folderName) {
+		if (folderMetadataJpaRepository.existsByParentFolderIdAndUploadFolderName(parentFolderId, folderName)) {
+			throw ErrorCode.FILE_NAME_DUPLICATE.baseException();
+		}
+	}
+
+	private void validatePathLength(FolderMetadata sourceFolder, FolderMetadata targetFolder) {
+		FolderMetadata parentFolder = folderMetadataJpaRepository.findById(sourceFolder.getParentFolderId())
+			.orElseThrow(() -> ErrorCode.FOLDER_NOT_FOUND.baseException(
+				StorageStringUtil.format("Parent folder not found. parentId: {}", sourceFolder.getParentFolderId())));
+
+		long targetPathLength = targetFolder.getNamePathLength();
+		int longestFolderLength = folderMetadataJpaRepository.findDeepestFolderByPrefix(sourceFolder.getRootId(),
+				sourceFolder.getNameFullPath())
+			.map(FolderMetadata::getNamePathLength)
+			.orElse(sourceFolder.getNamePathLength());
+		int longestFileLength = fileMetadataJpaRepository.findDeepestFileByPrefix(sourceFolder.getRootId(),
+			sourceFolder.getNameFullPath()).map(FileMetadata::getNamePathLength).orElse(0); // 파일이 없으면 0
+
+		// /parent/source/ 와 같은 경로이기 때문에, 부모 폴더의 경로는 /parent/ 이다. 남는 것은 source/이므로, 이를 targetFolder로 옮기면 된다.
+		int sourcePathLength = Math.max(longestFileLength, longestFolderLength) - parentFolder.getNamePathLength();
+		if (targetPathLength + sourcePathLength >= maxPathLength) {
+			throw ErrorCode.PATH_TOO_LONG.baseException(
+				StorageStringUtil.format("Total Path is too long. source folder length: {}, target folder length: {}",
+					sourcePathLength, targetPathLength));
+		}
 	}
 
 	/**
-	 * sourceFolder의 최대 깊이 + 이동하려는 폴더의 깊이가 50을 넘는지 확인
+	 * 상위에 이미 작업 중인 폴더 유무를 확인하는 메서드. 존재하면 에러 발생.
+	 * @param sourceFolder
+	 * @param targetFolder
 	 */
-	private void validateFolderDepth(Long sourceFolderId, Long targetFolderId, int targetFolderCurrentDepth) {
-		int sourceFolderLeafDepth = getLeafDepth(sourceFolderId, 1, targetFolderId);
-		if (sourceFolderLeafDepth + targetFolderCurrentDepth > MAX_FOLDER_DEPTH) {
-			throw ErrorCode.EXCEED_MAX_FOLDER_DEPTH.baseException();
-		}
-	}
+	public void validateParentsFolderLock(FolderMetadata sourceFolder, FolderMetadata targetFolder) {
+		List<String> sourceParents = FolderPathParser.parsing(sourceFolder.getIdFullPath())
+			.orElseThrow(() -> ErrorCode.FOLDER_PATH_ERROR.baseException(
+				StorageStringUtil.format("Failed to parsing path, id full path: {}", sourceFolder.getIdFullPath())));
+		List<String> targetParents = FolderPathParser.parsing(targetFolder.getIdFullPath())
+			.orElseThrow(() -> ErrorCode.FOLDER_PATH_ERROR.baseException(
+				StorageStringUtil.format("Failed to parsing path, id full path: {}", targetFolder.getIdFullPath())));
 
-	/**
-	 * currentFolderId로부터 최대 깊이를 구하는 dfs
-	 * 이 과정 중, targetFolderId가 포함돼 있으면 예외 발생
-	 */
-	private int getLeafDepth(long currentFolderId, int currentDepth, long targetFolderId) {
-		List<Long> childFolderIds = folderMetadataJpaRepository.findIdsByParentFolderId(currentFolderId);
-		if (isExistsPendingFile(currentFolderId)) {
-			throw ErrorCode.CANNOT_MOVE_FOLDER_WHEN_UPLOADING.baseException();
-		}
-		if (childFolderIds.isEmpty()) {
-			return currentDepth;
-		}
-		int result = 0;
-		for (Long childFolderId : childFolderIds) {
-			if (Objects.equals(childFolderId, targetFolderId)) {
-				throw ErrorCode.FOLDER_MOVE_NOT_AVAILABLE.baseException();
-			}
-			result = Math.max(result, getLeafDepth(childFolderId, currentDepth + 1, targetFolderId));
-		}
-		return result;
-	}
+		List<Long> lockNames = Stream.concat(sourceParents.stream(), targetParents.stream())
+			.distinct()
+			.map(Long::parseLong)
+			.toList();
 
-	private boolean isExistsPendingFile(long currentFolderId) {
-		return fileMetadataJpaRepository.existsByParentFolderIdAndUploadStatus(currentFolderId, UploadStatus.PENDING);
+		// 삭제 또는 이동 작업이 선행되고 있으면 예외 발생
+		List<Long> parentsLockInfo = folderMetadataJpaRepository.findParentIds(lockNames);
+
+		if (parentsLockInfo.size() > 0) {
+			throw ErrorCode.PARENT_LOCKED.baseException(
+				StorageStringUtil.format("Failed to move folder, sourceId: {}, targetId: {}, parents lock Info: {}",
+					sourceFolder.getId(), targetFolder.getId(), parentsLockInfo));
+		}
 	}
 
 	private List<FileMetadata> fetchFiles(Long folderId, Long cursorId, int limit, FolderContentsSortField sortBy,
@@ -250,60 +268,50 @@ public class FolderService {
 		return folders;
 	}
 
-	/**
-	 *
-	 */
-
-	// TODO : 현재 테스트를 위해 쓰기 권한으로 생성한다. 테스트가 끝나면 제거 필요
-	@DistributedLock(keys = "'folder name:'+ #req.parentFolderId().concat('/').concat(#req.uploadFolderName()")
+	@DistributedLock(keys = """
+			@lockKeys.folderName(#req.parentFolderId(), #req.uploadFolderName())
+		""")
 	public Long createFolder(CreateFolderReqDto req) {
 		User user = userRepository.findById(req.userId()).orElseThrow(ErrorCode.USER_NOT_FOUND::baseException);
 
 		long parentFolderId = req.parentFolderId();
 		FolderMetadata parentFolder = folderMetadataJpaRepository.findById(parentFolderId)
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
-		validateFolderName(req);
 		validateFolder(req);
+		validateFolderOwner(parentFolder, req.userId());
 		FolderMetadata folderMetadata = createFolderMetadata(user, parentFolder, req);
 
 		// 저장 및 pk 전체 경로 업데이트
 		FolderMetadata newFolder = folderMetadataJpaRepository.save(folderMetadata);
-		newFolder.updateIdFullPath(parentFolder.getIdFullPath());
 
 		return newFolder.getId();
 	}
 
 	/**
+	 * 금칙어 확인
 	 * 같은 depth(부모 폴더가 같음)에 동일한 이름의 폴더가 있는지 확인
-	 * 최대 depth가 50 이하인지 확인
+	 * 최대 경로 길이 250 이내인지 확인
 	 */
 	private void validateFolder(CreateFolderReqDto req) {
-		if (folderMetadataJpaRepository.existsByParentFolderIdAndUploadFolderName(req.parentFolderId(),
-			req.uploadFolderName())) {
-			throw ErrorCode.INVALID_FILE_NAME.baseException();
-		}
-		int depth = folderSearchUtil.folderDepthCheck(req.parentFolderId());
-		if (depth >= MAX_FOLDER_DEPTH) {
-			throw ErrorCode.EXCEED_MAX_FOLDER_DEPTH.baseException();
-		}
-	}
-
-	/**
-	 * 부모 폴더가 요청한 사용자의 폴더인지 확인
-	 */
-	private void validatePermission(FolderMetadata folderMetadata, long userId) {
-		if (!folderMetadata.getOwnerId().equals(userId)) {
-			throw ErrorCode.ACCESS_DENIED.baseException();
-		}
-	}
-
-	/**
-	 * 폴더 이름에 금칙어가 있는지 확인
-	 */
-	private static void validateFolderName(CreateFolderReqDto req) {
+		// 금칙어 확인
 		if (Arrays.stream(CommonConstant.FILE_NAME_BLACK_LIST)
 			.anyMatch(character -> req.uploadFolderName().indexOf(character) != -1)) {
 			throw ErrorCode.INVALID_FILE_NAME.baseException();
+		}
+
+		// 동일 이름 폴더 확인
+		validateDuplicatedFolderName(req.parentFolderId(), req.uploadFolderName());
+
+		// 최대 경로 확인
+		FolderMetadata parentFolder = folderMetadataJpaRepository.findById(req.parentFolderId())
+			.orElseThrow(() -> ErrorCode.FOLDER_NOT_FOUND.baseException(
+				StorageStringUtil.format("Parent folder not found. parentId: {}", req.parentFolderId())));
+
+		// 경로 구분자 때문에 +1을 해줘야 한다.
+		int pathLength = parentFolder.getNamePathLength() + req.uploadFolderName().length() + 1;
+		if (pathLength >= maxPathLength) {
+			throw ErrorCode.PATH_TOO_LONG.baseException(
+				StorageStringUtil.format("Total Path is too long. path length: {}", pathLength));
 		}
 	}
 
@@ -332,7 +340,7 @@ public class FolderService {
 		// 상위에 이동, 삭제 작업이 없는지 확인한다.
 		// 이런 작업이 시간이 오래 걸리니까 이런 작업을 비동기 처리하고 Future 같은걸로 받아서 처리해도 좋을 것 같다.
 		// 다만 위의 검증 과정이 메모리에서 이뤄지는 거라서 별 차이 없을 것 같다. 만약 검증 과정이 복잡하거나, 다른 추가 작업이 발생한다면 고려할만 하다고 생각한다.
-		folderSearchUtil.folderLockCheck(folderMetadata.getId(), null);
+		// folderSearchUtil.folderLockCheck(folderMetadata.getId(), null);
 
 		// 삭제 요청이 들어온 폴더를 제거한다.
 		folderMetadataJpaRepository.softDeleteById(folderMetadata.getId());
@@ -431,4 +439,32 @@ public class FolderService {
 		return result;
 	}
 
+	/**
+	 * 루트 폴더 기준으로 락을 잡는다. 이 락은 작업 대상 폴더의 락을 잡기 위해 짧게 유지하는 락이다.
+	 * 대상 폴더의 락을 잡기 전에 발생하는 동시성 문제를 방지하는 용도이다.
+	 * 비용이 크지 않은 검증 과정들을 빠르게 처리 후, 해당 폴더의 제어권을 확보한다.
+	 */
+	public void getFolderJobLock(Long sourceFolderId) {
+		int lock = folderMetadataJpaRepository.getMovingLock(sourceFolderId);
+		if (lock == 0) {
+			throw ErrorCode.FOLDER_LOCK_CONFLICT.baseException(
+				StorageStringUtil.format("failed to get folder lock. folderId: {}", sourceFolderId));
+		}
+
+		try {
+			int insertResult = folderJobJpaRepository.insert(sourceFolderId, sourceFolderId, 0L,
+				FolderJobStatus.WAITING.name());
+
+			if (insertResult != 1) {
+				throw ErrorCode.FOLDER_JOB_CREATE_FAILED.baseException(
+					StorageStringUtil.format("Failed to create folder job. folderId: {}", sourceFolderId));
+			}
+		} catch (DataIntegrityViolationException e) {
+			throw ErrorCode.FOLDER_JOB_CONFLICT.baseException(
+				StorageStringUtil.format("Other Folder job is already running. folderId: {}", sourceFolderId), e);
+		} catch (Exception e) {
+			throw ErrorCode.FOLDER_JOB_CREATE_FAILED.baseException(
+				StorageStringUtil.format("Failed to create folder job. folderId: {}", sourceFolderId), e);
+		}
+	}
 }

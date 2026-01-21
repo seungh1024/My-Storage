@@ -20,6 +20,7 @@ import com.woowacamp.storage.domain.folder.dto.FolderCreateResponseDto;
 import com.woowacamp.storage.domain.folder.dto.GetFolderContentsRequestParams;
 import com.woowacamp.storage.domain.folder.dto.request.CreateFolderReqDto;
 import com.woowacamp.storage.domain.folder.dto.request.FolderMoveDto;
+import com.woowacamp.storage.domain.folder.facade.FolderFacade;
 import com.woowacamp.storage.domain.folder.service.FolderService;
 import com.woowacamp.storage.domain.folder.service.RedisLockService;
 import com.woowacamp.storage.global.annotation.CheckDto;
@@ -39,7 +40,7 @@ import lombok.RequiredArgsConstructor;
 public class FolderController {
 
 	private final FolderService folderService;
-	private final RedisLockService redisLockService;
+	private final FolderFacade folderFacade;
 
 	@RequestType(permission = PermissionType.WRITE, fileType = FileType.FOLDER)
 	@ResponseStatus(HttpStatus.CREATED)
@@ -63,12 +64,10 @@ public class FolderController {
 			Objects.equals(request.userId(), request.creatorId()));
 	}
 
-	@RequestType(permission = PermissionType.WRITE, fileType = FileType.FOLDER)
 	@PatchMapping("/{folderId}")
-	public void moveFolder(@PathVariable("folderId") @CheckField(value = FieldType.FOLDER_ID) Long sourceFolderId,
-		@CheckDto @RequestBody FolderMoveDto dto) {
-		redisLockService.runWithWatchdogLock(String.valueOf(sourceFolderId),
-			() -> folderService.moveFolder(sourceFolderId, dto));
+	public void moveFolder(@PathVariable("folderId") Long sourceFolderId,
+		@RequestBody FolderMoveDto dto) {
+		folderFacade.moveFolder(sourceFolderId, dto);
 
 	}
 

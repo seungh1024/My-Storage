@@ -18,12 +18,17 @@ public class FolderMetadataFactory {
 			.sharingExpiredAt(CommonConstant.UNAVAILABLE_TIME)
 			.permissionType(PermissionType.NONE)
 			.nameFullPath("/")
+			.namePathLength(1)
 			.build();
 	}
 
 	public static FolderMetadata createFolderMetadata(User user, FolderMetadata parentFolder,
 		CreateFolderReqDto req) {
 		LocalDateTime now = LocalDateTime.now();
+		String nameFullPath = StorageStringUtil.format("{}{}/", parentFolder.getNameFullPath(), req.uploadFolderName());
+		String idFullPath = StorageStringUtil.format("{}{}/", parentFolder.getIdFullPath(), req.uploadFolderName());
+		int namePathLength = nameFullPath.length();
+
 		return FolderMetadata.builder()
 			.rootId(user.getRootFolderId())
 			.ownerId(user.getId())
@@ -34,7 +39,10 @@ public class FolderMetadataFactory {
 			.uploadFolderName(req.uploadFolderName())
 			.sharingExpiredAt(parentFolder.getSharingExpiredAt())
 			.permissionType(parentFolder.getPermissionType())
-			.nameFullPath(StorageStringUtil.format("{}{}/",parentFolder.getNameFullPath(),req.uploadFolderName()))
+			.nameFullPath(nameFullPath)
+			.namePathLength(namePathLength)
+			.idFullPath(idFullPath)
 			.build();
 	}
+
 }

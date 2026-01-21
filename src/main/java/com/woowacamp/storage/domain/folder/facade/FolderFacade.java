@@ -19,7 +19,9 @@ public class FolderFacade {
 	private final FolderMetadataJpaRepository folderMetadataJpaRepository;
 
 	public void moveFolder(Long sourceFolderId, FolderMoveDto dto) {
-		folderService.getFolderJobLock(sourceFolderId, dto);
-		folderService.moveFolder(sourceFolderId, dto);
+		FolderMetadata folderMetadata = folderMetadataJpaRepository.findByIdNotDeleted(sourceFolderId)
+			.orElseThrow(() -> ErrorCode.FOLDER_NOT_FOUND.baseException(
+				StorageStringUtil.format("Folder id: {}", sourceFolderId)));
+		folderService.moveFolder(folderMetadata.getRootId(), sourceFolderId, dto);
 	}
 }
