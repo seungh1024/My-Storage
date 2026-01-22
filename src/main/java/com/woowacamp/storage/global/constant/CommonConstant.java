@@ -1,7 +1,5 @@
 package com.woowacamp.storage.global.constant;
 
-import java.time.Duration;
-import java.time.Instant;
 import java.time.LocalDateTime;
 
 public class CommonConstant {

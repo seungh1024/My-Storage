@@ -98,10 +98,10 @@ public class S3FileServiceIntegrationTest extends ContainerBaseConfig {
 			String fileExtension = totalName[1];
 
 			FileUploadRequestDto requestDto = new FileUploadRequestDto(ownerId, parentFolderId, fileSize, creatorId,
-				fileName, fileExtension);
+				folderMetadata.getRootId(), fileName, fileExtension);
 
 			// 2. 업로드 파일 생성 및 presigned url 획득
-			FileUploadResponseDto initialMetadata = s3FileService.createInitialMetadata(requestDto);
+			FileUploadResponseDto initialMetadata = s3FileService.createFileMetadata(requestDto);
 
 			// 3. presigned url로 파일 업로드
 			byte[] uploadFileContent = Files.readAllBytes(tempFile.toPath());

@@ -145,30 +145,30 @@ public interface FolderMetadataJpaRepository extends JpaRepository<FolderMetadat
 			AND updated_at < :duration
 			ORDER BY folder_metadata_id
 			LIMIT :size
-		""",nativeQuery = true)
+		""", nativeQuery = true)
 	List<FolderMetadata> findSoftDeletedFolderWithLastId(@Param("lastId") Long lastId, @Param("size") int size,
 		@Param("duration") LocalDateTime duration);
 
 	@Query("""
-		SELECT f
-		FROM FolderMetadata f
-		WHERE f.id = :parentId
-	""")
+			SELECT f
+			FROM FolderMetadata f
+			WHERE f.id = :parentId
+		""")
 	Optional<FolderMetadata> findParentByParentFolderId(@Param("parentId") long parentId);
 
 	@Query("""
-		SELECT f
-		FROM FolderMetadata f
-		WHERE f.id = :id
-		AND f.isDeleted = false
-	""")
+			SELECT f
+			FROM FolderMetadata f
+			WHERE f.id = :id
+			AND f.isDeleted = false
+		""")
 	Optional<FolderMetadata> findByIdNotDeleted(@Param("id") long id);
 
 	@Query("""
-		SELECT f
-		FROM FolderMetadata f
-		WHERE f.id = :parentId
-	""")
+			SELECT f
+			FROM FolderMetadata f
+			WHERE f.id = :parentId
+		""")
 	Optional<FolderMetadata> findByParentId(@Param("parentId") long parentId);
 
 	@Modifying
@@ -195,47 +195,46 @@ public interface FolderMetadataJpaRepository extends JpaRepository<FolderMetadat
 	Optional<FolderMetadata> findByIdNative(@Param("id") Long id);
 
 	@Query(value = """
-		SELECT *
-		FROM folder_metadata
-		WHERE folder_metadata_id > :id
-		ORDER BY folder_metadata_id ASC
-		LIMIT :limit
-	""", nativeQuery = true)
+			SELECT *
+			FROM folder_metadata
+			WHERE folder_metadata_id > :id
+			ORDER BY folder_metadata_id ASC
+			LIMIT :limit
+		""", nativeQuery = true)
 	List<FolderMetadata> findFolderListById(@Param("id") Long id, @Param("limit") Long limit);
 
-
 	@Query(value = """
-		SELECT *
-		FROM folder_metadata
-		WHERE root_id = :id
-		AND name_full_path LIKE CONCAT(:prefix,'%')
-		ORDER BY name_path_length DESC
-		LIMIT 1;
-	""",nativeQuery = true)
+			SELECT *
+			FROM folder_metadata
+			WHERE root_id = :id
+			AND name_full_path LIKE CONCAT(:prefix,'%')
+			ORDER BY name_path_length DESC
+			LIMIT 1;
+		""", nativeQuery = true)
 	Optional<FolderMetadata> findDeepestFolderByPrefix(@Param("id") Long id, @Param("prefix") String prefix);
 
 	@Transactional
 	@Modifying(flushAutomatically = true, clearAutomatically = true)
 	@Query(value = """
-		UPDATE FolderMetadata f
-		SET f.isMoving = true, f.updatedAt = NOW()
-		WHERE f.id = :id AND f.isMoving = false
-	""")
+			UPDATE FolderMetadata f
+			SET f.isMoving = true, f.updatedAt = NOW()
+			WHERE f.id = :id AND f.isMoving = false
+		""")
 	int getMovingLock(@Param("id") Long id);
 
 	@Query(value = """
-		SELECT f.id
-		FROM FolderMetadata f
-		WHERE f.id IN (:ids)
-		AND (f.isMoving = true or f.isDeleted = true)
-	""")
+			SELECT f.id
+			FROM FolderMetadata f
+			WHERE f.id IN (:ids)
+			AND (f.isMoving = true or f.isDeleted = true)
+		""")
 	List<Long> findParentIdsMovingOrDeleted(@Param("ids") List<Long> ids);
 
 	@Query(value = """
-		SELECT f.id
-		FROM FolderMetadata f
-		WHERE f.id IN (:ids)
-		AND f.isDeleted = true
-	""")
-	List<Long> findParentIdsDeleted (@Param("ids") List<Long> ids);
+			SELECT f.id
+			FROM FolderMetadata f
+			WHERE f.id IN (:ids)
+			AND f.isDeleted = true
+		""")
+	List<Long> findParentIdsDeleted(@Param("ids") List<Long> ids);
 }

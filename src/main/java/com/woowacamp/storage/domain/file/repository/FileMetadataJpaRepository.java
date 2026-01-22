@@ -158,4 +158,14 @@ public interface FileMetadataJpaRepository extends JpaRepository<FileMetadata, L
 		""")
 	List<FileMetadata> findSoftDeletedFileWithLastId(@Param("lastId") Long lastId, @Param("size") int size,
 		@Param("duration") LocalDateTime timeLimit);
+
+	@Query(value = """
+			SELECT *
+			FROM file_metadata
+			WHERE root_id = :id
+			AND name_full_path LIKE CONCAT(:prefix,'%')
+			ORDER BY name_path_length DESC
+			LIMIT 1;
+		""", nativeQuery = true)
+	Optional<FileMetadata> findDeepestFileByPrefix(@Param("id") Long id, @Param("prefix") String prefix);
 }

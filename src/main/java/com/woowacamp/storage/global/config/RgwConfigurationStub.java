@@ -11,12 +11,11 @@ import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 
-@Profile("local")
+@Profile("test")
 @Configuration
 public class RgwConfigurationStub {
 	@Bean
 	public S3Client s3Client() {
-		// dev에서는 호출되면 바로 실패시키는 stub 권장
 		return S3Client.builder()
 			.overrideConfiguration(c -> c.addExecutionInterceptor(new FailFastInterceptor()))
 			.region(Region.AP_NORTHEAST_2)

@@ -5,6 +5,7 @@ import java.time.LocalDateTime;
 import com.woowacamp.storage.global.constant.CommonConstant;
 import com.woowacamp.storage.global.constant.PermissionType;
 import com.woowacamp.storage.global.constant.UploadStatus;
+import com.woowacamp.storage.global.util.StorageStringUtil;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -101,21 +102,23 @@ public class FileMetadata {
 	private boolean isDeleted = false;
 
 	// 폴더명 기반의 전체 경로
-	@Column(name = "name_full_path",columnDefinition = "VARCHAR(250)")
+	@Column(name = "name_full_path", columnDefinition = "VARCHAR(250)")
 	@NotNull
 	private String nameFullPath;
 
 	// pk로 만들어진 전체 경로
-	@Column(name = "id_full_path",columnDefinition = "VARCHAR(250)")
+	@Column(name = "id_full_path", columnDefinition = "VARCHAR(250)")
 	@NotNull
 	private String idFullPath;
 
+	@Column(name = "name_path_length", columnDefinition = "INT NOT NULL DEFAULT 0")
+	private int namePathLength;
 
 	@Builder
 	public FileMetadata(Long id, Long rootId, Long creatorId, Long ownerId, String fileType, LocalDateTime createdAt,
 		LocalDateTime updatedAt, Long parentFolderId, Long fileSize, String uploadFileName, String uuidFileName,
 		UploadStatus uploadStatus, String thumbnailUUID, LocalDateTime sharingExpiredAt,
-		PermissionType permissionType) {
+		PermissionType permissionType, String nameFullPath, String idFullPath, Integer namePathLength) {
 		this.id = id;
 		this.rootId = rootId;
 		this.creatorId = creatorId;
@@ -131,6 +134,9 @@ public class FileMetadata {
 		this.thumbnailUUID = thumbnailUUID;
 		this.sharingExpiredAt = sharingExpiredAt;
 		this.permissionType = permissionType;
+		this.nameFullPath = nameFullPath;
+		this.idFullPath = idFullPath;
+		this.namePathLength = namePathLength;
 	}
 
 	public void updateCreatedAt(LocalDateTime createdAt) {
@@ -169,5 +175,9 @@ public class FileMetadata {
 
 	public void updateFailUploadStatus() {
 		this.uploadStatus = UploadStatus.FAIL;
+	}
+
+	public void updateIdFullPath(String parentIdPath) {
+		this.idFullPath = StorageStringUtil.format("{}{}/", parentIdPath, this.id);
 	}
 }

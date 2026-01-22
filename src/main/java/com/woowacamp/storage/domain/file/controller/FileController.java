@@ -37,27 +37,22 @@ public class FileController {
 	private final FileService fileService;
 	private final S3FileService s3FileService;
 
-	@RequestType(permission = PermissionType.WRITE, fileType = FileType.FILE)
 	@PatchMapping("/{fileId}")
-	public void moveFile(@CheckField(FieldType.FILE_ID) @PathVariable Long fileId,
-		@CheckDto @RequestBody FileMoveDto dto) {
+	public void moveFile(@PathVariable Long fileId, @RequestBody FileMoveDto dto) {
 		fileService.getFileMetadataBy(fileId, dto.userId());
 		fileService.moveFile(fileId, dto);
 	}
 
-	@RequestType(permission = PermissionType.WRITE, fileType = FileType.FILE)
 	@DeleteMapping("/{fileId}")
 	@ResponseStatus(HttpStatus.OK)
-	public void delete(@CheckField(FieldType.FILE_ID) @PathVariable Long fileId,
-		@CheckField(FieldType.USER_ID) @RequestParam Long userId) {
+	public void delete(@PathVariable Long fileId, @RequestParam Long userId) {
 		fileService.deleteFile(fileId, userId);
 	}
 
-	@RequestType(permission = PermissionType.WRITE, fileType = FileType.FOLDER)
 	@PostMapping
 	@ResponseStatus(HttpStatus.CREATED)
-	public FileUploadResponseDto create(@CheckDto @RequestBody FileUploadRequestDto fileUploadRequestDto) {
-		return s3FileService.createInitialMetadata(fileUploadRequestDto);
+	public FileUploadResponseDto create(@RequestBody FileUploadRequestDto fileUploadRequestDto) {
+		return s3FileService.createFileMetadata(fileUploadRequestDto);
 	}
 
 	/**
@@ -70,11 +65,10 @@ public class FileController {
 		s3FileService.createComplete(fileId, requestDto.userId(), requestDto.objectKey());
 	}
 
-	@RequestType(permission = PermissionType.READ, fileType = FileType.FILE)
 	@GetMapping("/{fileId}")
 	@ResponseStatus(HttpStatus.OK)
-	public URL getFileUrl(@CheckField(FieldType.FILE_ID) @PathVariable long fileId,
-		@CheckField(FieldType.USER_ID) @RequestParam long userId) {
+	public URL getFileUrl(@PathVariable long fileId, @RequestParam long userId) {
+		fileService.getFileMetadataBy(fileId, userId);
 		return s3FileService.getFileUrl(fileId);
 	}
 }

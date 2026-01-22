@@ -1,10 +1,12 @@
 package com.woowacamp.storage.domain.file.service;
 
 import java.net.URL;
+import java.util.Arrays;
 import java.util.Objects;
+import java.util.UUID;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import com.woowacamp.storage.domain.file.dto.request.FileUploadRequestDto;
 import com.woowacamp.storage.domain.file.dto.response.FileUploadResponseDto;
@@ -13,9 +15,11 @@ import com.woowacamp.storage.domain.file.entity.FileMetadataFactory;
 import com.woowacamp.storage.domain.file.repository.FileMetadataJpaRepository;
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
-import com.woowacamp.storage.domain.folder.service.RedisLockService;
+import com.woowacamp.storage.global.constant.CommonConstant;
 import com.woowacamp.storage.global.constant.UploadStatus;
 import com.woowacamp.storage.global.error.ErrorCode;
+import com.woowacamp.storage.global.util.ValidateParentsUtil;
+import com.woowacamp.storage.lock.annotation.DistributedLock;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -30,42 +34,40 @@ public class S3FileService {
 
 	private final FileMetadataJpaRepository fileMetadataJpaRepository;
 	private final FolderMetadataJpaRepository folderMetadataJpaRepository;
-	private final RedisLockService redisLockService;
 	private final PresignedUrlService presignedUrlService;
-	private final ValidationService validationService;
+	private final ValidateParentsUtil validateParentsUtil;
 
-	/**
-	 * 1차로 메타데이터를 생성하는 메소드.
-	 * 사용자의 요청 데이터에 있는 사용자 정보, 상위 폴더 정보, 파일 사이즈의 정보를 저장
-	 */
-	public FileUploadResponseDto createInitialMetadata(FileUploadRequestDto fileUploadRequestDto) {
-		String lockName = fileUploadRequestDto.parentFolderId() + "/" + fileUploadRequestDto.fileName();
-		return redisLockService.<FileUploadResponseDto>runWithWatchdogLock(lockName, () ->
-				createFileMetadata(fileUploadRequestDto));
-	}
+	@Value("${file.request.maxFileSize}")
+	private long MAX_FILE_SIZE;
+	@Value("${file.request.maxStorageSize}")
+	private long MAX_STORAGE_SIZE;
 
-	@Transactional
-	protected FileUploadResponseDto createFileMetadata(FileUploadRequestDto fileUploadRequestDto) {
-		FolderMetadata parentFolder = folderMetadataJpaRepository.findById(fileUploadRequestDto.parentFolderId())
+	@DistributedLock(keys = """
+			@lockKeys.folderJob(#dto.rootId()),
+		   	@lockKeys.folderName(#dto.parentFolderId(), #dto.fileName())
+		""")
+	public FileUploadResponseDto createFileMetadata(FileUploadRequestDto dto) {
+		FolderMetadata parentFolder = folderMetadataJpaRepository.findById(dto.parentFolderId())
 			.orElseThrow(FOLDER_NOT_FOUND::baseException);
-		// 파일 이름 검증
-		validationService.validateFile(fileUploadRequestDto);
-		validationService.validateFileSize(fileUploadRequestDto.fileSize(), parentFolder.getId());
+		// 파일 기본 검증
+		validateFile(dto, parentFolder);
+		validateFileSize(dto.fileSize(), dto.rootId());
+
+		// 고아 방지를 위해 상위 부모중 삭제 작업 진행 중이면 이동 실패.
+		validateParentsUtil.validateParentsFolderLock(parentFolder);
 
 		// 1차 메타데이터 초기화
-		String uuidFileName = validationService.getUuidFileName();
-		String objectKey = uuidFileName;
-		if (fileUploadRequestDto.fileExtension() != null) {
-			objectKey += "." + fileUploadRequestDto.fileExtension();
-		}
-		FileMetadata fileMetadata = FileMetadataFactory.buildInitialMetadata(parentFolder, fileUploadRequestDto,
-			objectKey);
+		String uuidFileName = getUuidFileName();
+		FileMetadata fileMetadata = FileMetadataFactory.buildInitialMetadata(parentFolder, dto,
+			uuidFileName);
 
-		fileMetadataJpaRepository.save(fileMetadata);
+		FileMetadata savedFile = fileMetadataJpaRepository.save(fileMetadata);
+		savedFile.updateIdFullPath(parentFolder.getIdFullPath());
+		fileMetadataJpaRepository.save(savedFile);
 
-		URL presignedUrl = presignedUrlService.getPresignedUrl(objectKey);
+		URL presignedUrl = presignedUrlService.getPresignedUrl(uuidFileName);
 
-		return new FileUploadResponseDto(fileMetadata.getId(), objectKey, presignedUrl);
+		return new FileUploadResponseDto(fileMetadata.getId(), uuidFileName, presignedUrl);
 	}
 
 	private String getFileTypeByFileName(String fileName) {
@@ -123,4 +125,47 @@ public class S3FileService {
 		fileMetadataJpaRepository.save(fileMetadata);
 	}
 
+	public void validateFile(FileUploadRequestDto dto, FolderMetadata parentFolder) {
+		if (!Objects.equals(parentFolder.getOwnerId(), dto.userId())) {
+			throw ACCESS_DENIED.baseException();
+		}
+		// 파일 이름에 금칙어가 있는지 확인
+		if (Arrays.stream(CommonConstant.FILE_NAME_BLACK_LIST)
+			.anyMatch(character -> dto.fileName().indexOf(character) != -1)) {
+			throw ErrorCode.INVALID_FILE_NAME.baseException();
+		}
+		// 확장자에 금칙어가 있는지 확인
+		if (Arrays.stream(CommonConstant.FILE_NAME_BLACK_LIST)
+			.anyMatch(character -> dto.fileExtension().indexOf(character) != -1)) {
+			throw ErrorCode.INVALID_FILE_NAME.baseException();
+		}
+		// 이미 해당 폴더에 같은 이름의 파일이 존재하는지 확인
+		if (fileMetadataJpaRepository.existsByParentFolderIdAndUploadFileNameAndUploadStatusNot(
+			dto.parentFolderId(), dto.fileName(), UploadStatus.FAIL)) {
+			throw ErrorCode.FILE_NAME_DUPLICATE.baseException();
+		}
+	}
+
+	public void validateFileSize(long fileSize, Long rootFolderId) {
+		FolderMetadata rootFolderMetadata = folderMetadataJpaRepository.findByIdForUpdate(rootFolderId)
+			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
+
+		if (fileSize > MAX_FILE_SIZE) {
+			throw ErrorCode.EXCEED_MAX_FILE_SIZE.baseException();
+		}
+		if (rootFolderMetadata.getSize() + fileSize > MAX_STORAGE_SIZE) {
+			throw ErrorCode.EXCEED_MAX_STORAGE_SIZE.baseException();
+		}
+	}
+
+	/**
+	 * UUID를 생성해 이미 존재하는지 확인
+	 */
+	public String getUuidFileName() {
+		String uuidFileName = UUID.randomUUID().toString();
+		while (fileMetadataJpaRepository.existsByUuidFileName(uuidFileName)) {
+			uuidFileName = UUID.randomUUID().toString();
+		}
+		return uuidFileName;
+	}
 }
