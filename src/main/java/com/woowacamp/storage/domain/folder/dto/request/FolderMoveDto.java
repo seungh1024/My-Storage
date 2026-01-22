@@ -6,6 +6,7 @@ import com.woowacamp.storage.global.aop.type.FieldType;
 public record FolderMoveDto(
 	long userId,
 	long targetFolderId,
+	long rootId,
 	String folderName
 ) {
 }

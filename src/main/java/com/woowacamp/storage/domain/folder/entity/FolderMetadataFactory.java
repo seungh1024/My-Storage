@@ -26,7 +26,6 @@ public class FolderMetadataFactory {
 		CreateFolderReqDto req) {
 		LocalDateTime now = LocalDateTime.now();
 		String nameFullPath = StorageStringUtil.format("{}{}/", parentFolder.getNameFullPath(), req.uploadFolderName());
-		String idFullPath = StorageStringUtil.format("{}{}/", parentFolder.getIdFullPath(), req.uploadFolderName());
 		int namePathLength = nameFullPath.length();
 
 		return FolderMetadata.builder()
@@ -41,7 +40,6 @@ public class FolderMetadataFactory {
 			.permissionType(parentFolder.getPermissionType())
 			.nameFullPath(nameFullPath)
 			.namePathLength(namePathLength)
-			.idFullPath(idFullPath)
 			.build();
 	}
 

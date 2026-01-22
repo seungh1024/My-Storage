@@ -6,7 +6,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.Executor;
-import java.util.stream.Stream;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
@@ -31,7 +30,6 @@ import com.woowacamp.storage.domain.folder.repository.FolderJobJpaRepository;
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataRepository;
 import com.woowacamp.storage.domain.folder.utils.FolderJobStatus;
-import com.woowacamp.storage.domain.folder.utils.FolderPathParser;
 import com.woowacamp.storage.domain.folder.utils.QueryExecuteTemplate;
 import com.woowacamp.storage.domain.message.event.MessageInfoEvent;
 import com.woowacamp.storage.domain.message.repository.MessageInfoJpaRepository;
@@ -42,6 +40,7 @@ import com.woowacamp.storage.global.background.BackgroundJob;
 import com.woowacamp.storage.global.constant.CommonConstant;
 import com.woowacamp.storage.global.error.ErrorCode;
 import com.woowacamp.storage.global.util.StorageStringUtil;
+import com.woowacamp.storage.global.util.ValidateParentsUtil;
 import com.woowacamp.storage.lock.annotation.DistributedLock;
 import com.woowacamp.storage.lock.util.LockKeys;
 
@@ -65,6 +64,7 @@ public class FolderService {
 	private final BackgroundJob backgroundJob;
 	private final LockKeys lockKeys;
 	private final FolderJobJpaRepository folderJobJpaRepository;
+	private final ValidateParentsUtil validateParentsUtil;
 
 	private final ApplicationEventPublisher publisher;
 	private final MessageInfoJpaRepository messageInfoJpaRepository;
@@ -117,11 +117,11 @@ public class FolderService {
 	 */
 	@DistributedLock(keys = """
 		{
-			@lockKeys.folderJob(#rootId),
+			@lockKeys.folderJob(#dto.rootId()),
 		   	@lockKeys.folderName(#dto.targetFolderId(), #dto.folderName())
 		}
 		""")
-	public void moveFolder(Long rootId, Long sourceFolderId, FolderMoveDto dto) {
+	public void moveFolder(Long sourceFolderId, FolderMoveDto dto) {
 		// is_moving 플래그 설정 및 job_table에 작업 등록
 		getFolderJobLock(sourceFolderId);
 
@@ -135,10 +135,9 @@ public class FolderService {
 				StorageStringUtil.format("Folder id: {}", dto.targetFolderId())));
 		validateFolderOwner(targetFolder, dto.userId());
 
-		validateInvalidMove(rootId, targetFolder, sourceFolder);
+		validateInvalidMove(dto.rootId(), targetFolder, sourceFolder);
 		validatePathLength(sourceFolder, targetFolder);
-		validateParentsFolderLock(sourceFolder, targetFolder);
-
+		validateParentsUtil.validateParentsFolderLock(sourceFolder, targetFolder);
 
 		Long originalParentId = sourceFolder.getParentFolderId();
 
@@ -220,34 +219,6 @@ public class FolderService {
 		}
 	}
 
-	/**
-	 * 상위에 이미 작업 중인 폴더 유무를 확인하는 메서드. 존재하면 에러 발생.
-	 * @param sourceFolder
-	 * @param targetFolder
-	 */
-	public void validateParentsFolderLock(FolderMetadata sourceFolder, FolderMetadata targetFolder) {
-		List<String> sourceParents = FolderPathParser.parsing(sourceFolder.getIdFullPath())
-			.orElseThrow(() -> ErrorCode.FOLDER_PATH_ERROR.baseException(
-				StorageStringUtil.format("Failed to parsing path, id full path: {}", sourceFolder.getIdFullPath())));
-		List<String> targetParents = FolderPathParser.parsing(targetFolder.getIdFullPath())
-			.orElseThrow(() -> ErrorCode.FOLDER_PATH_ERROR.baseException(
-				StorageStringUtil.format("Failed to parsing path, id full path: {}", targetFolder.getIdFullPath())));
-
-		List<Long> lockNames = Stream.concat(sourceParents.stream(), targetParents.stream())
-			.distinct()
-			.map(Long::parseLong)
-			.toList();
-
-		// 삭제 또는 이동 작업이 선행되고 있으면 예외 발생
-		List<Long> parentsLockInfo = folderMetadataJpaRepository.findParentIds(lockNames);
-
-		if (parentsLockInfo.size() > 0) {
-			throw ErrorCode.PARENT_LOCKED.baseException(
-				StorageStringUtil.format("Failed to move folder, sourceId: {}, targetId: {}, parents lock Info: {}",
-					sourceFolder.getId(), targetFolder.getId(), parentsLockInfo));
-		}
-	}
-
 	private List<FileMetadata> fetchFiles(Long folderId, Long cursorId, int limit, FolderContentsSortField sortBy,
 		Sort.Direction direction, LocalDateTime dateTime, Long size, boolean ownerRequested) {
 		List<FileMetadata> files = fileMetadataJpaRepository.selectFilesWithPagination(folderId, cursorId, sortBy,
@@ -283,6 +254,8 @@ public class FolderService {
 
 		// 저장 및 pk 전체 경로 업데이트
 		FolderMetadata newFolder = folderMetadataJpaRepository.save(folderMetadata);
+		newFolder.updateIdFullPath(parentFolder.getIdFullPath());
+		folderMetadataJpaRepository.save(newFolder);
 
 		return newFolder.getId();
 	}

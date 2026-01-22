@@ -228,5 +228,13 @@ public interface FolderMetadataJpaRepository extends JpaRepository<FolderMetadat
 		WHERE f.id IN (:ids)
 		AND (f.isMoving = true or f.isDeleted = true)
 	""")
-	List<Long> findParentIds(@Param("ids") List<Long> ids);
+	List<Long> findParentIdsMovingOrDeleted(@Param("ids") List<Long> ids);
+
+	@Query(value = """
+		SELECT f.id
+		FROM FolderMetadata f
+		WHERE f.id IN (:ids)
+		AND f.isDeleted = true
+	""")
+	List<Long> findParentIdsDeleted (@Param("ids") List<Long> ids);
 }
