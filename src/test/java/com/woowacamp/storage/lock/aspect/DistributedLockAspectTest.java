@@ -59,12 +59,6 @@ class DistributedLockAspectTest {
 
 	@BeforeEach
 	void setUp() throws Throwable {
-		// 공통 proceed 스텁은 "필요한 테스트에선 꼭 필요"하지만,
-		// empty/unsupported 같은 테스트는 proceed까지 가지 않아서 UnnecessaryStubbings가 터질 수 있음.
-		// -> lenient로 해결(구조 유지하면서 stubbing 에러 제거)
-		// lenient()
-		// 	.when(aopTxManager.proceed(any(ProceedingJoinPoint.class)))
-		// 	.thenAnswer(inv -> ((ProceedingJoinPoint)inv.getArgument(0)).proceed());
 
 		AspectJProxyFactory factory = new AspectJProxyFactory(new TestService());
 		factory.addAspect(distributedLockAspect);

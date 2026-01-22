@@ -24,7 +24,7 @@ public class ReceiveMessageService {
 	@Value("${constant.retryCnt}")
 	private int retryCnt;
 
-	@RabbitListener(queues = "${spring.rabbitmq.folder-size-queue}", containerFactory = "folderSizeFactory")
+	@RabbitListener(queues = "${spring.rabbitmq.folder.size.queue}", containerFactory = "folderSizeFactory")
 	public void handleFolderSizeEvent(List<FolderSizeMessageDto> messages) {
 		messages.stream().forEach(message -> {
 			// log.info("id = {}, FOLDER METADATA ID = {}, event type = {}, size = {}", message.id(),

@@ -135,7 +135,7 @@ public class FolderService {
 				StorageStringUtil.format("Folder id: {}", dto.targetFolderId())));
 		validateFolderOwner(targetFolder, dto.userId());
 
-		validateInvalidMove(dto.rootId(), targetFolder, sourceFolder);
+		validateInvalidMove(targetFolder, sourceFolder);
 		validatePathLength(sourceFolder, targetFolder);
 		validateParentsUtil.validateParentsFolderLock(sourceFolder, targetFolder);
 
@@ -162,11 +162,13 @@ public class FolderService {
 	 * 같은 폴더 내에서 이동하려하는지 확인
 	 * 이미 작업 중인 폴더인지 확인(source, target 모두 확인한다. source,target의 상위 작업 보장과 순환 구조 방지를 위함이다.)
 	 */
-	private void validateInvalidMove(Long rootId, FolderMetadata targetFolder, FolderMetadata sourceFolder) {
-		if (!Objects.equals(rootId, sourceFolder.getRootId()) || !Objects.equals(rootId, targetFolder.getRootId())) {
+	private void validateInvalidMove(FolderMetadata targetFolder, FolderMetadata sourceFolder) {
+		Long sourceRootId = sourceFolder.getRootId()==null?sourceFolder.getId():sourceFolder.getRootId();
+		Long targetRootId = targetFolder.getRootId()==null?targetFolder.getId():targetFolder.getRootId();
+
+		if (!Objects.equals(targetRootId, sourceRootId)) {
 			throw ErrorCode.FOLDER_MOVE_NOT_AVAILABLE.baseException(
-				StorageStringUtil.format("Root id mismatch. rootId: {} , sourceRootId: {}, targetRootId: {}",
-					rootId, sourceFolder.getRootId(), targetFolder.getRootId()));
+				StorageStringUtil.format("Root id mismatch. sourceRootId: {}, targetRootId: {}", sourceFolder.getRootId(), targetFolder.getRootId()));
 		}
 		if (Objects.equals(sourceFolder.getId(), targetFolder.getId())) {
 			throw ErrorCode.FOLDER_MOVE_NOT_AVAILABLE.baseException();
@@ -213,7 +215,7 @@ public class FolderService {
 		// /parent/source/ 와 같은 경로이기 때문에, 부모 폴더의 경로는 /parent/ 이다. 남는 것은 source/이므로, 이를 targetFolder로 옮기면 된다.
 		int sourcePathLength = Math.max(longestFileLength, longestFolderLength) - parentFolder.getNamePathLength();
 		if (targetPathLength + sourcePathLength >= maxPathLength) {
-			throw ErrorCode.PATH_TOO_LONG.baseException(
+			throw ErrorCode.EXCEED_MAX_PATH_LENGTH.baseException(
 				StorageStringUtil.format("Total Path is too long. source folder length: {}, target folder length: {}",
 					sourcePathLength, targetPathLength));
 		}
@@ -278,7 +280,7 @@ public class FolderService {
 		// 경로 구분자 때문에 +1을 해줘야 한다.
 		int pathLength = parentFolder.getNamePathLength() + req.uploadFolderName().length() + 1;
 		if (pathLength >= maxPathLength) {
-			throw ErrorCode.PATH_TOO_LONG.baseException(
+			throw ErrorCode.EXCEED_MAX_PATH_LENGTH.baseException(
 				StorageStringUtil.format("Total Path is too long. path length: {}", pathLength));
 		}
 	}
@@ -415,7 +417,7 @@ public class FolderService {
 	public void getFolderJobLock(Long sourceFolderId) {
 		int lock = folderMetadataJpaRepository.getMovingLock(sourceFolderId);
 		if (lock == 0) {
-			throw ErrorCode.FOLDER_LOCK_CONFLICT.baseException(
+			throw ErrorCode.FAILED_TO_GET_FOLDER_LOCK.baseException(
 				StorageStringUtil.format("failed to get folder lock. folderId: {}", sourceFolderId));
 		}
 
@@ -431,8 +433,7 @@ public class FolderService {
 			throw ErrorCode.FOLDER_JOB_CONFLICT.baseException(
 				StorageStringUtil.format("Other Folder job is already running. folderId: {}", sourceFolderId), e);
 		} catch (Exception e) {
-			throw ErrorCode.FOLDER_JOB_CREATE_FAILED.baseException(
-				StorageStringUtil.format("Failed to create folder job. folderId: {}", sourceFolderId), e);
+			throw new RuntimeException(e);
 		}
 	}
 }
