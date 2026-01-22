@@ -40,6 +40,7 @@ public class FolderMetadataFactory {
 			.permissionType(parentFolder.getPermissionType())
 			.nameFullPath(nameFullPath)
 			.namePathLength(namePathLength)
+			.idFullPath(parentFolder.getIdFullPath())
 			.build();
 	}
 

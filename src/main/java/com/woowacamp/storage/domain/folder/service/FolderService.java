@@ -248,7 +248,7 @@ public class FolderService {
 		long parentFolderId = req.parentFolderId();
 		FolderMetadata parentFolder = folderMetadataJpaRepository.findById(parentFolderId)
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
-		validateFolder(req);
+		validateFolder(req,parentFolder);
 		validateFolderOwner(parentFolder, req.userId());
 		FolderMetadata folderMetadata = createFolderMetadata(user, parentFolder, req);
 
@@ -265,7 +265,7 @@ public class FolderService {
 	 * 같은 depth(부모 폴더가 같음)에 동일한 이름의 폴더가 있는지 확인
 	 * 최대 경로 길이 250 이내인지 확인
 	 */
-	private void validateFolder(CreateFolderReqDto req) {
+	private void validateFolder(CreateFolderReqDto req, FolderMetadata parentFolder) {
 		// 금칙어 확인
 		if (Arrays.stream(CommonConstant.FILE_NAME_BLACK_LIST)
 			.anyMatch(character -> req.uploadFolderName().indexOf(character) != -1)) {
@@ -274,11 +274,6 @@ public class FolderService {
 
 		// 동일 이름 폴더 확인
 		validateDuplicatedFolderName(req.parentFolderId(), req.uploadFolderName());
-
-		// 최대 경로 확인
-		FolderMetadata parentFolder = folderMetadataJpaRepository.findById(req.parentFolderId())
-			.orElseThrow(() -> ErrorCode.FOLDER_NOT_FOUND.baseException(
-				StorageStringUtil.format("Parent folder not found. parentId: {}", req.parentFolderId())));
 
 		// 경로 구분자 때문에 +1을 해줘야 한다.
 		int pathLength = parentFolder.getNamePathLength() + req.uploadFolderName().length() + 1;
