@@ -214,7 +214,8 @@ public interface FolderMetadataJpaRepository extends JpaRepository<FolderMetadat
 	""",nativeQuery = true)
 	Optional<FolderMetadata> findDeepestFolderByPrefix(@Param("id") Long id, @Param("prefix") String prefix);
 
-	@Modifying
+	@Transactional
+	@Modifying(flushAutomatically = true, clearAutomatically = true)
 	@Query(value = """
 		UPDATE FolderMetadata f
 		SET f.isMoving = true, f.updatedAt = NOW()
