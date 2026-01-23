@@ -38,6 +38,7 @@ import com.woowacamp.storage.domain.user.entity.User;
 import com.woowacamp.storage.domain.user.repository.UserRepository;
 import com.woowacamp.storage.global.background.BackgroundJob;
 import com.woowacamp.storage.global.constant.CommonConstant;
+import com.woowacamp.storage.global.error.CustomException;
 import com.woowacamp.storage.global.error.ErrorCode;
 import com.woowacamp.storage.global.util.StorageStringUtil;
 import com.woowacamp.storage.global.util.ValidateParentsUtil;
@@ -135,9 +136,14 @@ public class FolderService {
 				StorageStringUtil.format("Folder id: {}", dto.targetFolderId())));
 		validateFolderOwner(targetFolder, dto.userId());
 
+		FolderMetadata parentFolder = folderMetadataJpaRepository.findByIdNotDeleted(sourceFolder.getParentFolderId())
+			.orElseThrow(() -> ErrorCode.FOLDER_NOT_FOUND.baseException(
+				StorageStringUtil.format("Folder id: {}", sourceFolder.getParentFolderId())));
+		validateFolderOwner(parentFolder, dto.userId());
+
 		validateInvalidMove(targetFolder, sourceFolder);
 		validatePathLength(sourceFolder, targetFolder);
-		validateParentsUtil.validateParentsFolderLock(sourceFolder, targetFolder);
+		validateParentsUtil.validateParentsFolderLock(parentFolder, targetFolder);
 
 		Long originalParentId = sourceFolder.getParentFolderId();
 
@@ -383,11 +389,6 @@ public class FolderService {
 		FolderMetadata folderMetadata = folderMetadataJpaRepository.findById(folderId)
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
 
-		// 최상위 폴더라면 용량 처리할 필요가 없기 때문에 이벤트만 완료 처리를 해준다.
-		if (folderMetadata.getParentFolderId() == null) {
-			publisher.publishEvent(new MessageInfoEvent(id));
-			return 1;
-		}
 		// 처리되지 않은 메세지가 없다면 리턴
 		if (!messageInfoJpaRepository.existsByIdAndStatus(id, MessageStatus.PENDING)) {
 			return 1;
@@ -397,14 +398,16 @@ public class FolderService {
 		int result = folderMetadataJpaRepository.updateFolderSizeWithVersion(size, folderMetadata.getId(),
 			folderMetadata.getVersion());
 		if (result == 0) {
-			return result;
+			return 0;
 		}
 
 		// MessageInfo 완료 처리
 		publisher.publishEvent(new MessageInfoEvent(id));
 
 		// 상위 폴더 이벤트 전파
-		publisher.publishEvent(new FolderSizeEvent(folderMetadata.getParentFolderId(), size));
+		if (folderMetadata.getParentFolderId() != null) {
+			publisher.publishEvent(new FolderSizeEvent(folderMetadata.getParentFolderId(), size));
+		}
 
 		return result;
 	}
@@ -432,6 +435,8 @@ public class FolderService {
 		} catch (DataIntegrityViolationException e) {
 			throw ErrorCode.FOLDER_JOB_CONFLICT.baseException(
 				StorageStringUtil.format("Other Folder job is already running. folderId: {}", sourceFolderId), e);
+		} catch (CustomException e) {
+			throw e;
 		} catch (Exception e) {
 			throw new RuntimeException(e);
 		}

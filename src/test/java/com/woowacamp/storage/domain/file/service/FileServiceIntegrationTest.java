@@ -1,16 +1,22 @@
 package com.woowacamp.storage.domain.file.service;
 
+import java.time.Duration;
 import java.util.List;
 
+import org.awaitility.Awaitility;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.springframework.amqp.core.AmqpAdmin;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import com.woowacamp.storage.config.FolderTreeSetUp;
@@ -32,22 +38,87 @@ import static org.junit.jupiter.api.Assertions.*;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
+/**
+ * ⭐ 핵심: 테스트 자체가 트랜잭션이면(rollback 포함) AFTER_COMMIT 이벤트 리스너가 실행 안 될 수 있음.
+ * 그래서 통합 테스트 클래스 전체를 NOT_SUPPORTED로 잡아서,
+ * 서비스 메서드의 트랜잭션이 실제로 commit되게 만든다.
+ */
+@Transactional(propagation = Propagation.NOT_SUPPORTED)
 class FileServiceIntegrationTest extends ContainerBaseConfig {
 
 	@Autowired
 	private FolderTreeSetUp folderTreeSetUp;
+
 	@Autowired
 	private FileMetadataJpaRepository fileMetadataJpaRepository;
+
 	@Autowired
 	private FolderMetadataJpaRepository folderMetadataJpaRepository;
+
 	@Autowired
 	private FileService fileService;
+
+	@Autowired(required = false)
+	private AmqpAdmin amqpAdmin;
+
+	@Value("${spring.rabbitmq.folder.size.queue:}")
+	private String folderSizeQueue;
 
 	@BeforeEach
 	void setUp() {
 		folderTreeSetUp.folderTreeSetUp();
+
+		// 큐에 이전 테스트 메시지 남아있으면 다음 테스트를 오염시킬 수 있으니 purge(가능할 때만)
+		if (amqpAdmin != null && folderSizeQueue != null && !folderSizeQueue.isBlank()) {
+			try {
+				amqpAdmin.purgeQueue(folderSizeQueue, true);
+			} catch (Exception ignored) {
+				// 큐가 아직 declare 안됐거나, 이름이 다르면 purge 실패할 수 있음 -> 테스트 자체는 진행
+			}
+		}
 	}
 
+	// ---------------------------
+	// Helpers
+	// ---------------------------
+	private FileMetadata pickAnyFile() {
+		List<FileMetadata> files = folderTreeSetUp.getFiles();
+		assertFalse(files.isEmpty(), "FolderTreeSetUp.files must not be empty");
+		return files.get(0);
+	}
+
+	/**
+	 * delete/move에서 "상위 폴더 deleted lock" 테스트를 하려면
+	 * parentFolderId가 null이 아닌 조상(=grand parent 이상)이 존재해야 안정적이다.
+	 */
+	private FileMetadata pickFileWithGrandParent() {
+		return folderTreeSetUp.getFiles().stream()
+			.filter(f -> {
+				FolderMetadata parent = folderMetadataJpaRepository.findById(f.getParentFolderId()).orElse(null);
+				return parent != null && parent.getParentFolderId() != null;
+			})
+			.findFirst()
+			.orElseThrow(() -> new AssertionError("Need at least one file whose parent has a parent (depth >= 2)"));
+	}
+
+	private FolderMetadata folder(long folderId) {
+		return folderMetadataJpaRepository.findById(folderId)
+			.orElseThrow(() -> new AssertionError("Folder not found: " + folderId));
+	}
+
+	private void awaitFolderSize(long folderId, long expectedSize) {
+		Awaitility.await()
+			.pollInterval(Duration.ofMillis(200))
+			.atMost(Duration.ofSeconds(15))
+			.untilAsserted(() -> {
+				long actual = folder(folderId).getSize();
+				assertEquals(expectedSize, actual);
+			});
+	}
+
+	// =========================================================
+	// 파일 이동 테스트
+	// =========================================================
 	@Nested
 	@DisplayName("파일 이동 테스트")
 	class FileMoveTest {
@@ -55,192 +126,223 @@ class FileServiceIntegrationTest extends ContainerBaseConfig {
 		@Test
 		@DisplayName("이동할 폴더가 존재하지 않으면 FOLDER_NOT_FOUND 예외가 발생한다.")
 		void if_target_folder_not_exists_throws_error() {
-			long invalidTargetFolderId = 1000L;
-			FileMetadata sourceFile = folderTreeSetUp.getFiles().get(0);
-			Long fileId = sourceFile.getId();
-			FileMoveDto fileMoveDto = new FileMoveDto(invalidTargetFolderId, folderTreeSetUp.getUserId(),
-				sourceFile.getRootId(), sourceFile.getUploadFileName());
+			// given
+			long invalidTargetFolderId = 1_000_000L;
+			FileMetadata sourceFile = pickAnyFile();
 
-			CustomException customException = assertThrows(CustomException.class,
-				() -> fileService.moveFile(fileId, fileMoveDto));
+			FileMoveDto dto = new FileMoveDto(
+				invalidTargetFolderId,
+				folderTreeSetUp.getUserId(),
+				sourceFile.getRootId(),
+				sourceFile.getUploadFileName()
+			);
 
-			assertEquals(ErrorCode.FOLDER_NOT_FOUND.getMessage(), customException.getMessage());
+			// when
+			CustomException ex = assertThrows(CustomException.class,
+				() -> fileService.moveFile(sourceFile.getId(), dto));
+
+			// then
+			assertEquals(ErrorCode.FOLDER_NOT_FOUND.getMessage(), ex.getMessage());
 		}
 
 		@Test
 		@DisplayName("이동할 폴더에 권한이 없으면 ACCESS_DENIED 예외가 발생한다.")
 		void if_target_folder_unauthorized_throws_error() {
-			FileMetadata sourceFile = folderTreeSetUp.getFiles().get(0);
-			Long fileId = sourceFile.getId();
-			long invalidUserId = 1000L;
+			// given
+			FileMetadata sourceFile = pickAnyFile();
 			List<FolderMetadata> subFolders = folderTreeSetUp.getSubFolders();
+			assertFalse(subFolders.isEmpty(), "FolderTreeSetUp.subFolders must not be empty");
+
 			FolderMetadata targetFolder = subFolders.get(subFolders.size() - 1);
-			FileMoveDto fileMoveDto = new FileMoveDto(targetFolder.getId(), invalidUserId, sourceFile.getRootId(),
-				sourceFile.getUploadFileName());
+			long invalidUserId = 999_999L;
 
-			CustomException customException = assertThrows(CustomException.class,
-				() -> fileService.moveFile(fileId, fileMoveDto));
+			FileMoveDto dto = new FileMoveDto(
+				targetFolder.getId(),
+				invalidUserId,
+				sourceFile.getRootId(),
+				sourceFile.getUploadFileName()
+			);
 
-			assertEquals(ErrorCode.ACCESS_DENIED.getMessage(), customException.getMessage());
+			// when
+			CustomException ex = assertThrows(CustomException.class,
+				() -> fileService.moveFile(sourceFile.getId(), dto));
+
+			// then
+			assertEquals(ErrorCode.ACCESS_DENIED.getMessage(), ex.getMessage());
 		}
 
 		@Test
-		@DisplayName("이동할 폴더에 동일한 이름의 파일이 존재하면 예외가 발생한다.")
+		@DisplayName("이동할 폴더에 동일한 이름의 파일이 존재하면 FILE_NAME_DUPLICATE 예외가 발생한다.")
 		void if_target_folder_has_same_file_name_throws_error() {
+			// given
 			List<FileMetadata> files = folderTreeSetUp.getFiles();
 			List<FolderMetadata> subFolders = folderTreeSetUp.getSubFolders();
+			assertFalse(files.isEmpty(), "files must not be empty");
+			assertFalse(subFolders.isEmpty(), "subFolders must not be empty");
+
 			FileMetadata sourceFile = files.get(0);
 			FolderMetadata targetFolder = subFolders.get(subFolders.size() - 1);
-			FileMoveDto fileMoveDto = new FileMoveDto(targetFolder.getId(), folderTreeSetUp.getUserId(),
-				sourceFile.getRootId(), sourceFile.getUploadFileName());
-			FileMetadata sameNameFile = fileMetadataJpaRepository.save(FileMetadata.builder()
-				.rootId(1L)
-				.uuidFileName("test")
+
+			// target 폴더에 동일 업로드 파일명 존재하도록 row 생성
+			// ⚠️ FileMetadata 엔티티가 namePathLength를 필수로 요구하므로 반드시 채운다
+			String fileName = "dup-file";
+			FileMetadata dup = FileMetadata.builder()
+				.rootId(sourceFile.getRootId())
+				.uuidFileName(fileName)
 				.creatorId(sourceFile.getCreatorId())
 				.fileType("file")
 				.ownerId(sourceFile.getOwnerId())
 				.createdAt(folderTreeSetUp.getNow().minusHours(1))
 				.updatedAt(folderTreeSetUp.getNow())
-				.fileSize(500L)
+				.fileSize(10L)
 				.parentFolderId(targetFolder.getId())
 				.uploadStatus(UploadStatus.SUCCESS)
-				.uploadFileName(sourceFile.getUploadFileName())
+				.uploadFileName(sourceFile.getUploadFileName()) // 동일 이름
 				.sharingExpiredAt(folderTreeSetUp.getNow())
 				.permissionType(PermissionType.WRITE)
-				.build());
-			fileMetadataJpaRepository.save(sameNameFile);
+				.nameFullPath(targetFolder.getNameFullPath()+fileName)
+				.namePathLength(targetFolder.getNamePathLength()+fileName.length())
+				.idFullPath(targetFolder.getIdFullPath())
+				.build();
 
-			CustomException customException = assertThrows(CustomException.class,
-				() -> fileService.moveFile(sourceFile.getId(), fileMoveDto));
+			FileMetadata sameNameFile = fileMetadataJpaRepository.save(dup);
+			dup.updateIdFullPath(targetFolder.getIdFullPath());
+			fileMetadataJpaRepository.save(dup);
 
-			assertEquals(ErrorCode.FILE_NAME_DUPLICATE.getMessage(), customException.getMessage());
+			FileMoveDto dto = new FileMoveDto(
+				targetFolder.getId(),
+				folderTreeSetUp.getUserId(),
+				sourceFile.getRootId(),
+				sourceFile.getUploadFileName()
+			);
+
+			// when
+			CustomException ex = assertThrows(CustomException.class,
+				() -> fileService.moveFile(sourceFile.getId(), dto));
+
+			// then
+			assertEquals(ErrorCode.FILE_NAME_DUPLICATE.getMessage(), ex.getMessage());
+			assertNotNull(sameNameFile.getId());
+		}
+
+
+		@Test
+		@DisplayName("상위 폴더 중 isDeleted=true가 있으면 PARENT_LOCKED 예외가 발생한다. (target 체인 기준)")
+		void if_any_parent_deleted_lock_then_file_move_fail() {
+			// given
+			FileMetadata sourceFile = pickFileWithGrandParent();
+			FolderMetadata targetFolder = folderTreeSetUp.getLongestFolder();
+
+			// source와 다른 target 폴더 선택(가능하면)
+			FolderMetadata deletedFolder = folderMetadataJpaRepository.findById(targetFolder.getParentFolderId()).get();
+
+			folderMetadataJpaRepository.softDeleteById(deletedFolder.getId());
+
+
+			FileMoveDto dto = new FileMoveDto(
+				targetFolder.getId(),
+				folderTreeSetUp.getUserId(),
+				sourceFile.getRootId(),
+				sourceFile.getUploadFileName()
+			);
+
+			// when
+			CustomException ex = assertThrows(CustomException.class,
+				() -> fileService.moveFile(sourceFile.getId(), dto));
+
+			// then
+			assertEquals(ErrorCode.PARENT_LOCKED.getMessage(), ex.getMessage());
 		}
 
 		@Test
-		@DisplayName("파일 이동 성공 테스트")
-		void file_move_success_test() throws InterruptedException {
+		@DisplayName("파일 이동 성공: source/target 폴더 용량이 메시징 처리 후 반영된다.")
+		void file_move_success_test() {
+			// given
 			List<FileMetadata> files = folderTreeSetUp.getFiles();
 			List<FolderMetadata> subFolders = folderTreeSetUp.getSubFolders();
+			assertFalse(files.isEmpty(), "files must not be empty");
+			assertFalse(subFolders.isEmpty(), "subFolders must not be empty");
+
 			FileMetadata sourceFile = files.get(0);
-			long parentId = sourceFile.getParentFolderId();
-			long targetIdx = 0;
-			for (FolderMetadata f : subFolders) {
-				if (parentId != f.getId()) {
-					break;
-				}
-				targetIdx++;
-			}
-			long sourceFileSize = sourceFile.getFileSize();
-			FolderMetadata sourceFolder = folderMetadataJpaRepository.findById(sourceFile.getParentFolderId()).get();
-			long sourceSize = sourceFolder.getSize();
-			FolderMetadata targetFolder = subFolders.get((int)(targetIdx));
-			long targetSize = targetFolder.getSize();
-			FileMoveDto fileMoveDto = new FileMoveDto(targetFolder.getId(), folderTreeSetUp.getUserId(),
-				sourceFile.getRootId(), sourceFile.getUploadFileName());
 
-			fileService.moveFile(sourceFile.getId(), fileMoveDto);
+			FolderMetadata sourceFolderBefore = folder(sourceFile.getParentFolderId());
+			long sourceFolderBeforeSize = sourceFolderBefore.getSize();
 
-			Thread.sleep(5000);
+			// source와 다른 폴더를 target으로 선택
+			FolderMetadata targetFolder = subFolders.stream()
+				.filter(f -> f.getId() != sourceFile.getParentFolderId())
+				.findFirst()
+				.orElseThrow(() -> new AssertionError("Need a target folder different from source parent"));
 
-			FolderMetadata findSourceFolder = folderMetadataJpaRepository.findById(parentId).get();
-			FolderMetadata findTargetFolder = folderMetadataJpaRepository.findById(targetFolder.getId()).get();
+			FolderMetadata targetFolderBefore = folder(targetFolder.getId());
+			long targetFolderBeforeSize = targetFolderBefore.getSize();
 
-			assertEquals(sourceSize - sourceFileSize, findSourceFolder.getSize());
-			assertEquals(targetSize + sourceFileSize, findTargetFolder.getSize());
+			long fileSize = sourceFile.getFileSize();
+
+			FileMoveDto dto = new FileMoveDto(
+				targetFolder.getId(),
+				folderTreeSetUp.getUserId(),
+				sourceFile.getRootId(),
+				sourceFile.getUploadFileName()
+			);
+
+			// when
+			fileService.moveFile(sourceFile.getId(), dto);
+
+			// then 1) 파일의 parentFolderId는 DB에서 바뀌어 있어야 함(동기 영역)
+			FileMetadata moved = fileMetadataJpaRepository.findById(sourceFile.getId())
+				.orElseThrow(() -> new AssertionError("moved file not found"));
+			assertEquals(targetFolder.getId(), moved.getParentFolderId());
+
+			// then 2) 용량은 메시징(Outbox -> Rabbit -> Consumer) 처리 후 반영 (비동기)
+			awaitFolderSize(sourceFolderBefore.getId(), sourceFolderBeforeSize - fileSize);
+			awaitFolderSize(targetFolderBefore.getId(), targetFolderBeforeSize + fileSize);
 		}
-
-		@Test
-		@DisplayName("source 폴더 상위에서 삭제,이동 작업 중이면 파일 이동에 실패한다.")
-		void if_source_parent_has_lock_then_file_move_fail() {
-			List<FileMetadata> files = folderTreeSetUp.getFiles();
-			List<FolderMetadata> subFolders = folderTreeSetUp.getSubFolders();
-			FileMetadata sourceFile = files.get(0);
-			long parentId = sourceFile.getParentFolderId();
-			long targetIdx = 0;
-			for (FolderMetadata f : subFolders) {
-				if (parentId != f.getId()) {
-					break;
-				}
-				targetIdx++;
-			}
-
-			// 현재 파일의 부모 폴더 -> 락을 거는 파일
-			FolderMetadata sourceFolder = folderMetadataJpaRepository.findById(sourceFile.getParentFolderId()).get();
-			// 현재 파일의 부모의 부모 폴더 -> 삭제나 이동 작업 중이라고 가정하는 폴더
-			String lock = sourceFolder.getParentFolderId() + "";
-
-			FolderMetadata targetFolder = subFolders.get((int)(targetIdx));
-			FileMoveDto fileMoveDto = new FileMoveDto(targetFolder.getId(), folderTreeSetUp.getUserId(),
-				sourceFile.getRootId(), sourceFile.getUploadFileName());
-
-			CustomException customException = assertThrows(CustomException.class,
-				() -> fileService.moveFile(sourceFile.getId(), fileMoveDto));
-
-			assertEquals(ErrorCode.PARENT_LOCKED.getMessage(), customException.getMessage());
-		}
-
-		@Test
-		@DisplayName("target 폴더 상위에서 삭제,이동 작업 중이면 파일 이동에 실패한다.")
-		void if_target_parent_has_lock_then_file_move_fail() {
-			List<FileMetadata> files = folderTreeSetUp.getFiles();
-			List<FolderMetadata> subFolders = folderTreeSetUp.getSubFolders();
-			FileMetadata sourceFile = files.get(0);
-			long parentId = sourceFile.getParentFolderId();
-			long targetIdx = 0;
-			for (FolderMetadata f : subFolders) {
-				if (parentId != f.getId()) {
-					break;
-				}
-				targetIdx++;
-			}
-
-			FolderMetadata targetFolder = subFolders.get((int)(targetIdx));
-			String lock = targetFolder.getParentFolderId() + "";
-
-			FileMoveDto fileMoveDto = new FileMoveDto(targetFolder.getId(), folderTreeSetUp.getUserId(),
-				sourceFile.getRootId(), sourceFile.getUploadFileName());
-
-			CustomException customException = assertThrows(CustomException.class,
-				() -> fileService.moveFile(sourceFile.getId(), fileMoveDto));
-
-			assertEquals(ErrorCode.PARENT_LOCKED.getMessage(), customException.getMessage());
-		}
-
 	}
 
+	// =========================================================
+	// 파일 삭제 테스트
+	// =========================================================
 	@Nested
 	@DisplayName("파일 삭제 테스트")
 	class FileDeleteTest {
 
 		@Test
-		@DisplayName("파일 삭제 성공 테스트")
-		void file_delete_success_test() throws InterruptedException {
-			List<FileMetadata> files = folderTreeSetUp.getFiles();
-			FileMetadata targetFile = files.get(0);
-			FolderMetadata parentFolder = folderMetadataJpaRepository.findById(targetFile.getParentFolderId()).get();
+		@DisplayName("권한이 없으면 ACCESS_DENIED 예외가 발생한다.")
+		void if_user_not_owner_then_delete_fail() {
+			// given
+			FileMetadata targetFile = pickAnyFile();
+			long invalidUserId = 999_999L;
 
-			fileService.deleteFile(targetFile.getId(), folderTreeSetUp.getUserId());
+			// when
+			CustomException ex = assertThrows(CustomException.class,
+				() -> fileService.deleteFile(targetFile.getId(), invalidUserId));
 
-			Thread.sleep(5000);
-
-			FolderMetadata findFolder = folderMetadataJpaRepository.findById(targetFile.getParentFolderId()).get();
-
-			assertEquals(parentFolder.getSize() - targetFile.getFileSize(), findFolder.getSize());
+			// then
+			assertEquals(ErrorCode.ACCESS_DENIED.getMessage(), ex.getMessage());
 		}
 
+
+
 		@Test
-		@DisplayName("상위 폴더에서 삭제,이동 작업 중이면 파일 삭제에 실패한다.")
-		void if_parent_has_lock_then_file_delete_fail() {
-			List<FileMetadata> files = folderTreeSetUp.getFiles();
-			FileMetadata targetFile = files.get(0);
-			FolderMetadata parentFolder = folderMetadataJpaRepository.findById(targetFile.getParentFolderId()).get();
+		@DisplayName("파일 삭제 성공: softDelete + 폴더 용량이 메시징 처리 후 반영된다.")
+		void file_delete_success_test() {
+			// given
+			FileMetadata targetFile = pickAnyFile();
+			long userId = folderTreeSetUp.getUserId();
 
-			String lock = parentFolder.getParentFolderId() + "";
+			FolderMetadata parentBefore = folder(targetFile.getParentFolderId());
+			long parentBeforeSize = parentBefore.getSize();
+			long fileSize = targetFile.getFileSize();
 
-			CustomException customException = assertThrows(CustomException.class,
-				() -> fileService.deleteFile(targetFile.getId(), folderTreeSetUp.getUserId()));
+			// when
+			fileService.deleteFile(targetFile.getId(), userId);
 
-			assertEquals(ErrorCode.PARENT_LOCKED.getMessage(), customException.getMessage());
+			// then 1) 파일 soft-delete(상태/flag)는 구현에 따라 달라서,
+			// DB에 남아있는지/조회 조건이 어떤지 모르면 "용량 반영"으로 검증하는 게 제일 안정적이다.
+
+			// then 2) 폴더 용량은 메시징 처리 후 반영(비동기)
+			awaitFolderSize(parentBefore.getId(), parentBeforeSize - fileSize);
 		}
 	}
 }

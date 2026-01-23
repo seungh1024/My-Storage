@@ -44,8 +44,10 @@ public class FileService {
 	 * source folder, target folder의 모든 정보를 수정한다.
 	 */
 	@DistributedLock(keys = """
-			@lockKeys.folderJob(#dto.targetFolderId()),
-		   	@lockKeys.folderName(#dto.targetFolderId(), #dto.fileName())
+			{
+				@lockKeys.folderJob(#dto.targetFolderId()),
+				@lockKeys.folderName(#dto.targetFolderId(), #dto.fileName())
+		   	}
 		""")
 	public void moveFile(Long fileId, FileMoveDto dto) {
 		FileMetadata fileMetadata = fileMetadataJpaRepository.findById(fileId)
@@ -95,11 +97,15 @@ public class FileService {
 		return fileMetadata;
 	}
 
+	/**
+	 * 단건 삭제는 고아될 일이 없기에 상위 탐지를 하지 않는다.
+	 */
 	@Transactional
 	public void deleteFile(Long fileId, Long userId) {
 		FileMetadata fileMetadata = fileMetadataJpaRepository.findByIdAndOwnerIdAndUploadStatusNot(fileId, userId,
 			UploadStatus.FAIL).orElseThrow(ACCESS_DENIED::baseException);
 		fileMetadataJpaRepository.softDelete(fileMetadata.getId());
+		eventPublisher.publishEvent(new FolderSizeEvent(fileMetadata.getParentFolderId(),-fileMetadata.getFileSize()));
 	}
 
 	public void doHardDelete() {

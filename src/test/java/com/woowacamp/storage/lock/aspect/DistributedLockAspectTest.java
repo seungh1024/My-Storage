@@ -18,8 +18,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.aop.aspectj.annotation.AspectJProxyFactory;
+import org.springframework.context.ApplicationContext;
 
 import com.woowacamp.storage.global.error.CustomException;
+import com.woowacamp.storage.global.error.ErrorCode;
 import com.woowacamp.storage.lock.annotation.DistributedLock;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -38,6 +40,9 @@ class DistributedLockAspectTest {
 
 	@Spy
 	private AopTxManager aopTxManager;
+
+	@Mock
+	private ApplicationContext applicationContext;
 
 	@Mock
 	private RLock singleLock;
@@ -128,7 +133,7 @@ class DistributedLockAspectTest {
 			CustomException ex = assertThrows(CustomException.class, () -> proxy.singleWatchdog(3L));
 
 			// Then
-			assertTrue(ex.getMessage().contains("분산락 획득에 실패했습니다"));
+			assertTrue(ex.getHttpStatus().equals(ErrorCode.FOLDER_LOCK_CONFLICT.getStatus()));
 			then(aopTxManager).should(never()).proceed(any());
 			then(singleLock).should(times(1)).unlock();
 		}
@@ -337,7 +342,7 @@ class DistributedLockAspectTest {
 			CustomException ex = assertThrows(CustomException.class, () -> proxy.multiLiteral());
 
 			// Then
-			assertTrue(ex.getMessage().contains("분산락 획득에 실패했습니다"));
+			assertTrue(ex.getHttpStatus().equals(ErrorCode.FOLDER_LOCK_CONFLICT.getStatus()));
 			then(aopTxManager).should(never()).proceed(any());
 			then(multiLock).should(times(1)).unlock();
 		}

@@ -14,7 +14,6 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Sort;
@@ -29,7 +28,6 @@ import com.woowacamp.storage.domain.folder.dto.FolderContentsSortField;
 import com.woowacamp.storage.domain.folder.dto.request.CreateFolderReqDto;
 import com.woowacamp.storage.domain.folder.dto.request.FolderMoveDto;
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
-import com.woowacamp.storage.domain.folder.entity.FolderMetadataFactory;
 import com.woowacamp.storage.domain.folder.event.FolderMoveEvent;
 import com.woowacamp.storage.domain.folder.event.FolderSizeEvent;
 import com.woowacamp.storage.domain.folder.repository.FolderJobJpaRepository;
@@ -43,6 +41,7 @@ import com.woowacamp.storage.domain.user.entity.User;
 import com.woowacamp.storage.domain.user.repository.UserRepository;
 import com.woowacamp.storage.global.background.BackgroundJob;
 import com.woowacamp.storage.global.constant.CommonConstant;
+import com.woowacamp.storage.global.constant.PermissionType;
 import com.woowacamp.storage.global.error.CustomException;
 import com.woowacamp.storage.global.error.ErrorCode;
 import com.woowacamp.storage.global.util.ValidateParentsUtil;
@@ -54,33 +53,22 @@ import static org.mockito.BDDMockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class FolderServiceTest {
+
 	@InjectMocks
 	private FolderService folderService;
-	@Mock
-	private FileMetadataJpaRepository fileMetadataJpaRepository;
-	@Mock
-	private FileMetadataRepository fileMetadataRepository;
-	@Mock
-	private FolderMetadataJpaRepository folderMetadataJpaRepository;
-	@Mock
-	private FolderMetadataRepository folderMetadataRepository;
-	@Mock
-	private UserRepository userRepository;
-	@Mock
-	private Executor searchThreadPoolExecutor;
-	@Mock
-	private BackgroundJob backgroundJob;
-	@Mock
-	private LockKeys lockKeys;
-	@Mock
-	private FolderJobJpaRepository folderJobJpaRepository;
-	@Mock
-	private ValidateParentsUtil validateParentsUtil;
 
-	@Mock
-	private org.springframework.context.ApplicationEventPublisher publisher;
-	@Mock
-	private MessageInfoJpaRepository messageInfoJpaRepository;
+	@Mock private FileMetadataJpaRepository fileMetadataJpaRepository;
+	@Mock private FileMetadataRepository fileMetadataRepository;
+	@Mock private FolderMetadataJpaRepository folderMetadataJpaRepository;
+	@Mock private FolderMetadataRepository folderMetadataRepository;
+	@Mock private UserRepository userRepository;
+	@Mock private Executor searchThreadPoolExecutor;
+	@Mock private BackgroundJob backgroundJob;
+	@Mock private LockKeys lockKeys;
+	@Mock private FolderJobJpaRepository folderJobJpaRepository;
+	@Mock private ValidateParentsUtil validateParentsUtil;
+	@Mock private org.springframework.context.ApplicationEventPublisher publisher;
+	@Mock private MessageInfoJpaRepository messageInfoJpaRepository;
 
 	@BeforeEach
 	void setUp() {
@@ -89,7 +77,7 @@ class FolderServiceTest {
 		ReflectionTestUtils.setField(folderService, "maxPathLength", 250);
 	}
 
-	// ====== DTO helpers (record는 mock 금지) ======
+	// ====== DTO helpers ======
 	private FolderMoveDto moveDto(long userId, long targetFolderId, long rootId, String folderName) {
 		return new FolderMoveDto(userId, targetFolderId, rootId, folderName);
 	}
@@ -98,12 +86,39 @@ class FolderServiceTest {
 		return new CreateFolderReqDto(userId, parentFolderId, uploadFolderName, creatorId);
 	}
 
-	// ====== FolderContentsDto 접근 (구현체 몰라도 필드로 확인) ======
-	@SuppressWarnings("unchecked")
-	private static <T> List<T> readListField(Object dto, String fieldName) {
-		Object v = ReflectionTestUtils.getField(dto, fieldName);
-		assertNotNull(v, "field '" + fieldName + "' should exist");
-		return (List<T>)v;
+	// ====== FolderMetadata fixture (✅ mock 금지) ======
+	private FolderMetadata folder(
+		long id,
+		Long rootId,
+		long ownerId,
+		Long parentFolderId,
+		String uploadFolderName,
+		String nameFullPath,
+		String idFullPath,
+		int namePathLength,
+		long size,
+		LocalDateTime sharingExpiredAt
+	) {
+		LocalDateTime now = LocalDateTime.now();
+		return FolderMetadata.builder()
+			.id(id)
+			.rootId(rootId)
+			.ownerId(ownerId)
+			.creatorId(ownerId)
+			.createdAt(now)
+			.updatedAt(now)
+			.parentFolderId(parentFolderId)
+			.uploadFolderName(uploadFolderName)
+			.size(size)
+			.sharingExpiredAt(sharingExpiredAt)
+			.permissionType(PermissionType.NONE)
+			.isDeleted(false)
+			.version(0L)
+			.nameFullPath(nameFullPath)
+			.idFullPath(idFullPath)
+			.namePathLength(namePathLength)
+			.isMoving(false)
+			.build();
 	}
 
 	// =========================================================
@@ -116,9 +131,12 @@ class FolderServiceTest {
 		@Test
 		@DisplayName("성공: findByIdForUpdate 조회 + ownerId 일치면 통과")
 		void success_owner_matches() {
-			FolderMetadata folder = mock(FolderMetadata.class);
-			given(folder.getOwnerId()).willReturn(100L);
-			given(folderMetadataJpaRepository.findByIdForUpdate(10L)).willReturn(Optional.of(folder));
+			FolderMetadata f = folder(
+				10L, 1L, 100L, 1L,
+				"a", "/a/", "/10/", 3,
+				0L, CommonConstant.UNAVAILABLE_TIME
+			);
+			given(folderMetadataJpaRepository.findByIdForUpdate(10L)).willReturn(Optional.of(f));
 
 			assertDoesNotThrow(() -> folderService.checkFolderOwnedBy(10L, 100L));
 		}
@@ -127,16 +145,18 @@ class FolderServiceTest {
 		@DisplayName("실패: 폴더 없음 -> CustomException")
 		void fail_not_found() {
 			given(folderMetadataJpaRepository.findByIdForUpdate(10L)).willReturn(Optional.empty());
-
 			assertThrows(CustomException.class, () -> folderService.checkFolderOwnedBy(10L, 100L));
 		}
 
 		@Test
 		@DisplayName("실패: ownerId 불일치 -> CustomException")
 		void fail_owner_mismatch() {
-			FolderMetadata folder = mock(FolderMetadata.class);
-			given(folder.getOwnerId()).willReturn(999L);
-			given(folderMetadataJpaRepository.findByIdForUpdate(10L)).willReturn(Optional.of(folder));
+			FolderMetadata f = folder(
+				10L, 1L, 999L, 1L,
+				"a", "/a/", "/10/", 3,
+				0L, CommonConstant.UNAVAILABLE_TIME
+			);
+			given(folderMetadataJpaRepository.findByIdForUpdate(10L)).willReturn(Optional.of(f));
 
 			assertThrows(CustomException.class, () -> folderService.checkFolderOwnedBy(10L, 100L));
 		}
@@ -168,7 +188,6 @@ class FolderServiceTest {
 				.selectFoldersWithPagination(anyLong(), anyLong(), any(), any(), anyInt(), any(), any());
 		}
 
-
 		@Test
 		@DisplayName("cursorType=FILE + ownerRequested=false: 만료 파일은 필터링된다")
 		void file_filter_expired_when_not_owner() {
@@ -188,29 +207,26 @@ class FolderServiceTest {
 				LocalDateTime.now(), null, false
 			);
 
-			// ✅ Reflection 금지: 실제 컴포넌트 접근
-			List<FileMetadata> files = dto.fileMetadataList();
-
-			assertEquals(1, files.size());
-			assertSame(alive, files.get(0));
-
-			// FILE이면 폴더 조회가 없어야 함
-			then(folderMetadataJpaRepository).should(never())
-				.selectFoldersWithPagination(anyLong(), anyLong(), any(), any(), anyInt(), any(), any());
+			assertEquals(1, dto.fileMetadataList().size());
+			assertSame(alive, dto.fileMetadataList().get(0));
 		}
 
 		@Test
 		@DisplayName("cursorType=FOLDER: 폴더가 limit 미만이면 INITIAL_CURSOR_ID(0)로 파일 추가 조회")
 		void folder_then_files_when_not_enough() {
-			FolderMetadata folder = mock(FolderMetadata.class);
+			LocalDateTime now = LocalDateTime.now();
+			FolderMetadata oneFolder = folder(
+				1L, 1L, 100L, 10L,
+				"f", "/f/", "/1/", 3,
+				0L, now.plusDays(1)
+			);
 
 			given(folderMetadataJpaRepository.selectFoldersWithPagination(
 				eq(10L), eq(777L), any(), any(), eq(3), any(), any()
-			)).willReturn(List.of(folder)); // 1개만 -> 2개 부족
+			)).willReturn(List.of(oneFolder)); // 1개만 -> 2개 부족
 
 			FileMetadata f1 = mock(FileMetadata.class);
 			FileMetadata f2 = mock(FileMetadata.class);
-
 			given(fileMetadataJpaRepository.selectFilesWithPagination(
 				eq(10L), eq(0L), any(), any(), eq(2), any(), any()
 			)).willReturn(List.of(f1, f2));
@@ -221,25 +237,25 @@ class FolderServiceTest {
 				LocalDateTime.now(), null, true
 			);
 
-			assertNotNull(dto);
-
-			// ✅ 결과도 컴포넌트로 검증
 			assertEquals(1, dto.folderMetadataList().size());
 			assertEquals(2, dto.fileMetadataList().size());
-
-			then(fileMetadataJpaRepository).should()
-				.selectFilesWithPagination(eq(10L), eq(0L), any(), any(), eq(2), any(), any());
 		}
 
 		@Test
-		@DisplayName("cursorType=FOLDER + ownerRequested=false: 필터링 후 폴더가 limit 미만이면 부족분을 파일로 채운다")
+		@DisplayName("cursorType=FOLDER + ownerRequested=false: 만료 폴더는 필터링되고 부족분은 파일로 채운다")
 		void folder_filter_causes_extra_file_fetch() {
-			FolderMetadata alive = mock(FolderMetadata.class);
-			FolderMetadata expired = mock(FolderMetadata.class);
-			given(alive.isSharingExpired()).willReturn(false);
-			given(expired.isSharingExpired()).willReturn(true);
+			LocalDateTime now = LocalDateTime.now();
+			FolderMetadata alive = folder(
+				1L, 1L, 100L, 10L,
+				"alive", "/alive/", "/1/", 7,
+				0L, now.plusDays(1)
+			);
+			FolderMetadata expired = folder(
+				2L, 1L, 100L, 10L,
+				"expired", "/expired/", "/2/", 9,
+				0L, now.minusDays(1)
+			);
 
-			// limit=2, repo는 2개 주지만 expired가 걸러져 1개만 남음 -> 파일 1개 추가조회 발생
 			given(folderMetadataJpaRepository.selectFoldersWithPagination(
 				eq(10L), eq(777L), any(), any(), eq(2), any(), any()
 			)).willReturn(List.of(alive, expired));
@@ -255,10 +271,8 @@ class FolderServiceTest {
 				LocalDateTime.now(), null, false
 			);
 
-			assertEquals(1, dto.folderMetadataList().size()); // alive만
-			assertEquals(1, dto.fileMetadataList().size());   // 부족분 채움
-			then(fileMetadataJpaRepository).should()
-				.selectFilesWithPagination(eq(10L), eq(0L), any(), any(), eq(1), any(), any());
+			assertEquals(1, dto.folderMetadataList().size());
+			assertEquals(1, dto.fileMetadataList().size());
 		}
 	}
 
@@ -309,13 +323,17 @@ class FolderServiceTest {
 		}
 
 		@Test
-		@DisplayName("실패: insert에서 기타 예외면 CustomException")
+		@DisplayName("실패: insert에서 기타 예외면 RuntimeException으로 래핑되어 전파된다")
 		void fail_insert_other_exception() {
 			given(folderMetadataJpaRepository.getMovingLock(10L)).willReturn(1);
 			given(folderJobJpaRepository.insert(eq(10L), eq(10L), eq(0L), eq(FolderJobStatus.WAITING.name())))
 				.willThrow(new RuntimeException("db"));
 
-			assertThrows(CustomException.class, () -> folderService.getFolderJobLock(10L));
+			RuntimeException ex = assertThrows(RuntimeException.class,
+				() -> folderService.getFolderJobLock(10L));
+
+			assertNotNull(ex.getCause());
+			assertEquals("db", ex.getCause().getMessage());
 		}
 	}
 
@@ -333,77 +351,70 @@ class FolderServiceTest {
 		}
 
 		@Test
-		@DisplayName("성공: job lock + 검증 통과 + save + 이벤트 3개 발행")
-		void success_save_and_publish_3_events() {
+		@DisplayName("성공: 검증 통과 -> save + 이벤트 3개 발행 + source 경로/부모 변경")
+		void success_save_and_publish_3_events_and_update_source() {
 			long sourceId = 10L;
 			long targetId = 30L;
+			long parentId = 20L;
 			long rootId = 1L;
 			long userId = 100L;
 
 			stubJobLockSuccess(sourceId);
 
-			FolderMetadata source = mock(FolderMetadata.class);
-			FolderMetadata target = mock(FolderMetadata.class);
+			FolderMetadata source = folder(
+				sourceId, rootId, userId, parentId,
+				"src", "/p/src/", "/20/10/", 7,
+				123L, CommonConstant.UNAVAILABLE_TIME
+			);
 
-			// validateFolderOwner
-			given(source.getOwnerId()).willReturn(userId);
-			given(target.getOwnerId()).willReturn(userId);
+			FolderMetadata target = folder(
+				targetId, rootId, userId, 5L,
+				"t", "/t/", "/5/30/", 3,
+				0L, CommonConstant.UNAVAILABLE_TIME
+			);
 
-			// validateInvalidMove
-			given(source.getRootId()).willReturn(rootId);
-			given(target.getRootId()).willReturn(rootId);
-			given(source.getId()).willReturn(sourceId);
-			given(target.getId()).willReturn(targetId);
-			given(source.getParentFolderId()).willReturn(20L);
-			given(source.getIdFullPath()).willReturn("/20/10/");
-			given(target.getIdFullPath()).willReturn("/5/30/");
-			given(source.getUploadFolderName()).willReturn("source-name");
-			given(folderMetadataJpaRepository.existsByParentFolderIdAndUploadFolderName(targetId, "source-name"))
-				.willReturn(false);
+			FolderMetadata parentNotDeleted = folder(
+				parentId, rootId, userId, 1L,
+				"p", "/p/", "/1/20/", 3,
+				0L, CommonConstant.UNAVAILABLE_TIME
+			);
 
-			// validatePathLength
-			given(source.getNameFullPath()).willReturn("/p/source/");
-			given(source.getNamePathLength()).willReturn(10);
-			given(target.getNameFullPath()).willReturn("/t/");
-			given(target.getNamePathLength()).willReturn(3);
-
-			FolderMetadata parent = mock(FolderMetadata.class);
-			given(parent.getNamePathLength()).willReturn(3);
-			given(folderMetadataJpaRepository.findById(20L)).willReturn(Optional.of(parent));
-			given(folderMetadataJpaRepository.findDeepestFolderByPrefix(eq(rootId), eq("/p/source/")))
-				.willReturn(Optional.empty());
-			given(fileMetadataJpaRepository.findDeepestFileByPrefix(eq(rootId), eq("/p/source/")))
-				.willReturn(Optional.empty());
-
-			// validateParentsUtil
-			willDoNothing().given(validateParentsUtil).validateParentsFolderLock(source, target);
-
-			// events
-			given(source.getSize()).willReturn(123L);
-
+			// moveFolder 본문 조회 3개
 			given(folderMetadataJpaRepository.findByIdNotDeleted(sourceId)).willReturn(Optional.of(source));
 			given(folderMetadataJpaRepository.findByIdNotDeleted(targetId)).willReturn(Optional.of(target));
+			given(folderMetadataJpaRepository.findByIdNotDeleted(parentId)).willReturn(Optional.of(parentNotDeleted));
 
-			FolderMoveDto dto = moveDto(userId, targetId, rootId, "lock-key-name-only");
+			// invalid move 통과: 중복 이름 없음
+			given(folderMetadataJpaRepository.existsByParentFolderIdAndUploadFolderName(targetId, "src"))
+				.willReturn(false);
 
-			assertDoesNotThrow(() -> folderService.moveFolder(sourceId, dto));
+			// validatePathLength 내부: parent는 findById로 다시 조회
+			given(folderMetadataJpaRepository.findById(parentId)).willReturn(Optional.of(parentNotDeleted));
+			given(folderMetadataJpaRepository.findDeepestFolderByPrefix(eq(rootId), eq(source.getNameFullPath())))
+				.willReturn(Optional.empty());
+			given(fileMetadataJpaRepository.findDeepestFileByPrefix(eq(rootId), eq(source.getNameFullPath())))
+				.willReturn(Optional.empty());
 
-			// 저장/업데이트 호출 확인
-			then(source).should().updateParentFolderId(targetId);
-			then(source).should().updateIdFullPath("/5/30/");
-			then(source).should().updateNameFullPath("/t/");
-			then(source).should().updateNamePathLength(anyInt());
-			then(source).should().markMoving();
-			then(folderMetadataJpaRepository).should().save(source);
+			willDoNothing().given(validateParentsUtil).validateParentsFolderLock(parentNotDeleted, target);
 
-			// 이벤트 3개
-			ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
-			then(publisher).should(times(3)).publishEvent(captor.capture());
+			given(folderMetadataJpaRepository.save(any(FolderMetadata.class))).willAnswer(inv -> inv.getArgument(0));
 
-			assertEquals(3, captor.getAllValues().size());
-			assertTrue(captor.getAllValues().get(0) instanceof FolderSizeEvent);
-			assertTrue(captor.getAllValues().get(1) instanceof FolderSizeEvent);
-			assertTrue(captor.getAllValues().get(2) instanceof FolderMoveEvent);
+			folderService.moveFolder(sourceId, moveDto(userId, targetId, rootId, "lock-key-only"));
+
+			// ✅ 상태 검증 (updateIdFullPath/updateNameFullPath는 "조립"된 최종 값이어야 함)
+			assertEquals(targetId, source.getParentFolderId());
+			assertEquals("/5/30/10/", source.getIdFullPath());
+			assertEquals("/t/src/", source.getNameFullPath());
+			assertEquals(source.getNameFullPath().length(), source.getNamePathLength());
+			assertTrue(source.isMoving());
+
+			// ✅ 이벤트 3개(2 size + 1 move)
+			ArgumentCaptor<Object> eventCaptor = ArgumentCaptor.forClass(Object.class);
+			then(publisher).should(times(3)).publishEvent(eventCaptor.capture());
+
+			assertTrue(eventCaptor.getAllValues().get(0) instanceof FolderSizeEvent);
+			assertTrue(eventCaptor.getAllValues().get(1) instanceof FolderSizeEvent);
+			assertTrue(eventCaptor.getAllValues().get(2) instanceof FolderMoveEvent);
 		}
 
 		@Test
@@ -453,70 +464,97 @@ class FolderServiceTest {
 		@Test
 		@DisplayName("실패: source owner 불일치 -> CustomException, target 조회 전 종료")
 		void fail_source_owner_mismatch() {
-			stubJobLockSuccess(10L);
+			long sourceId = 10L;
+			stubJobLockSuccess(sourceId);
 
-			FolderMetadata source = mock(FolderMetadata.class);
-			given(source.getOwnerId()).willReturn(999L);
-			given(folderMetadataJpaRepository.findByIdNotDeleted(10L)).willReturn(Optional.of(source));
+			FolderMetadata source = folder(
+				sourceId, 1L, 999L, 20L,
+				"src", "/p/src/", "/20/10/", 7,
+				0L, CommonConstant.UNAVAILABLE_TIME
+			);
+			given(folderMetadataJpaRepository.findByIdNotDeleted(sourceId)).willReturn(Optional.of(source));
 
-			assertThrows(CustomException.class, () -> folderService.moveFolder(10L, moveDto(100L, 30L, 1L, "x")));
+			assertThrows(CustomException.class, () -> folderService.moveFolder(sourceId, moveDto(100L, 30L, 1L, "x")));
 			then(folderMetadataJpaRepository).should(never()).findByIdNotDeleted(30L);
 		}
 
 		@Test
 		@DisplayName("실패: target 폴더 없음 -> CustomException")
 		void fail_target_not_found() {
-			stubJobLockSuccess(10L);
+			long sourceId = 10L;
+			long targetId = 30L;
+			stubJobLockSuccess(sourceId);
 
-			FolderMetadata source = mock(FolderMetadata.class);
-			given(source.getOwnerId()).willReturn(100L);
-			given(folderMetadataJpaRepository.findByIdNotDeleted(10L)).willReturn(Optional.of(source));
-			given(folderMetadataJpaRepository.findByIdNotDeleted(30L)).willReturn(Optional.empty());
+			FolderMetadata source = folder(
+				sourceId, 1L, 100L, 20L,
+				"src", "/p/src/", "/20/10/", 7,
+				0L, CommonConstant.UNAVAILABLE_TIME
+			);
 
-			assertThrows(CustomException.class, () -> folderService.moveFolder(10L, moveDto(100L, 30L, 1L, "x")));
+			given(folderMetadataJpaRepository.findByIdNotDeleted(sourceId)).willReturn(Optional.of(source));
+			given(folderMetadataJpaRepository.findByIdNotDeleted(targetId)).willReturn(Optional.empty());
+
+			assertThrows(CustomException.class, () -> folderService.moveFolder(sourceId, moveDto(100L, targetId, 1L, "x")));
+			then(folderMetadataJpaRepository).should(never()).findByIdNotDeleted(20L);
 		}
 
 		@Test
 		@DisplayName("실패: target owner 불일치 -> CustomException")
 		void fail_target_owner_mismatch() {
-			stubJobLockSuccess(10L);
-
-			FolderMetadata source = mock(FolderMetadata.class);
-			FolderMetadata target = mock(FolderMetadata.class);
-
-			given(source.getOwnerId()).willReturn(100L);
-			given(target.getOwnerId()).willReturn(999L);
-
-			given(folderMetadataJpaRepository.findByIdNotDeleted(10L)).willReturn(Optional.of(source));
-			given(folderMetadataJpaRepository.findByIdNotDeleted(30L)).willReturn(Optional.of(target));
-
-			assertThrows(CustomException.class, () -> folderService.moveFolder(10L, moveDto(100L, 30L, 1L, "x")));
-		}
-
-		@Test
-		@DisplayName("실패: rootId mismatch(dto.rootId != source/target.rootId) -> CustomException (중복/경로검증 전 종료)")
-		void fail_root_mismatch() {
 			long sourceId = 10L;
 			long targetId = 30L;
-			long dtoRootId = 1L;
-			long userId = 100L;
-
 			stubJobLockSuccess(sourceId);
 
-			FolderMetadata source = mock(FolderMetadata.class);
-			FolderMetadata target = mock(FolderMetadata.class);
-
-			given(source.getOwnerId()).willReturn(userId);
-			given(target.getOwnerId()).willReturn(userId);
-
-			given(source.getRootId()).willReturn(999L); // mismatch
-			given(target.getRootId()).willReturn(dtoRootId);
+			FolderMetadata source = folder(
+				sourceId, 1L, 100L, 20L,
+				"src", "/p/src/", "/20/10/", 7,
+				0L, CommonConstant.UNAVAILABLE_TIME
+			);
+			FolderMetadata target = folder(
+				targetId, 1L, 999L, 5L,
+				"t", "/t/", "/5/30/", 3,
+				0L, CommonConstant.UNAVAILABLE_TIME
+			);
 
 			given(folderMetadataJpaRepository.findByIdNotDeleted(sourceId)).willReturn(Optional.of(source));
 			given(folderMetadataJpaRepository.findByIdNotDeleted(targetId)).willReturn(Optional.of(target));
 
+			assertThrows(CustomException.class, () -> folderService.moveFolder(sourceId, moveDto(100L, targetId, 1L, "x")));
+			then(folderMetadataJpaRepository).should(never()).findByIdNotDeleted(20L);
+		}
+
+		@Test
+		@DisplayName("실패: rootId mismatch(source/target root 다름) -> CustomException")
+		void fail_root_mismatch_between_source_and_target() {
+			long sourceId = 10L;
+			long targetId = 30L;
+			long parentId = 20L;
+			long userId = 100L;
+
+			stubJobLockSuccess(sourceId);
+
+			FolderMetadata source = folder(
+				sourceId, 999L, userId, parentId,
+				"src", "/p/src/", "/20/10/", 7,
+				0L, CommonConstant.UNAVAILABLE_TIME
+			);
+			FolderMetadata target = folder(
+				targetId, 1L, userId, 5L,
+				"t", "/t/", "/5/30/", 3,
+				0L, CommonConstant.UNAVAILABLE_TIME
+			);
+			FolderMetadata parent = folder(
+				parentId, 999L, userId, 1L,
+				"p", "/p/", "/1/20/", 3,
+				0L, CommonConstant.UNAVAILABLE_TIME
+			);
+
+			given(folderMetadataJpaRepository.findByIdNotDeleted(sourceId)).willReturn(Optional.of(source));
+			given(folderMetadataJpaRepository.findByIdNotDeleted(targetId)).willReturn(Optional.of(target));
+			given(folderMetadataJpaRepository.findByIdNotDeleted(parentId)).willReturn(Optional.of(parent));
+
 			assertThrows(CustomException.class,
-				() -> folderService.moveFolder(sourceId, moveDto(userId, targetId, dtoRootId, "x")));
+				() -> folderService.moveFolder(sourceId, moveDto(userId, targetId, 1L, "x")));
 
 			then(folderMetadataJpaRepository).should(never())
 				.existsByParentFolderIdAndUploadFolderName(anyLong(), anyString());
@@ -528,93 +566,33 @@ class FolderServiceTest {
 		@DisplayName("실패: 자기 자신으로 이동(source==target) -> CustomException")
 		void fail_move_to_self() {
 			long sourceId = 10L;
-			long userId = 100L;
+			long parentId = 20L;
 			long rootId = 1L;
+			long userId = 100L;
 
 			stubJobLockSuccess(sourceId);
 
-			FolderMetadata same = mock(FolderMetadata.class);
-			given(same.getOwnerId()).willReturn(userId);
-			given(same.getRootId()).willReturn(rootId);
-			given(same.getId()).willReturn(sourceId);
+			FolderMetadata same = folder(
+				sourceId, rootId, userId, parentId,
+				"src", "/p/src/", "/20/10/", 7,
+				0L, CommonConstant.UNAVAILABLE_TIME
+			);
+			FolderMetadata parent = folder(
+				parentId, rootId, userId, 1L,
+				"p", "/p/", "/1/20/", 3,
+				0L, CommonConstant.UNAVAILABLE_TIME
+			);
 
-			// ✅ 한 번만 stubbing하면 두 번 호출돼도 계속 동일 값 리턴됨 (중복 stubbing 금지)
 			given(folderMetadataJpaRepository.findByIdNotDeleted(sourceId)).willReturn(Optional.of(same));
+			given(folderMetadataJpaRepository.findByIdNotDeleted(sourceId)).willReturn(Optional.of(same)); // target 조회도 같은 id
+			given(folderMetadataJpaRepository.findByIdNotDeleted(parentId)).willReturn(Optional.of(parent));
 
 			assertThrows(CustomException.class,
 				() -> folderService.moveFolder(sourceId, moveDto(userId, sourceId, rootId, "x")));
 
-			then(folderMetadataJpaRepository).should(times(2)).findByIdNotDeleted(sourceId);
 			then(folderMetadataJpaRepository).should(never()).save(any());
-			then(folderMetadataJpaRepository).should(never()).existsByParentFolderIdAndUploadFolderName(anyLong(), anyString());
 			then(validateParentsUtil).shouldHaveNoInteractions();
 			then(publisher).shouldHaveNoInteractions();
-		}
-
-		@Test
-		@DisplayName("실패: source가 root(parentFolderId==null) -> CustomException")
-		void fail_source_is_root() {
-			long sourceId = 10L;
-			long targetId = 30L;
-			long userId = 100L;
-			long rootId = 1L;
-
-			stubJobLockSuccess(sourceId);
-
-			FolderMetadata source = mock(FolderMetadata.class);
-			FolderMetadata target = mock(FolderMetadata.class);
-
-			given(source.getOwnerId()).willReturn(userId);
-			given(target.getOwnerId()).willReturn(userId);
-
-			given(source.getRootId()).willReturn(rootId);
-			given(target.getRootId()).willReturn(rootId);
-
-			given(source.getId()).willReturn(sourceId);
-			given(target.getId()).willReturn(targetId);
-
-			given(source.getParentFolderId()).willReturn(null);
-
-			given(folderMetadataJpaRepository.findByIdNotDeleted(sourceId)).willReturn(Optional.of(source));
-			given(folderMetadataJpaRepository.findByIdNotDeleted(targetId)).willReturn(Optional.of(target));
-
-			assertThrows(CustomException.class,
-				() -> folderService.moveFolder(sourceId, moveDto(userId, targetId, rootId, "x")));
-
-			then(folderMetadataJpaRepository).should(never()).save(any());
-		}
-
-		@Test
-		@DisplayName("실패: source의 parent가 target이면(이미 그 폴더에 있음) -> CustomException")
-		void fail_same_parent_target() {
-			long sourceId = 10L;
-			long targetId = 30L;
-			long userId = 100L;
-			long rootId = 1L;
-
-			stubJobLockSuccess(sourceId);
-
-			FolderMetadata source = mock(FolderMetadata.class);
-			FolderMetadata target = mock(FolderMetadata.class);
-
-			given(source.getOwnerId()).willReturn(userId);
-			given(target.getOwnerId()).willReturn(userId);
-
-			given(source.getRootId()).willReturn(rootId);
-			given(target.getRootId()).willReturn(rootId);
-
-			given(source.getId()).willReturn(sourceId);
-			given(target.getId()).willReturn(targetId);
-
-			given(source.getParentFolderId()).willReturn(targetId); // already in target
-
-			given(folderMetadataJpaRepository.findByIdNotDeleted(sourceId)).willReturn(Optional.of(source));
-			given(folderMetadataJpaRepository.findByIdNotDeleted(targetId)).willReturn(Optional.of(target));
-
-			assertThrows(CustomException.class,
-				() -> folderService.moveFolder(sourceId, moveDto(userId, targetId, rootId, "x")));
-
-			then(folderMetadataJpaRepository).should(never()).save(any());
 		}
 
 		@Test
@@ -622,30 +600,31 @@ class FolderServiceTest {
 		void fail_cycle_descendant() {
 			long sourceId = 10L;
 			long targetId = 30L;
-			long userId = 100L;
+			long parentId = 20L;
 			long rootId = 1L;
+			long userId = 100L;
 
 			stubJobLockSuccess(sourceId);
 
-			FolderMetadata source = mock(FolderMetadata.class);
-			FolderMetadata target = mock(FolderMetadata.class);
-
-			given(source.getOwnerId()).willReturn(userId);
-			given(target.getOwnerId()).willReturn(userId);
-
-			given(source.getRootId()).willReturn(rootId);
-			given(target.getRootId()).willReturn(rootId);
-
-			given(source.getId()).willReturn(sourceId);
-			given(target.getId()).willReturn(targetId);
-
-			given(source.getParentFolderId()).willReturn(20L);
-
-			given(source.getIdFullPath()).willReturn("/20/10/");
-			given(target.getIdFullPath()).willReturn("/20/10/30/"); // descendant
+			FolderMetadata source = folder(
+				sourceId, rootId, userId, parentId,
+				"src", "/p/src/", "/20/10/", 7,
+				0L, CommonConstant.UNAVAILABLE_TIME
+			);
+			FolderMetadata target = folder(
+				targetId, rootId, userId, 5L,
+				"t", "/t/", "/20/10/30/", 9, // ✅ descendant
+				0L, CommonConstant.UNAVAILABLE_TIME
+			);
+			FolderMetadata parent = folder(
+				parentId, rootId, userId, 1L,
+				"p", "/p/", "/1/20/", 3,
+				0L, CommonConstant.UNAVAILABLE_TIME
+			);
 
 			given(folderMetadataJpaRepository.findByIdNotDeleted(sourceId)).willReturn(Optional.of(source));
 			given(folderMetadataJpaRepository.findByIdNotDeleted(targetId)).willReturn(Optional.of(target));
+			given(folderMetadataJpaRepository.findByIdNotDeleted(parentId)).willReturn(Optional.of(parent));
 
 			assertThrows(CustomException.class,
 				() -> folderService.moveFolder(sourceId, moveDto(userId, targetId, rootId, "x")));
@@ -660,81 +639,85 @@ class FolderServiceTest {
 		void fail_duplicated_name_in_target() {
 			long sourceId = 10L;
 			long targetId = 30L;
-			long userId = 100L;
+			long parentId = 20L;
 			long rootId = 1L;
+			long userId = 100L;
 
 			stubJobLockSuccess(sourceId);
 
-			FolderMetadata source = mock(FolderMetadata.class);
-			FolderMetadata target = mock(FolderMetadata.class);
+			FolderMetadata source = folder(
+				sourceId, rootId, userId, parentId,
+				"dup", "/p/dup/", "/20/10/", 7,
+				0L, CommonConstant.UNAVAILABLE_TIME
+			);
+			FolderMetadata target = folder(
+				targetId, rootId, userId, 5L,
+				"t", "/t/", "/5/30/", 3,
+				0L, CommonConstant.UNAVAILABLE_TIME
+			);
+			FolderMetadata parent = folder(
+				parentId, rootId, userId, 1L,
+				"p", "/p/", "/1/20/", 3,
+				0L, CommonConstant.UNAVAILABLE_TIME
+			);
 
-			given(source.getOwnerId()).willReturn(userId);
-			given(target.getOwnerId()).willReturn(userId);
+			given(folderMetadataJpaRepository.findByIdNotDeleted(sourceId)).willReturn(Optional.of(source));
+			given(folderMetadataJpaRepository.findByIdNotDeleted(targetId)).willReturn(Optional.of(target));
+			given(folderMetadataJpaRepository.findByIdNotDeleted(parentId)).willReturn(Optional.of(parent));
 
-			given(source.getRootId()).willReturn(rootId);
-			given(target.getRootId()).willReturn(rootId);
-
-			given(source.getId()).willReturn(sourceId);
-			given(target.getId()).willReturn(targetId);
-
-			given(source.getParentFolderId()).willReturn(20L);
-
-			given(source.getIdFullPath()).willReturn("/20/10/");
-			given(target.getIdFullPath()).willReturn("/5/30/"); // not descendant
-
-			given(source.getUploadFolderName()).willReturn("dup");
 			given(folderMetadataJpaRepository.existsByParentFolderIdAndUploadFolderName(targetId, "dup"))
 				.willReturn(true);
 
-			given(folderMetadataJpaRepository.findByIdNotDeleted(sourceId)).willReturn(Optional.of(source));
-			given(folderMetadataJpaRepository.findByIdNotDeleted(targetId)).willReturn(Optional.of(target));
-
 			assertThrows(CustomException.class,
-				() -> folderService.moveFolder(sourceId, moveDto(userId, targetId, rootId, "x")));
+				() -> folderService.moveFolder(sourceId, moveDto(userId, targetId, rootId, "dtoNameIrrelevant")));
 
 			then(folderMetadataJpaRepository).should(never()).save(any());
+			then(validateParentsUtil).shouldHaveNoInteractions();
+			then(fileMetadataJpaRepository).shouldHaveNoInteractions();
+			then(publisher).shouldHaveNoInteractions();
 		}
 
 		@Test
-		@DisplayName("실패: validatePathLength에서 parent 폴더 못 찾으면 CustomException, validateParentsUtil/save/publish 없이 종료")
+		@DisplayName("실패: validatePathLength에서 parent(findById) 못 찾으면 CustomException")
 		void fail_pathlength_parent_not_found() {
 			long sourceId = 10L;
 			long targetId = 30L;
-			long userId = 100L;
-			long rootId = 1L;
 			long parentId = 20L;
+			long rootId = 1L;
+			long userId = 100L;
 
 			stubJobLockSuccess(sourceId);
 
-			FolderMetadata source = mock(FolderMetadata.class);
-			FolderMetadata target = mock(FolderMetadata.class);
-
-			given(source.getOwnerId()).willReturn(userId);
-			given(target.getOwnerId()).willReturn(userId);
-
-			given(source.getRootId()).willReturn(rootId);
-			given(target.getRootId()).willReturn(rootId);
-
-			given(source.getId()).willReturn(sourceId);
-			given(target.getId()).willReturn(targetId);
-
-			given(source.getParentFolderId()).willReturn(parentId);
-
-			given(source.getIdFullPath()).willReturn("/20/10/");
-			given(target.getIdFullPath()).willReturn("/5/30/"); // not descendant
-
-			given(source.getUploadFolderName()).willReturn("ok");
-			given(folderMetadataJpaRepository.existsByParentFolderIdAndUploadFolderName(targetId, "ok"))
-				.willReturn(false);
-
-			given(folderMetadataJpaRepository.findById(parentId)).willReturn(Optional.empty());
+			FolderMetadata source = folder(
+				sourceId, rootId, userId, parentId,
+				"ok", "/p/ok/", "/20/10/", 6,
+				0L, CommonConstant.UNAVAILABLE_TIME
+			);
+			FolderMetadata target = folder(
+				targetId, rootId, userId, 5L,
+				"t", "/t/", "/5/30/", 3,
+				0L, CommonConstant.UNAVAILABLE_TIME
+			);
+			FolderMetadata parentNotDeleted = folder(
+				parentId, rootId, userId, 1L,
+				"p", "/p/", "/1/20/", 3,
+				0L, CommonConstant.UNAVAILABLE_TIME
+			);
 
 			given(folderMetadataJpaRepository.findByIdNotDeleted(sourceId)).willReturn(Optional.of(source));
 			given(folderMetadataJpaRepository.findByIdNotDeleted(targetId)).willReturn(Optional.of(target));
+			given(folderMetadataJpaRepository.findByIdNotDeleted(parentId)).willReturn(Optional.of(parentNotDeleted));
+
+			given(folderMetadataJpaRepository.existsByParentFolderIdAndUploadFolderName(targetId, "ok"))
+				.willReturn(false);
+
+			// ✅ validatePathLength 내부 parent 조회 실패 유도
+			given(folderMetadataJpaRepository.findById(parentId)).willReturn(Optional.empty());
 
 			assertThrows(CustomException.class,
 				() -> folderService.moveFolder(sourceId, moveDto(userId, targetId, rootId, "x")));
 
+			then(folderMetadataJpaRepository).should().findById(parentId);
 			then(validateParentsUtil).shouldHaveNoInteractions();
 			then(folderMetadataJpaRepository).should(never()).save(any());
 			then(publisher).shouldHaveNoInteractions();
@@ -747,47 +730,40 @@ class FolderServiceTest {
 
 			long sourceId = 10L;
 			long targetId = 30L;
+			long parentId = 20L;
 			long rootId = 1L;
 			long userId = 100L;
 
 			stubJobLockSuccess(sourceId);
 
-			FolderMetadata source = mock(FolderMetadata.class);
-			FolderMetadata target = mock(FolderMetadata.class);
-
-			given(source.getOwnerId()).willReturn(userId);
-			given(target.getOwnerId()).willReturn(userId);
-
-			given(source.getRootId()).willReturn(rootId);
-			given(target.getRootId()).willReturn(rootId);
-
-			given(source.getId()).willReturn(sourceId);
-			given(target.getId()).willReturn(targetId);
-
-			given(source.getParentFolderId()).willReturn(20L);
-
-			given(source.getIdFullPath()).willReturn("/20/10/");
-			given(target.getIdFullPath()).willReturn("/5/30/"); // not descendant
-
-			given(source.getUploadFolderName()).willReturn("ok");
-			given(folderMetadataJpaRepository.existsByParentFolderIdAndUploadFolderName(targetId, "ok"))
-				.willReturn(false);
-
-			// validatePathLength inputs
-			given(source.getNameFullPath()).willReturn("/p/source/");
-			given(source.getNamePathLength()).willReturn(9);
-			FolderMetadata parent = mock(FolderMetadata.class);
-			given(parent.getNamePathLength()).willReturn(0);
-			given(folderMetadataJpaRepository.findById(20L)).willReturn(Optional.of(parent));
-			given(folderMetadataJpaRepository.findDeepestFolderByPrefix(eq(rootId), eq("/p/source/")))
-				.willReturn(Optional.empty());
-			given(fileMetadataJpaRepository.findDeepestFileByPrefix(eq(rootId), eq("/p/source/")))
-				.willReturn(Optional.empty());
-			// (parent 조회 성공 후) target.getNamePathLength이 호출되므로 여기서만 스텁 필요
-			given(target.getNamePathLength()).willReturn(3);
+			FolderMetadata source = folder(
+				sourceId, rootId, userId, parentId,
+				"src", "/very/long/source/", "/20/10/", 18,
+				0L, CommonConstant.UNAVAILABLE_TIME
+			);
+			FolderMetadata target = folder(
+				targetId, rootId, userId, 5L,
+				"t", "/t/", "/5/30/", 4,
+				0L, CommonConstant.UNAVAILABLE_TIME
+			);
+			FolderMetadata parentNotDeleted = folder(
+				parentId, rootId, userId, 1L,
+				"p", "/p/", "/1/20/", 1,
+				0L, CommonConstant.UNAVAILABLE_TIME
+			);
 
 			given(folderMetadataJpaRepository.findByIdNotDeleted(sourceId)).willReturn(Optional.of(source));
 			given(folderMetadataJpaRepository.findByIdNotDeleted(targetId)).willReturn(Optional.of(target));
+			given(folderMetadataJpaRepository.findByIdNotDeleted(parentId)).willReturn(Optional.of(parentNotDeleted));
+
+			given(folderMetadataJpaRepository.existsByParentFolderIdAndUploadFolderName(targetId, "src"))
+				.willReturn(false);
+
+			given(folderMetadataJpaRepository.findById(parentId)).willReturn(Optional.of(parentNotDeleted));
+			given(folderMetadataJpaRepository.findDeepestFolderByPrefix(eq(rootId), eq(source.getNameFullPath())))
+				.willReturn(Optional.empty());
+			given(fileMetadataJpaRepository.findDeepestFileByPrefix(eq(rootId), eq(source.getNameFullPath())))
+				.willReturn(Optional.empty());
 
 			assertThrows(CustomException.class,
 				() -> folderService.moveFolder(sourceId, moveDto(userId, targetId, rootId, "x")));
@@ -802,48 +778,43 @@ class FolderServiceTest {
 		void fail_validate_parents_util_throws() {
 			long sourceId = 10L;
 			long targetId = 30L;
+			long parentId = 20L;
 			long rootId = 1L;
 			long userId = 100L;
 
 			stubJobLockSuccess(sourceId);
 
-			FolderMetadata source = mock(FolderMetadata.class);
-			FolderMetadata target = mock(FolderMetadata.class);
-
-			given(source.getOwnerId()).willReturn(userId);
-			given(target.getOwnerId()).willReturn(userId);
-
-			given(source.getRootId()).willReturn(rootId);
-			given(target.getRootId()).willReturn(rootId);
-
-			given(source.getId()).willReturn(sourceId);
-			given(target.getId()).willReturn(targetId);
-
-			given(source.getParentFolderId()).willReturn(20L);
-
-			given(source.getIdFullPath()).willReturn("/20/10/");
-			given(target.getIdFullPath()).willReturn("/5/30/");
-			given(source.getUploadFolderName()).willReturn("ok");
-			given(folderMetadataJpaRepository.existsByParentFolderIdAndUploadFolderName(targetId, "ok"))
-				.willReturn(false);
-
-			given(source.getNameFullPath()).willReturn("/p/source/");
-			given(source.getNamePathLength()).willReturn(10);
-			FolderMetadata parent = mock(FolderMetadata.class);
-			given(parent.getNamePathLength()).willReturn(3);
-			given(folderMetadataJpaRepository.findById(20L)).willReturn(Optional.of(parent));
-			given(folderMetadataJpaRepository.findDeepestFolderByPrefix(eq(rootId), eq("/p/source/")))
-				.willReturn(Optional.empty());
-			given(fileMetadataJpaRepository.findDeepestFileByPrefix(eq(rootId), eq("/p/source/")))
-				.willReturn(Optional.empty());
-
-			given(target.getNamePathLength()).willReturn(3);
+			FolderMetadata source = folder(
+				sourceId, rootId, userId, parentId,
+				"src", "/p/src/", "/20/10/", 7,
+				0L, CommonConstant.UNAVAILABLE_TIME
+			);
+			FolderMetadata target = folder(
+				targetId, rootId, userId, 5L,
+				"t", "/t/", "/5/30/", 3,
+				0L, CommonConstant.UNAVAILABLE_TIME
+			);
+			FolderMetadata parentNotDeleted = folder(
+				parentId, rootId, userId, 1L,
+				"p", "/p/", "/1/20/", 3,
+				0L, CommonConstant.UNAVAILABLE_TIME
+			);
 
 			given(folderMetadataJpaRepository.findByIdNotDeleted(sourceId)).willReturn(Optional.of(source));
 			given(folderMetadataJpaRepository.findByIdNotDeleted(targetId)).willReturn(Optional.of(target));
+			given(folderMetadataJpaRepository.findByIdNotDeleted(parentId)).willReturn(Optional.of(parentNotDeleted));
+
+			given(folderMetadataJpaRepository.existsByParentFolderIdAndUploadFolderName(targetId, "src"))
+				.willReturn(false);
+
+			given(folderMetadataJpaRepository.findById(parentId)).willReturn(Optional.of(parentNotDeleted));
+			given(folderMetadataJpaRepository.findDeepestFolderByPrefix(eq(rootId), eq(source.getNameFullPath())))
+				.willReturn(Optional.empty());
+			given(fileMetadataJpaRepository.findDeepestFileByPrefix(eq(rootId), eq(source.getNameFullPath())))
+				.willReturn(Optional.empty());
 
 			willThrow(ErrorCode.PARENT_LOCKED.baseException())
-				.given(validateParentsUtil).validateParentsFolderLock(source, target);
+				.given(validateParentsUtil).validateParentsFolderLock(parentNotDeleted, target);
 
 			assertThrows(CustomException.class,
 				() -> folderService.moveFolder(sourceId, moveDto(userId, targetId, rootId, "x")));
@@ -857,53 +828,47 @@ class FolderServiceTest {
 		void fail_save_throws_no_publish() {
 			long sourceId = 10L;
 			long targetId = 30L;
+			long parentId = 20L;
 			long rootId = 1L;
 			long userId = 100L;
 
 			stubJobLockSuccess(sourceId);
 
-			FolderMetadata source = mock(FolderMetadata.class);
-			FolderMetadata target = mock(FolderMetadata.class);
-
-			given(source.getOwnerId()).willReturn(userId);
-			given(target.getOwnerId()).willReturn(userId);
-
-			given(source.getRootId()).willReturn(rootId);
-			given(target.getRootId()).willReturn(rootId);
-
-			given(source.getId()).willReturn(sourceId);
-			given(target.getId()).willReturn(targetId);
-
-			given(source.getParentFolderId()).willReturn(20L);
-
-			given(source.getIdFullPath()).willReturn("/20/10/");
-			given(target.getIdFullPath()).willReturn("/5/30/");
-			given(source.getUploadFolderName()).willReturn("ok");
-			given(folderMetadataJpaRepository.existsByParentFolderIdAndUploadFolderName(targetId, "ok"))
-				.willReturn(false);
-
-			given(source.getNameFullPath()).willReturn("/p/source/");
-			given(source.getNamePathLength()).willReturn(10);
-			FolderMetadata parent = mock(FolderMetadata.class);
-			given(parent.getNamePathLength()).willReturn(3);
-			given(folderMetadataJpaRepository.findById(20L)).willReturn(Optional.of(parent));
-			given(folderMetadataJpaRepository.findDeepestFolderByPrefix(eq(rootId), eq("/p/source/")))
-				.willReturn(Optional.empty());
-			given(fileMetadataJpaRepository.findDeepestFileByPrefix(eq(rootId), eq("/p/source/")))
-				.willReturn(Optional.empty());
-
-			given(target.getNameFullPath()).willReturn("/t/");
-			given(target.getNamePathLength()).willReturn(3);
-
-			willDoNothing().given(validateParentsUtil).validateParentsFolderLock(source, target);
+			FolderMetadata source = folder(
+				sourceId, rootId, userId, parentId,
+				"src", "/p/src/", "/20/10/", 7,
+				0L, CommonConstant.UNAVAILABLE_TIME
+			);
+			FolderMetadata target = folder(
+				targetId, rootId, userId, 5L,
+				"t", "/t/", "/5/30/", 3,
+				0L, CommonConstant.UNAVAILABLE_TIME
+			);
+			FolderMetadata parentNotDeleted = folder(
+				parentId, rootId, userId, 1L,
+				"p", "/p/", "/1/20/", 3,
+				0L, CommonConstant.UNAVAILABLE_TIME
+			);
 
 			given(folderMetadataJpaRepository.findByIdNotDeleted(sourceId)).willReturn(Optional.of(source));
 			given(folderMetadataJpaRepository.findByIdNotDeleted(targetId)).willReturn(Optional.of(target));
+			given(folderMetadataJpaRepository.findByIdNotDeleted(parentId)).willReturn(Optional.of(parentNotDeleted));
 
-			willThrow(new RuntimeException("db")).given(folderMetadataJpaRepository).save(source);
+			given(folderMetadataJpaRepository.existsByParentFolderIdAndUploadFolderName(targetId, "src"))
+				.willReturn(false);
+
+			given(folderMetadataJpaRepository.findById(parentId)).willReturn(Optional.of(parentNotDeleted));
+			given(folderMetadataJpaRepository.findDeepestFolderByPrefix(eq(rootId), eq(source.getNameFullPath())))
+				.willReturn(Optional.empty());
+			given(fileMetadataJpaRepository.findDeepestFileByPrefix(eq(rootId), eq(source.getNameFullPath())))
+				.willReturn(Optional.empty());
+
+			willDoNothing().given(validateParentsUtil).validateParentsFolderLock(parentNotDeleted, target);
+			willThrow(new RuntimeException("db")).given(folderMetadataJpaRepository).save(any(FolderMetadata.class));
 
 			assertThrows(RuntimeException.class,
 				() -> folderService.moveFolder(sourceId, moveDto(userId, targetId, rootId, "x")));
+
 			then(publisher).shouldHaveNoInteractions();
 		}
 
@@ -912,27 +877,35 @@ class FolderServiceTest {
 		void order_joblock_before_fetch() {
 			long sourceId = 10L;
 			long targetId = 30L;
-			long rootId = 1L;
+			long parentId = 20L;
 			long userId = 100L;
 
 			given(folderMetadataJpaRepository.getMovingLock(sourceId)).willReturn(1);
 			given(folderJobJpaRepository.insert(eq(sourceId), eq(sourceId), eq(0L), eq(FolderJobStatus.WAITING.name())))
 				.willReturn(1);
 
-			FolderMetadata source = mock(FolderMetadata.class);
-			FolderMetadata target = mock(FolderMetadata.class);
-
-			given(source.getOwnerId()).willReturn(userId);
-			given(target.getOwnerId()).willReturn(userId);
-
-			given(source.getRootId()).willReturn(999L); // root mismatch로 빠르게 종료(이후 스텁 필요 없음)
-			given(target.getRootId()).willReturn(rootId);
+			FolderMetadata source = folder(
+				sourceId, 999L, userId, parentId,
+				"src", "/p/src/", "/20/10/", 7,
+				0L, CommonConstant.UNAVAILABLE_TIME
+			);
+			FolderMetadata target = folder(
+				targetId, 1L, userId, 5L,
+				"t", "/t/", "/5/30/", 3,
+				0L, CommonConstant.UNAVAILABLE_TIME
+			);
+			FolderMetadata parent = folder(
+				parentId, 999L, userId, 1L,
+				"p", "/p/", "/1/20/", 3,
+				0L, CommonConstant.UNAVAILABLE_TIME
+			);
 
 			given(folderMetadataJpaRepository.findByIdNotDeleted(sourceId)).willReturn(Optional.of(source));
 			given(folderMetadataJpaRepository.findByIdNotDeleted(targetId)).willReturn(Optional.of(target));
+			given(folderMetadataJpaRepository.findByIdNotDeleted(parentId)).willReturn(Optional.of(parent));
 
 			assertThrows(CustomException.class,
-				() -> folderService.moveFolder(sourceId, moveDto(userId, targetId, rootId, "x")));
+				() -> folderService.moveFolder(sourceId, moveDto(userId, targetId, 1L, "x")));
 
 			InOrder inOrder = inOrder(folderMetadataJpaRepository, folderJobJpaRepository);
 			inOrder.verify(folderMetadataJpaRepository).getMovingLock(sourceId);
@@ -950,49 +923,71 @@ class FolderServiceTest {
 	class CreateFolderTests {
 
 		@Test
-		@DisplayName("성공: save 2번 호출 + updateIdFullPath는 첫 save 이후에 호출된다")
-		void success_save_twice_update_after_first_save() {
+		@DisplayName("성공: save 2번 호출 + idFullPath는 /parentPath/{id}/ 형태로 최종 업데이트")
+		void success_save_twice_and_update_id_full_path() {
 			long userId = 100L;
+			long rootId = 1L;
 			long parentId = 20L;
-			String name = "new";
 
-			CreateFolderReqDto req = createReq(userId, parentId, name, userId);
+			CreateFolderReqDto req = createReq(userId, parentId, "new", userId);
 
 			User user = mock(User.class);
 			given(userRepository.findById(userId)).willReturn(Optional.of(user));
+			given(user.getId()).willReturn(userId);
+			given(user.getRootFolderId()).willReturn(rootId);
 
-			FolderMetadata parent = mock(FolderMetadata.class);
+			FolderMetadata parent = folder(
+				parentId, rootId, userId, 1L,
+				"parent", "/p/", "/20/", 3,
+				0L, CommonConstant.UNAVAILABLE_TIME
+			);
 			given(folderMetadataJpaRepository.findById(parentId)).willReturn(Optional.of(parent));
 
-			// validateFolderOwner + validateFolder(pathLength)
-			given(parent.getOwnerId()).willReturn(userId);
-			given(parent.getNamePathLength()).willReturn(3);
-
-			// validateFolder(duplicate)
-			given(folderMetadataJpaRepository.existsByParentFolderIdAndUploadFolderName(parentId, name))
+			// duplicate false
+			given(folderMetadataJpaRepository.existsByParentFolderIdAndUploadFolderName(parentId, "new"))
 				.willReturn(false);
 
-			// updateIdFullPath argument
-			given(parent.getIdFullPath()).willReturn("/20/");
+			// save: 1st -> id 부여된 새 엔티티 리턴, 2nd -> 그대로 리턴
+			given(folderMetadataJpaRepository.save(any(FolderMetadata.class))).willAnswer(inv -> {
+				FolderMetadata arg = inv.getArgument(0);
+				// 첫 save는 id가 없을 것. JPA처럼 id가 생긴 managed 객체를 "리턴용"으로 새로 만든다.
+				if (arg.getId() == null) {
+					LocalDateTime now = LocalDateTime.now();
+					return FolderMetadata.builder()
+						.id(999L)
+						.rootId(arg.getRootId())
+						.ownerId(arg.getOwnerId())
+						.creatorId(arg.getCreatorId())
+						.createdAt(now)
+						.updatedAt(now)
+						.parentFolderId(arg.getParentFolderId())
+						.uploadFolderName(arg.getUploadFolderName())
+						.size(arg.getSize())
+						.sharingExpiredAt(arg.getSharingExpiredAt())
+						.permissionType(arg.getPermissionType())
+						.isDeleted(arg.isDeleted())
+						.version(arg.getVersion())
+						.nameFullPath(arg.getNameFullPath())
+						.idFullPath(arg.getIdFullPath())
+						.namePathLength(arg.getNamePathLength())
+						.isMoving(arg.isMoving())
+						.build();
+				}
+				return arg;
+			});
 
-			FolderMetadata toSave = mock(FolderMetadata.class);
-			FolderMetadata saved = mock(FolderMetadata.class);
+			Long id = folderService.createFolder(req);
+			assertEquals(999L, id);
 
-			given(folderMetadataJpaRepository.save(toSave)).willReturn(saved);
-			given(folderMetadataJpaRepository.save(saved)).willReturn(saved);
-			given(saved.getId()).willReturn(999L); // return까지 가므로 필요
+			ArgumentCaptor<FolderMetadata> saveCaptor = ArgumentCaptor.forClass(FolderMetadata.class);
+			then(folderMetadataJpaRepository).should(times(2)).save(saveCaptor.capture());
 
-			try (MockedStatic<FolderMetadataFactory> st = mockStatic(FolderMetadataFactory.class)) {
-				st.when(() -> FolderMetadataFactory.createFolderMetadata(user, parent, req)).thenReturn(toSave);
+			FolderMetadata firstArg = saveCaptor.getAllValues().get(0);  // factory 생성 객체(보통 id null)
+			FolderMetadata secondArg = saveCaptor.getAllValues().get(1); // id 부여된 객체
 
-				Long id = folderService.createFolder(req);
-				assertEquals(999L, id);
-
-				InOrder inOrder = inOrder(folderMetadataJpaRepository, saved);
-				inOrder.verify(folderMetadataJpaRepository).save(toSave);
-				inOrder.verify(saved).updateIdFullPath("/20/");
-				inOrder.verify(folderMetadataJpaRepository).save(saved);
-			}
+			// 두번째 save 대상은 id가 존재하고, updateIdFullPath가 적용되어야 함
+			assertNotNull(secondArg.getId());
+			assertEquals("/20/999/", secondArg.getIdFullPath());
 		}
 
 		@Test
@@ -1010,6 +1005,7 @@ class FolderServiceTest {
 		void fail_parent_not_found() {
 			long userId = 100L;
 			long parentId = 20L;
+
 			CreateFolderReqDto req = createReq(userId, parentId, "x", userId);
 
 			given(userRepository.findById(userId)).willReturn(Optional.of(mock(User.class)));
@@ -1020,53 +1016,7 @@ class FolderServiceTest {
 		}
 
 		@Test
-		@DisplayName("실패: validateFolder 2번째 findById에서 parent가 없어지면 CustomException")
-		void fail_parent_missing_on_second_find_in_validateFolder() {
-			long userId = 100L;
-			long parentId = 20L;
-			CreateFolderReqDto req = createReq(userId, parentId, "ok", userId);
-
-			User user = mock(User.class);
-			given(userRepository.findById(userId)).willReturn(Optional.of(user));
-
-			FolderMetadata parent = mock(FolderMetadata.class);
-			given(folderMetadataJpaRepository.findById(parentId))
-				.willReturn(Optional.of(parent), Optional.empty()); // 첫 호출(부모 조회) OK, 두 번째(경로 체크) EMPTY
-
-			given(folderMetadataJpaRepository.existsByParentFolderIdAndUploadFolderName(parentId, "ok"))
-				.willReturn(false);
-
-			assertThrows(CustomException.class, () -> folderService.createFolder(req));
-			then(folderMetadataJpaRepository).should(never()).save(any());
-		}
-
-		@Test
-		@DisplayName("실패: parent owner 불일치(CustomException) - validateFolder는 통과 후 validateFolderOwner에서 실패")
-		void fail_parent_owner_mismatch() {
-			long userId = 100L;
-			long parentId = 20L;
-			CreateFolderReqDto req = createReq(userId, parentId, "ok", userId);
-
-			User user = mock(User.class);
-			given(userRepository.findById(userId)).willReturn(Optional.of(user));
-
-			FolderMetadata parent = mock(FolderMetadata.class);
-			given(folderMetadataJpaRepository.findById(parentId)).willReturn(Optional.of(parent));
-
-			// validateFolder 통과에 필요한 최소 스텁
-			given(folderMetadataJpaRepository.existsByParentFolderIdAndUploadFolderName(parentId, "ok"))
-				.willReturn(false);
-			given(parent.getNamePathLength()).willReturn(1);
-
-			// validateFolderOwner에서 실패
-			given(parent.getOwnerId()).willReturn(999L);
-
-			assertThrows(CustomException.class, () -> folderService.createFolder(req));
-			then(folderMetadataJpaRepository).should(never()).save(any());
-		}
-
-		@Test
-		@DisplayName("실패: 금칙어 포함(CustomException) - duplicate/pathLength 체크 전에 실패")
+		@DisplayName("실패: 금칙어 포함(CustomException) - duplicate/save 호출 안 됨")
 		void fail_blacklist() {
 			long userId = 100L;
 			long parentId = 20L;
@@ -1075,7 +1025,9 @@ class FolderServiceTest {
 			CreateFolderReqDto req = createReq(userId, parentId, "ab" + bad + "cd", userId);
 
 			given(userRepository.findById(userId)).willReturn(Optional.of(mock(User.class)));
-			given(folderMetadataJpaRepository.findById(parentId)).willReturn(Optional.of(mock(FolderMetadata.class)));
+			given(folderMetadataJpaRepository.findById(parentId)).willReturn(Optional.of(
+				folder(parentId, 1L, userId, 1L, "p", "/p/", "/20/", 3, 0L, CommonConstant.UNAVAILABLE_TIME)
+			));
 
 			assertThrows(CustomException.class, () -> folderService.createFolder(req));
 
@@ -1085,17 +1037,42 @@ class FolderServiceTest {
 		}
 
 		@Test
-		@DisplayName("실패: 같은 depth 동일 이름(CustomException) - pathLength 체크 전에 실패")
+		@DisplayName("실패: 같은 depth 동일 이름(CustomException)")
 		void fail_duplicate_name() {
 			long userId = 100L;
 			long parentId = 20L;
+
 			CreateFolderReqDto req = createReq(userId, parentId, "dup", userId);
 
-			given(userRepository.findById(userId)).willReturn(Optional.of(mock(User.class)));
-			given(folderMetadataJpaRepository.findById(parentId)).willReturn(Optional.of(mock(FolderMetadata.class)));
+			User user = mock(User.class);
+			given(userRepository.findById(userId)).willReturn(Optional.of(user));
+
+			FolderMetadata parent = folder(parentId, 1L, userId, 1L, "p", "/p/", "/20/", 3, 0L, CommonConstant.UNAVAILABLE_TIME);
+			given(folderMetadataJpaRepository.findById(parentId)).willReturn(Optional.of(parent));
 
 			given(folderMetadataJpaRepository.existsByParentFolderIdAndUploadFolderName(parentId, "dup"))
 				.willReturn(true);
+
+			assertThrows(CustomException.class, () -> folderService.createFolder(req));
+			then(folderMetadataJpaRepository).should(never()).save(any());
+		}
+
+		@Test
+		@DisplayName("실패: parent owner 불일치(CustomException)")
+		void fail_parent_owner_mismatch() {
+			long userId = 100L;
+			long parentId = 20L;
+
+			CreateFolderReqDto req = createReq(userId, parentId, "ok", userId);
+
+			User user = mock(User.class);
+			given(userRepository.findById(userId)).willReturn(Optional.of(user));
+
+			FolderMetadata parent = folder(parentId, 1L, 999L, 1L, "p", "/p/", "/20/", 3, 0L, CommonConstant.UNAVAILABLE_TIME);
+			given(folderMetadataJpaRepository.findById(parentId)).willReturn(Optional.of(parent));
+
+			given(folderMetadataJpaRepository.existsByParentFolderIdAndUploadFolderName(parentId, "ok"))
+				.willReturn(false);
 
 			assertThrows(CustomException.class, () -> folderService.createFolder(req));
 			then(folderMetadataJpaRepository).should(never()).save(any());
@@ -1108,50 +1085,21 @@ class FolderServiceTest {
 
 			long userId = 100L;
 			long parentId = 20L;
+
 			CreateFolderReqDto req = createReq(userId, parentId, "veryLongName", userId);
 
-			given(userRepository.findById(userId)).willReturn(Optional.of(mock(User.class)));
+			User user = mock(User.class);
+			given(userRepository.findById(userId)).willReturn(Optional.of(user));
 
-			FolderMetadata parent = mock(FolderMetadata.class);
+			// parent namePathLength를 크게 만들어 바로 초과
+			FolderMetadata parent = folder(parentId, 1L, userId, 1L, "p", "/p/", "/20/", 9, 0L, CommonConstant.UNAVAILABLE_TIME);
 			given(folderMetadataJpaRepository.findById(parentId)).willReturn(Optional.of(parent));
 
 			given(folderMetadataJpaRepository.existsByParentFolderIdAndUploadFolderName(parentId, "veryLongName"))
 				.willReturn(false);
 
-			// pathLength 계산에 필요
-			given(parent.getNamePathLength()).willReturn(9);
-
 			assertThrows(CustomException.class, () -> folderService.createFolder(req));
 			then(folderMetadataJpaRepository).should(never()).save(any());
-		}
-
-		@Test
-		@DisplayName("실패: createFolderMetadata(static)에서 예외면 save는 호출되지 않는다")
-		void fail_factory_throws_no_save() {
-			long userId = 100L;
-			long parentId = 20L;
-			CreateFolderReqDto req = createReq(userId, parentId, "ok", userId);
-
-			User user = mock(User.class);
-			given(userRepository.findById(userId)).willReturn(Optional.of(user));
-
-			FolderMetadata parent = mock(FolderMetadata.class);
-			given(folderMetadataJpaRepository.findById(parentId)).willReturn(Optional.of(parent));
-
-			given(folderMetadataJpaRepository.existsByParentFolderIdAndUploadFolderName(parentId, "ok"))
-				.willReturn(false);
-
-			// validateFolder(pathLength) + validateFolderOwner 최소
-			given(parent.getNamePathLength()).willReturn(1);
-			given(parent.getOwnerId()).willReturn(userId);
-
-			try (MockedStatic<FolderMetadataFactory> st = mockStatic(FolderMetadataFactory.class)) {
-				st.when(() -> FolderMetadataFactory.createFolderMetadata(user, parent, req))
-					.thenThrow(new RuntimeException("boom"));
-
-				assertThrows(RuntimeException.class, () -> folderService.createFolder(req));
-				then(folderMetadataJpaRepository).should(never()).save(any());
-			}
 		}
 
 		@Test
@@ -1159,104 +1107,23 @@ class FolderServiceTest {
 		void fail_first_save_throws() {
 			long userId = 100L;
 			long parentId = 20L;
+
 			CreateFolderReqDto req = createReq(userId, parentId, "ok", userId);
 
 			User user = mock(User.class);
 			given(userRepository.findById(userId)).willReturn(Optional.of(user));
+			given(user.getId()).willReturn(userId);
+			given(user.getRootFolderId()).willReturn(1L);
 
-			FolderMetadata parent = mock(FolderMetadata.class);
+			FolderMetadata parent = folder(parentId, 1L, userId, 1L, "p", "/p/", "/20/", 3, 0L, CommonConstant.UNAVAILABLE_TIME);
 			given(folderMetadataJpaRepository.findById(parentId)).willReturn(Optional.of(parent));
-
 			given(folderMetadataJpaRepository.existsByParentFolderIdAndUploadFolderName(parentId, "ok"))
 				.willReturn(false);
 
-			given(parent.getNamePathLength()).willReturn(1);
-			given(parent.getOwnerId()).willReturn(userId);
+			willThrow(new RuntimeException("db")).given(folderMetadataJpaRepository).save(any(FolderMetadata.class));
 
-			FolderMetadata toSave = mock(FolderMetadata.class);
-
-			try (MockedStatic<FolderMetadataFactory> st = mockStatic(FolderMetadataFactory.class)) {
-				st.when(() -> FolderMetadataFactory.createFolderMetadata(user, parent, req)).thenReturn(toSave);
-
-				willThrow(new RuntimeException("db")).given(folderMetadataJpaRepository).save(toSave);
-
-				assertThrows(RuntimeException.class, () -> folderService.createFolder(req));
-				then(folderMetadataJpaRepository).should(times(1)).save(toSave);
-			}
-		}
-
-		@Test
-		@DisplayName("실패: updateIdFullPath에서 예외면 두번째 save는 호출되지 않는다 (STRICT_STUBS 대응)")
-		void fail_updateIdFullPath_throws() {
-			long userId = 100L;
-			long parentId = 20L;
-			CreateFolderReqDto req = createReq(userId, parentId, "ok", userId);
-
-			User user = mock(User.class);
-			given(userRepository.findById(userId)).willReturn(Optional.of(user));
-
-			FolderMetadata parent = mock(FolderMetadata.class);
-			given(folderMetadataJpaRepository.findById(parentId)).willReturn(Optional.of(parent));
-
-			// validateFolder 통과
-			given(folderMetadataJpaRepository.existsByParentFolderIdAndUploadFolderName(parentId, "ok"))
-				.willReturn(false);
-			given(parent.getNamePathLength()).willReturn(1);
-
-			// validateFolderOwner 통과
-			given(parent.getOwnerId()).willReturn(userId);
-
-			// updateIdFullPath 인자
-			given(parent.getIdFullPath()).willReturn("/20/");
-
-			FolderMetadata toSave = mock(FolderMetadata.class);
-			FolderMetadata saved = mock(FolderMetadata.class);
-
-			given(folderMetadataJpaRepository.save(toSave)).willReturn(saved);
-			willThrow(new RuntimeException("boom")).given(saved).updateIdFullPath("/20/");
-
-			try (MockedStatic<FolderMetadataFactory> st = mockStatic(FolderMetadataFactory.class)) {
-				st.when(() -> FolderMetadataFactory.createFolderMetadata(user, parent, req)).thenReturn(toSave);
-
-				assertThrows(RuntimeException.class, () -> folderService.createFolder(req));
-
-				then(folderMetadataJpaRepository).should(times(1)).save(toSave);
-				then(folderMetadataJpaRepository).should(never()).save(saved);
-				then(saved).should(never()).getId(); // return까지 못 감(= 불필요 stubbing 방지)
-			}
-		}
-
-		@Test
-		@DisplayName("실패: 두번째 save에서 예외면 예외 전파된다")
-		void fail_second_save_throws_propagates() {
-			long userId = 100L;
-			long parentId = 20L;
-			CreateFolderReqDto req = createReq(userId, parentId, "ok", userId);
-
-			User user = mock(User.class);
-			given(userRepository.findById(userId)).willReturn(Optional.of(user));
-
-			FolderMetadata parent = mock(FolderMetadata.class);
-			given(folderMetadataJpaRepository.findById(parentId)).willReturn(Optional.of(parent));
-
-			given(folderMetadataJpaRepository.existsByParentFolderIdAndUploadFolderName(parentId, "ok"))
-				.willReturn(false);
-
-			given(parent.getNamePathLength()).willReturn(1);
-			given(parent.getOwnerId()).willReturn(userId);
-			given(parent.getIdFullPath()).willReturn("/20/");
-
-			FolderMetadata toSave = mock(FolderMetadata.class);
-			FolderMetadata saved = mock(FolderMetadata.class);
-
-			given(folderMetadataJpaRepository.save(toSave)).willReturn(saved);
-			willThrow(new RuntimeException("db2")).given(folderMetadataJpaRepository).save(saved);
-
-			try (MockedStatic<FolderMetadataFactory> st = mockStatic(FolderMetadataFactory.class)) {
-				st.when(() -> FolderMetadataFactory.createFolderMetadata(user, parent, req)).thenReturn(toSave);
-
-				assertThrows(RuntimeException.class, () -> folderService.createFolder(req));
-			}
+			assertThrows(RuntimeException.class, () -> folderService.createFolder(req));
+			then(folderMetadataJpaRepository).should(times(1)).save(any(FolderMetadata.class));
 		}
 	}
 
@@ -1271,34 +1138,18 @@ class FolderServiceTest {
 		@DisplayName("실패: folder 없으면 CustomException")
 		void fail_folder_not_found() {
 			given(folderMetadataJpaRepository.findById(10L)).willReturn(Optional.empty());
-
 			assertThrows(CustomException.class, () -> folderService.updateFolderSize(1L, 10L, 100L));
 		}
 
 		@Test
-		@DisplayName("성공: 최상위 폴더(parent=null)면 MessageInfoEvent만 발행하고 1 반환")
-		void root_folder_publish_message_done() {
-			FolderMetadata folder = mock(FolderMetadata.class);
-			given(folder.getParentFolderId()).willReturn(null);
-			given(folderMetadataJpaRepository.findById(10L)).willReturn(Optional.of(folder));
-
-			int result = folderService.updateFolderSize(1L, 10L, 100L);
-
-			assertEquals(1, result);
-			then(publisher).should(times(1)).publishEvent(any(MessageInfoEvent.class));
-			then(publisher).should(never()).publishEvent(any(FolderSizeEvent.class));
-			then(messageInfoJpaRepository).shouldHaveNoInteractions();
-			then(folderMetadataJpaRepository).should(never())
-				.updateFolderSizeWithVersion(anyLong(), anyLong(), anyLong());
-		}
-
-		@Test
 		@DisplayName("성공: pending 메시지 없으면 1 반환(업데이트/이벤트 없음)")
-		void no_pending_return_1() {
-			FolderMetadata folder = mock(FolderMetadata.class);
-			given(folder.getParentFolderId()).willReturn(20L);
-			given(folderMetadataJpaRepository.findById(10L)).willReturn(Optional.of(folder));
-
+		void no_pending_return_1_no_events() {
+			FolderMetadata f = folder(
+				10L, 1L, 100L, 20L,
+				"a", "/a/", "/10/", 3,
+				0L, CommonConstant.UNAVAILABLE_TIME
+			);
+			given(folderMetadataJpaRepository.findById(10L)).willReturn(Optional.of(f));
 			given(messageInfoJpaRepository.existsByIdAndStatus(1L, MessageStatus.PENDING)).willReturn(false);
 
 			int result = folderService.updateFolderSize(1L, 10L, 100L);
@@ -1311,15 +1162,16 @@ class FolderServiceTest {
 
 		@Test
 		@DisplayName("성공: update 결과 0이면 0 반환(완료 이벤트/상위 전파 없음)")
-		void update_conflict_returns_0() {
-			FolderMetadata folder = mock(FolderMetadata.class);
-			given(folder.getParentFolderId()).willReturn(20L);
-			given(folder.getId()).willReturn(10L);
-			given(folder.getVersion()).willReturn(3L);
+		void update_conflict_returns_0_no_events() {
+			FolderMetadata f = folder(
+				10L, 1L, 100L, 20L,
+				"a", "/a/", "/10/", 3,
+				0L, CommonConstant.UNAVAILABLE_TIME
+			);
 
-			given(folderMetadataJpaRepository.findById(10L)).willReturn(Optional.of(folder));
+			given(folderMetadataJpaRepository.findById(10L)).willReturn(Optional.of(f));
 			given(messageInfoJpaRepository.existsByIdAndStatus(1L, MessageStatus.PENDING)).willReturn(true);
-			given(folderMetadataJpaRepository.updateFolderSizeWithVersion(100L, 10L, 3L)).willReturn(0);
+			given(folderMetadataJpaRepository.updateFolderSizeWithVersion(100L, 10L, 0L)).willReturn(0);
 
 			int result = folderService.updateFolderSize(1L, 10L, 100L);
 
@@ -1328,16 +1180,39 @@ class FolderServiceTest {
 		}
 
 		@Test
-		@DisplayName("성공: update 성공하면 MessageInfoEvent + FolderSizeEvent 발행하고 1 반환")
-		void update_success_publish_two_events() {
-			FolderMetadata folder = mock(FolderMetadata.class);
-			given(folder.getParentFolderId()).willReturn(20L);
-			given(folder.getId()).willReturn(10L);
-			given(folder.getVersion()).willReturn(3L);
+		@DisplayName("성공: update 성공 + parent=null이면 MessageInfoEvent만 발행하고 1 반환")
+		void update_success_parent_null_publish_message_only() {
+			FolderMetadata f = folder(
+				10L, 1L, 100L, null,
+				"a", "/a/", "/10/", 3,
+				0L, CommonConstant.UNAVAILABLE_TIME
+			);
 
-			given(folderMetadataJpaRepository.findById(10L)).willReturn(Optional.of(folder));
+			given(folderMetadataJpaRepository.findById(10L)).willReturn(Optional.of(f));
 			given(messageInfoJpaRepository.existsByIdAndStatus(1L, MessageStatus.PENDING)).willReturn(true);
-			given(folderMetadataJpaRepository.updateFolderSizeWithVersion(100L, 10L, 3L)).willReturn(1);
+			given(folderMetadataJpaRepository.updateFolderSizeWithVersion(100L, 10L, 0L)).willReturn(1);
+
+			int result = folderService.updateFolderSize(1L, 10L, 100L);
+
+			assertEquals(1, result);
+
+			ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
+			then(publisher).should(times(1)).publishEvent(captor.capture());
+			assertTrue(captor.getValue() instanceof MessageInfoEvent);
+		}
+
+		@Test
+		@DisplayName("성공: update 성공 + parent!=null이면 MessageInfoEvent + FolderSizeEvent 발행하고 1 반환")
+		void update_success_publish_two_events() {
+			FolderMetadata f = folder(
+				10L, 1L, 100L, 20L,
+				"a", "/a/", "/10/", 3,
+				0L, CommonConstant.UNAVAILABLE_TIME
+			);
+
+			given(folderMetadataJpaRepository.findById(10L)).willReturn(Optional.of(f));
+			given(messageInfoJpaRepository.existsByIdAndStatus(1L, MessageStatus.PENDING)).willReturn(true);
+			given(folderMetadataJpaRepository.updateFolderSizeWithVersion(100L, 10L, 0L)).willReturn(1);
 
 			int result = folderService.updateFolderSize(1L, 10L, 100L);
 

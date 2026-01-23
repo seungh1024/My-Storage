@@ -11,6 +11,34 @@ spring:
         format_sql: true
     open-in-view: false
 
+  rabbitmq:
+    folder:
+      exchange: folder.exchange
+      ttl: 60000
+      size:
+        queue: folder.size.queue
+        key: folder.size.key
+        batchSize: 10
+        consumerSize: 1
+        maxConsumerSize: 1
+        receiveTimeout: 1000
+        dlx:
+          exchange: folder.dlx.size.exchange
+          queue: folder.dlx.size.queue
+          key: folder.dlx.size.key
+      move:
+        queue: folder.move.queue
+        key: folder.move.key
+        batchSize: 10
+        consumerSize: 1
+        maxConsumerSize: 1
+        receiveTimeout: 1000
+        dlx:
+          exchange: folder.dlx.move.exchange
+          queue: folder.dlx.move.queue
+          key: folder.dlx.move.key
+
+
 file:
   reader:
     bufferSize: 8192
@@ -24,3 +52,4 @@ constant:
   batchSize: 10
   deleteSize: 5
   maxRetry: 3
+  retryCnt: 3

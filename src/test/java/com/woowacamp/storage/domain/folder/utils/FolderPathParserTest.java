@@ -19,7 +19,7 @@ class FolderPathParserTest {
 	class ValidInputs {
 
 		@Test
-		@DisplayName("/pk1/pk2/pk3/ -> [pk1, pk2]")
+		@DisplayName("/pk1/pk2/pk3/ -> [pk1, pk2, pk3]")
 		void parse_success_basic() {
 			// Given
 			String path = "/1/2/3/";
@@ -29,11 +29,11 @@ class FolderPathParserTest {
 
 			// Then
 			assertTrue(resultOpt.isPresent());
-			assertEquals(List.of("1", "2"), resultOpt.get());
+			assertEquals(List.of("1", "2", "3"), resultOpt.get());
 		}
 
 		@Test
-		@DisplayName("pk가 공백을 포함해도 보존한다 -> ['folder 1','folder 2']")
+		@DisplayName("pk가 공백을 포함해도 보존한다 -> ['folder 1','folder 2','folder 3']")
 		void parse_success_preserve_spaces() {
 			// Given
 			String path = "/folder 1/folder 2/folder 3/";
@@ -43,11 +43,11 @@ class FolderPathParserTest {
 
 			// Then
 			assertTrue(resultOpt.isPresent());
-			assertEquals(List.of("folder 1", "folder 2"), resultOpt.get());
+			assertEquals(List.of("folder 1", "folder 2", "folder 3"), resultOpt.get());
 		}
 
 		@Test
-		@DisplayName("pk의 앞뒤 공백도 그대로 보존한다 -> ['  a  ', 'b']")
+		@DisplayName("pk의 앞뒤 공백도 그대로 보존한다 -> ['  a  ', 'b', 'c']")
 		void parse_success_preserve_leading_trailing_spaces() {
 			// Given
 			String path = "/  a  /b/c/";
@@ -57,11 +57,11 @@ class FolderPathParserTest {
 
 			// Then
 			assertTrue(resultOpt.isPresent());
-			assertEquals(List.of("  a  ", "b"), resultOpt.get());
+			assertEquals(List.of("  a  ", "b", "c"), resultOpt.get());
 		}
 
 		@Test
-		@DisplayName("자기 자신만 있는 경우(/3/) -> 빈 리스트")
+		@DisplayName("자기 자신만 있는 경우(/3/) -> ['3']")
 		void parse_success_self_only() {
 			// Given
 			String path = "/3/";
@@ -71,7 +71,7 @@ class FolderPathParserTest {
 
 			// Then
 			assertTrue(resultOpt.isPresent());
-			assertEquals(List.of(), resultOpt.get());
+			assertEquals(List.of("3"), resultOpt.get());
 		}
 
 		@Test
@@ -88,6 +88,7 @@ class FolderPathParserTest {
 			assertEquals(List.of(), resultOpt.get());
 		}
 	}
+
 
 	@Nested
 	@DisplayName("입력값 오류(null/blank)")

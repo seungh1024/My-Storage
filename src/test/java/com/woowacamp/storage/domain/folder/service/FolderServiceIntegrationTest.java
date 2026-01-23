@@ -208,8 +208,6 @@ class FolderServiceIntegrationTest extends ContainerBaseConfig {
 
 			folderService.moveFolder(sourceId, dto);
 
-			// 이벤트 기반 용량 반영이 비동기일 수 있으니 polling으로 안정화
-			// TODO 컨슈머 만들어야 함. 이동 전파도 생김
 			await(() -> {
 				FolderMetadata refreshedTarget = folderMetadataRepository.findById(targetId).orElseThrow();
 				return refreshedTarget.getSize() == moveSize + targetSize;

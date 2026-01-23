@@ -20,6 +20,7 @@ public class ValidateParentsUtil {
 
 	/**
 	 * 상위에 이미 작업 중인 폴더 유무를 확인하는 메서드. 존재하면 에러 발생.
+	 * 전달받은 폴더 기준으로 전체 경로에 대해 검증한다.
 	 * @param sourceFolder
 	 * @param targetFolder
 	 */

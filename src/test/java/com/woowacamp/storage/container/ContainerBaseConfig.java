@@ -36,8 +36,11 @@ public abstract class ContainerBaseConfig {
 		registry.add("spring.redis.port", redis::getFirstMappedPort);
 
 		// RabbitMQ 설정
-		registry.add("spring.rabbitmq.host", rabbitMQContainer::getHost);
-		registry.add("spring.rabbitmq.port", () -> rabbitMQContainer.getMappedPort(5672));
+		// registry.add("spring.rabbitmq.host", rabbitMQContainer::getHost);
+		// registry.add("spring.rabbitmq.port", () -> rabbitMQContainer.getMappedPort(5672));
+		registry.add("spring.rabbitmq.addresses",
+			() -> rabbitMQContainer.getHost() + ":" + rabbitMQContainer.getMappedPort(5672));
+		// registry.add("spring.rabbitmq.virtual-host", () -> "/");
 		registry.add("spring.rabbitmq.username", () -> "guest");
 		registry.add("spring.rabbitmq.password", () -> "guest");
 	}

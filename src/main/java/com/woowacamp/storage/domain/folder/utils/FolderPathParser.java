@@ -11,7 +11,7 @@ import lombok.NoArgsConstructor;
 public class FolderPathParser {
 
 	/**
-	 * /pk1/pk2/pk3/ 와 같은 문자열 경로를 파싱해 root와 자기 자신을 제외한 pk들만 리턴
+	 * /pk1/pk2/pk3/ 와 같은 문자열 경로를 파싱해 root를 제외한 pk들만 리턴
 	 */
 	public static Optional<List<String>> parsing(String path) {
 		if (path == null || path.isBlank()){
@@ -28,6 +28,6 @@ public class FolderPathParser {
 			.filter(s -> !s.isEmpty())
 			.toList();
 
-		return idList.isEmpty() ? Optional.of(idList) : Optional.of(idList.subList(0, idList.size() - 1));
+		return idList.isEmpty() ? Optional.of(idList) : Optional.of(idList);
 	}
 }
