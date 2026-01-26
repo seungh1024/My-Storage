@@ -152,24 +152,10 @@ public interface FolderMetadataJpaRepository extends JpaRepository<FolderMetadat
 	@Query("""
 			SELECT f
 			FROM FolderMetadata f
-			WHERE f.id = :parentId
-		""")
-	Optional<FolderMetadata> findParentByParentFolderId(@Param("parentId") long parentId);
-
-	@Query("""
-			SELECT f
-			FROM FolderMetadata f
 			WHERE f.id = :id
 			AND f.isDeleted = false
 		""")
 	Optional<FolderMetadata> findByIdNotDeleted(@Param("id") long id);
-
-	@Query("""
-			SELECT f
-			FROM FolderMetadata f
-			WHERE f.id = :parentId
-		""")
-	Optional<FolderMetadata> findByParentId(@Param("parentId") long parentId);
 
 	@Modifying
 	@Query("""
@@ -180,19 +166,6 @@ public interface FolderMetadataJpaRepository extends JpaRepository<FolderMetadat
 		""")
 	int updateFolderSizeWithVersion(@Param("size") long size, @Param("id") long id, @Param("version") long version);
 
-	@Transactional
-	@Modifying
-	@Query("""
-			UPDATE FolderMetadata f
-			SET f.parentFolderId = :parentFolderId, f.version = f.version+1
-			WHERE f.id = :id
-			and f.version = :version
-		""")
-	int updateParentInfoWithVersion(@Param("id") long id, @Param("parentFolderId") long parentFolderId,
-		@Param("version") long version);
-
-	@Query(value = "SELECT * FROM folder_metadata WHERE folder_metadata_id = :id", nativeQuery = true)
-	Optional<FolderMetadata> findByIdNative(@Param("id") Long id);
 
 	@Query(value = """
 			SELECT *

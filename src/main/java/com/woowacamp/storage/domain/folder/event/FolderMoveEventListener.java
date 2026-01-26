@@ -31,6 +31,13 @@ public class FolderMoveEventListener {
 		folderSizeEvent.setId(savedMessageInfo.getId());
 	}
 
+	@TransactionalEventListener(phase = TransactionPhase.BEFORE_COMMIT)
+	public void recordMessageHandler(FolderMoveEvent folderMoveEvent) {
+		MessageInfo messageInfo = folderMoveEvent.toEntity(jsonSerializer.serialize(folderMoveEvent));
+		MessageInfo savedMessageInfo = messageInfoJpaRepository.save(messageInfo);
+		folderMoveEvent.setId(savedMessageInfo.getId());
+	}
+
 	/**
 	 * mq에 용량 처리 메세지 전송
 	 * net I/O처리 시간이 길기 때문에 비동기 처리

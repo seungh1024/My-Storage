@@ -180,4 +180,12 @@ public class FileMetadata {
 	public void updateIdFullPath(String parentIdPath) {
 		this.idFullPath = StorageStringUtil.format("{}{}/", parentIdPath, this.id);
 	}
+
+	public void updateNameFullPath(String parentNamePath) {
+		this.nameFullPath = StorageStringUtil.format("{}{}/", parentNamePath, this.uploadFileName);
+	}
+
+	public void updateNamePathLength(int namePathLength) {
+		this.namePathLength = namePathLength;
+	}
 }
