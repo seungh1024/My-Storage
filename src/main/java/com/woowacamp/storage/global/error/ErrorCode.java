@@ -52,7 +52,8 @@ public enum ErrorCode {
 	FILE_MOVE_FAILED(HttpStatus.INTERNAL_SERVER_ERROR,"파일 이동에 실패했습니다"),
 	TOO_MUCH_REQUEST(HttpStatus.INTERNAL_SERVER_ERROR, "요청이 많습니다. 잠시 후에 다시 시도해주세요."),
 	LOCK_KEY_EXPRESSION_EXCEPTION(HttpStatus.INTERNAL_SERVER_ERROR,"서버 처리 중 예외가 발생했습니다."),
-	FOLDER_PATH_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "사용자 데이터 처리 중 예외가 발생했습니다.");
+	FOLDER_PATH_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "사용자 데이터 처리 중 예외가 발생했습니다."),
+	MESSAGE_CONSUME_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "메시지 처리에 실패했습니다.");
 	private final HttpStatus status;
 	private final String message;
 

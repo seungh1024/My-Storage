@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
+import java.util.Stack;
 import java.util.concurrent.Executor;
 
 import org.springframework.beans.factory.annotation.Value;
@@ -123,7 +124,6 @@ public class FolderService {
 		}
 		""")
 	public void moveFolder(Long sourceFolderId, FolderMoveDto dto) {
-		// is_moving 플래그 설정 및 job_table에 작업 등록
 		getFolderJobLock(sourceFolderId);
 
 		FolderMetadata sourceFolder = folderMetadataJpaRepository.findByIdNotDeleted(sourceFolderId)
@@ -160,7 +160,7 @@ public class FolderService {
 		// 이동한 폴더의 대상 폴더에 증가하는 용량 처리 이벤트 발행
 		publisher.publishEvent(new FolderSizeEvent(targetFolder.getId(), sourceFolder.getSize()));
 		// 폴더 이동 이벤트 발행
-		publisher.publishEvent(new FolderMoveEvent(sourceFolderId, sourceFolderId, null));
+		publisher.publishEvent(new FolderMoveEvent(sourceFolderId));
 	}
 
 	/**
@@ -169,12 +169,13 @@ public class FolderService {
 	 * 이미 작업 중인 폴더인지 확인(source, target 모두 확인한다. source,target의 상위 작업 보장과 순환 구조 방지를 위함이다.)
 	 */
 	private void validateInvalidMove(FolderMetadata targetFolder, FolderMetadata sourceFolder) {
-		Long sourceRootId = sourceFolder.getRootId()==null?sourceFolder.getId():sourceFolder.getRootId();
-		Long targetRootId = targetFolder.getRootId()==null?targetFolder.getId():targetFolder.getRootId();
+		Long sourceRootId = sourceFolder.getRootId() == null ? sourceFolder.getId() : sourceFolder.getRootId();
+		Long targetRootId = targetFolder.getRootId() == null ? targetFolder.getId() : targetFolder.getRootId();
 
 		if (!Objects.equals(targetRootId, sourceRootId)) {
 			throw ErrorCode.FOLDER_MOVE_NOT_AVAILABLE.baseException(
-				StorageStringUtil.format("Root id mismatch. sourceRootId: {}, targetRootId: {}", sourceFolder.getRootId(), targetFolder.getRootId()));
+				StorageStringUtil.format("Root id mismatch. sourceRootId: {}, targetRootId: {}",
+					sourceFolder.getRootId(), targetFolder.getRootId()));
 		}
 		if (Objects.equals(sourceFolder.getId(), targetFolder.getId())) {
 			throw ErrorCode.FOLDER_MOVE_NOT_AVAILABLE.baseException();
@@ -256,7 +257,7 @@ public class FolderService {
 		long parentFolderId = req.parentFolderId();
 		FolderMetadata parentFolder = folderMetadataJpaRepository.findById(parentFolderId)
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
-		validateFolder(req,parentFolder);
+		validateFolder(req, parentFolder);
 		validateFolderOwner(parentFolder, req.userId());
 		FolderMetadata folderMetadata = createFolderMetadata(user, parentFolder, req);
 
@@ -390,7 +391,7 @@ public class FolderService {
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
 
 		// 처리되지 않은 메세지가 없다면 리턴
-		if (!messageInfoJpaRepository.existsByIdAndStatus(id, MessageStatus.PENDING)) {
+		if (!messageInfoJpaRepository.existsByIdAndStatusIn(id, List.of(MessageStatus.SENT))) {
 			return 1;
 		}
 
@@ -425,8 +426,14 @@ public class FolderService {
 		}
 
 		try {
-			int insertResult = folderJobJpaRepository.insert(sourceFolderId, sourceFolderId, 0L,
-				FolderJobStatus.WAITING.name());
+			int insertResult = folderJobJpaRepository.insert(
+				sourceFolderId,        // folderId (PK)
+				sourceFolderId,        // currentParentId
+				null,                  // lastFolderId
+				null,                  // lastFileId
+				"[]",                  // parentStack
+				FolderJobStatus.WAITING.name()
+			);
 
 			if (insertResult != 1) {
 				throw ErrorCode.FOLDER_JOB_CREATE_FAILED.baseException(
@@ -434,11 +441,8 @@ public class FolderService {
 			}
 		} catch (DataIntegrityViolationException e) {
 			throw ErrorCode.FOLDER_JOB_CONFLICT.baseException(
-				StorageStringUtil.format("Other Folder job is already running. folderId: {}", sourceFolderId), e);
-		} catch (CustomException e) {
-			throw e;
-		} catch (Exception e) {
-			throw new RuntimeException(e);
+				StorageStringUtil.format("Other job already running. folderId: {}", sourceFolderId), e);
 		}
 	}
+
 }

@@ -15,6 +15,7 @@ spring:
     folder:
       exchange: folder.exchange
       ttl: 60000
+      retryCnt: 3
       size:
         queue: folder.size.queue
         key: folder.size.key
@@ -52,4 +53,3 @@ constant:
   batchSize: 10
   deleteSize: 5
   maxRetry: 3
-  retryCnt: 3
