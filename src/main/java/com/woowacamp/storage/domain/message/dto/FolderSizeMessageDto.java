@@ -7,5 +7,6 @@ public record FolderSizeMessageDto(
 	Long folderMetadataId,
 	long size,
 	EventType eventType
-) {
+) implements OutboxMessage {
+
 }

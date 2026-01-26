@@ -47,6 +47,7 @@ public interface MessageInfoJpaRepository extends JpaRepository<MessageInfo, Lon
 	List<MessageInfo> findPendingMessageWithSize(@Param("id") Long id, @Param("status") MessageStatus status,
 		@Param("retryCount") int retryCount, @Param("size") int size);
 
+	@Transactional
 	@Modifying
 	@Query("""
 			UPDATE MessageInfo m
@@ -102,6 +103,25 @@ public interface MessageInfoJpaRepository extends JpaRepository<MessageInfo, Lon
 	List<MessageInfo> findSuccessMessageWithSize(@Param("id") Long id, @Param("status") MessageStatus messageStatus,
 		@Param("size") int size);
 
+	boolean existsByIdAndStatusIn(Long id, List<MessageStatus> statuses);
 
-	boolean existsByIdAndStatus(Long id, MessageStatus status);
+	@Transactional
+	@Modifying
+	@Query("""
+			UPDATE MessageInfo m
+			SET m.status = :status, m.sentAt = CURRENT_TIMESTAMP, m.updatedAt = CURRENT_TIMESTAMP
+			WHERE m.id = :id
+			AND m.status = 'PENDING'
+		""")
+	int markSent(@Param("id") long outboxId, @Param("status") MessageStatus status);
+
+	@Transactional
+	@Modifying
+	@Query("""
+			UPDATE MessageInfo m
+			SET m.status = :status, m.updatedAt = CURRENT_TIMESTAMP
+			WHERE m.id = :id
+			ANd m.status = 'PENDING' 
+		""")
+	int markFailed(@Param("id") long outboxId, @Param("status") MessageStatus status);
 }

@@ -6,7 +6,6 @@ import org.springframework.amqp.core.DirectExchange;
 import org.springframework.amqp.core.Queue;
 import org.springframework.amqp.core.QueueBuilder;
 import org.springframework.amqp.core.TopicExchange;
-import org.springframework.amqp.rabbit.connection.CachingConnectionFactory;
 import org.springframework.amqp.rabbit.connection.ConnectionFactory;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
@@ -15,26 +14,22 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import com.woowacamp.storage.domain.message.repository.MessageInfoJpaRepository;
+import com.woowacamp.storage.domain.message.util.MessageStatus;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
 @Configuration
+@RequiredArgsConstructor
 public class RabbitMqConfig {
 
-	// connection
-	@Value("${spring.rabbitmq.addresses}")
-	private String addresses;
-	@Value("${spring.rabbitmq.username}")
-	private String userName;
-	@Value("${spring.rabbitmq.password}")
-	private String password;
-	@Value("${spring.rabbitmq.virtual-host}")
-	private String virtualHost;
+	private final MessageInfoJpaRepository messageInfoJpaRepository;
 
 	// common exchange (one)
 	@Value("${spring.rabbitmq.folder.exchange}")
 	private String folderExchangeName;
-
-	// ===== common =====
-	@Value("${spring.rabbitmq.folder.ttl}")
-	private Integer folderMessageTtl;
 
 	// ===== size =====
 	@Value("${spring.rabbitmq.folder.size.queue}")
@@ -62,17 +57,6 @@ public class RabbitMqConfig {
 	@Value("${spring.rabbitmq.folder.move.dlx.key}")
 	private String folderMoveDlxRoutingKey;
 
-	@Bean
-	public ConnectionFactory connectionFactory() {
-		CachingConnectionFactory cf = new CachingConnectionFactory();
-		cf.setAddresses(addresses);
-		cf.setUsername(userName);
-		cf.setPassword(password);
-		cf.setVirtualHost(virtualHost);
-		cf.setConnectionTimeout(3000);
-		return cf;
-	}
-
 	/**
 	 * 메인 Exchange: Topic (folder.size.* / folder.move.* 같은 패턴 바인딩용)
 	 */
@@ -87,8 +71,6 @@ public class RabbitMqConfig {
 	@Bean
 	public Queue folderSizeQueue() {
 		return QueueBuilder.durable(folderSizeQueueName)
-			// 필요하면 TTL도 yml로 빼서 주는 걸 추천. 우선 기존 유지 예시:
-			.withArgument("x-message-ttl", folderMessageTtl)
 			.withArgument("x-dead-letter-exchange", folderSizeDlxExchangeName)
 			.withArgument("x-dead-letter-routing-key", folderSizeDlxRoutingKey)
 			.build();
@@ -120,7 +102,6 @@ public class RabbitMqConfig {
 	@Bean
 	public Queue folderMoveQueue() {
 		return QueueBuilder.durable(folderMoveQueueName)
-			.withArgument("x-message-ttl", folderMessageTtl)
 			.withArgument("x-dead-letter-exchange", folderMoveDlxExchangeName)
 			.withArgument("x-dead-letter-routing-key", folderMoveDlxRoutingKey)
 			.build();
@@ -158,6 +139,39 @@ public class RabbitMqConfig {
 	public RabbitTemplate rabbitTemplate(ConnectionFactory connectionFactory, MessageConverter messageConverter) {
 		RabbitTemplate template = new RabbitTemplate(connectionFactory);
 		template.setMessageConverter(messageConverter);
+		template.setMandatory(true);
+
+		template.setConfirmCallback((correlationData, ack, cause) -> {
+			if (correlationData == null || correlationData.getId() == null) return;
+
+			long outboxId = Long.parseLong(correlationData.getId());
+
+			if (ack) {
+				int updated = messageInfoJpaRepository.markSent(outboxId, MessageStatus.SENT);
+				if (updated == 0) {
+					log.debug("markSent skipped in confirm callback. id={}", outboxId);
+				}
+			} else {
+				int updated = messageInfoJpaRepository.markFailed(outboxId, MessageStatus.FAILED);
+				if (updated == 0) {
+					log.debug("markFailed skipped in confirm callback. id={}", outboxId);
+				}
+			}
+		});
+
+		template.setReturnsCallback(returned -> {
+			var props = returned.getMessage().getMessageProperties();
+			String corrId = props.getCorrelationId(); // 아래 send()에서 우리가 심어줄 것
+			if (corrId == null) return;
+
+			long outboxId = Long.parseLong(corrId);
+			int updated = messageInfoJpaRepository.markFailed(outboxId,MessageStatus.FAILED);
+			if (updated == 0) {
+				log.debug("markFailed skipped in return callback. id={}", outboxId);
+			}
+		});
+
+
 		return template;
 	}
 }
