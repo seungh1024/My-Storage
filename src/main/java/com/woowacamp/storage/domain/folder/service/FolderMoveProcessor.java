@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Stack;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 
 import com.woowacamp.storage.domain.file.entity.FileMetadata;
@@ -16,6 +17,7 @@ import com.woowacamp.storage.domain.folder.repository.FolderJobJpaRepository;
 import com.woowacamp.storage.domain.folder.repository.FolderJobRepository;
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataRepository;
+import com.woowacamp.storage.domain.folder.utils.QueryExecuteTemplate;
 import com.woowacamp.storage.domain.folder.utils.StackSerializationUtil;
 import com.woowacamp.storage.global.error.ErrorCode;
 import com.woowacamp.storage.global.util.StorageStringUtil;
@@ -38,11 +40,12 @@ public class FolderMoveProcessor {
 	private final FolderJobJpaRepository folderJobJpaRepository;
 
 	private final FolderBatchUpdateHelper batchUpdateHelper;
+	private final Environment environment;
 
-	@Value("${constant.batchSize:1000}")
+	@Value("${constant.batchSize}")
 	private int pageSize;
 
-	@Value("${constant.folderMoveBatchLimit:2000}")
+	@Value("${constant.batchLimit}")
 	private int batchLimit;
 
 	/**
@@ -101,26 +104,26 @@ public class FolderMoveProcessor {
 		List<FileMetadata> fileBuffer = new ArrayList<>();
 
 		while (!parentStack.isEmpty()) {
-			Long currentParentId = parentStack.peek();
+			Long currentParentId = parentStack.pop();
 
 			FolderMetadata parent = folderMetadataJpaRepository.findById(currentParentId)
 				.orElseThrow(() -> ErrorCode.FOLDER_NOT_FOUND.baseException(
 					StorageStringUtil.format("Parent not found. parentId: {}", currentParentId)));
 
-			// 폴더 처리
-			while (processFoldersOfParent(
-				job, currentParentId, parentStack, folderBuffer, parent)) {
-
+			// ✅ 새로운 부모를 처리할 때마다 커서 초기화 체크
+			boolean isNewParent = !currentParentId.equals(job.getCurrentParentId());
+			if (isNewParent) {
+				// 새로운 부모이므로 커서 초기화
+				job.updateCurrentParent(currentParentId);
+				job.resetFolderProgress();  // lastFolderId = null
+				job.resetFileProgress();     // lastFileId = null
 			}
+
+			// 폴더 처리
+			processFoldersOfParent(job, currentParentId, parentStack, folderBuffer, parent);
 
 			// 파일 처리
-			while (processFilesOfParent(
-				job, currentParentId, fileBuffer, parentStack, parent)) {
-
-			}
-
-			// 현재 부모 완료 -> pop
-			parentStack.pop();
+			processFilesOfParent(job, currentParentId, fileBuffer, parentStack, parent);
 
 			if (!parentStack.isEmpty() && (!folderBuffer.isEmpty() || !fileBuffer.isEmpty())) {
 				flushBuffers(job, folderBuffer, fileBuffer, parentStack.peek(), null, null, parentStack);
@@ -136,37 +139,38 @@ public class FolderMoveProcessor {
 	/**
 	 * 특정 부모의 자식 폴더 처리
 	 */
-	private boolean processFoldersOfParent(FolderJob job, Long parentId,
+	private void processFoldersOfParent(FolderJob job, Long parentId,
 		Stack<Long> parentStack, List<FolderMetadata> folderBuffer, FolderMetadata parent) {
-		Long lastFolderId = job.getLastFolderId();
-		List<FolderMetadata> childFolders = folderMetadataRepository.findByParentFolderIdWithLastId(parentId,
-			lastFolderId, pageSize);
+		Long lastFolderId = job.getId().equals(parentId) ? job.getLastFolderId() : null;
 
-		if (childFolders.isEmpty()) {
-			job.resetFolderProgress();
-			return false;
-		}
+		Long[] lastProcessed = new Long[1];
+		QueryExecuteTemplate.<FolderMetadata>selectFilesAndExecuteWithCursor(pageSize,
+			lastFolder -> folderMetadataRepository.findByParentFolderIdWithLastId(parentId,
+				lastFolder == null ? lastFolderId : lastFolder.getId(), pageSize),
+			childFolders -> {
+				String parentNamePath = parent.getNameFullPath();
+				String parentIdPath = parent.getIdFullPath();
 
-		String parentNamePath = parent.getNameFullPath();
-		String parentIdPath = parent.getIdFullPath();
+				for (FolderMetadata childFolder : childFolders) {
+					childFolder.updateIdFullPath(parentIdPath);
+					childFolder.updateNameFullPath(parentNamePath);
+					childFolder.updateNamePathLength(childFolder.getNameFullPath().length());
 
-		for (FolderMetadata childFolder : childFolders) {
-			childFolder.updateIdFullPath(parentIdPath);
-			childFolder.updateNameFullPath(parentNamePath);
-			childFolder.updateNamePathLength(childFolder.getNameFullPath().length());
+					folderBuffer.add(childFolder);
 
-			folderBuffer.add(childFolder);
+					if (folderBuffer.size() >= batchLimit) {
+						batchUpdateHelper.batchUpdateFoldersAndSaveProgress(
+							folderBuffer, job.getId(), parentId, childFolder.getId(), null, parentStack);
+						folderBuffer.clear();
+					}
 
-			if (folderBuffer.size() >= batchLimit) {
-				batchUpdateHelper.batchUpdateFoldersAndSaveProgress(
-					folderBuffer, job.getId(), parentId, childFolder.getId(), null, parentStack);
-				folderBuffer.clear();
-			}
+					parentStack.push(childFolder.getId());
 
-			parentStack.push(childFolder.getId());
-		}
+					lastProcessed[0] = childFolder.getId();
+				}
+			});
 
-		Long lastProcessedId = childFolders.get(childFolders.size() - 1).getId();
+		Long lastProcessedId = lastProcessed[0];
 		if (!folderBuffer.isEmpty()) {
 			batchUpdateHelper.batchUpdateFoldersAndSaveProgress(
 				folderBuffer, job.getId(), parentId, lastProcessedId, null, parentStack);
@@ -174,43 +178,45 @@ public class FolderMoveProcessor {
 		} else {
 			batchUpdateHelper.saveProgressOnly(job.getId(), parentId, lastProcessedId, null, parentStack);
 		}
-
-		return childFolders.size() >= pageSize;
 	}
 
 	/**
 	 * 특정 부모의 자식 파일 처리
 	 */
-	private boolean processFilesOfParent(FolderJob job, Long parentId,
+	private void processFilesOfParent(FolderJob job, Long parentId,
 		List<FileMetadata> fileBuffer, Stack<Long> parentStack, FolderMetadata parent) {
-		Long lastFileId = job.getLastFileId();
-		List<FileMetadata> childFiles = fileMetadataRepository.findFileMetadataByLastId(parentId, lastFileId, pageSize);
+		Long lastFileId = job.getId().equals(parentId) ? job.getLastFileId() : null;
 
-		if (childFiles.isEmpty()) {
-			job.resetFileProgress();
-			return false;
-		}
+		Long[] lastProcessed = new Long[1];
+		QueryExecuteTemplate.<FileMetadata>selectFilesAndExecuteWithCursor(pageSize,
+			lastFile -> fileMetadataRepository.findFileMetadataByLastId(parentId,
+				lastFile == null ? lastFileId : lastFile.getId(), pageSize),
+			childFiles -> {
 
-		String parentNamePath = parent.getNameFullPath();
-		String parentIdPath = parent.getIdFullPath();
+				String parentNamePath = parent.getNameFullPath();
+				String parentIdPath = parent.getIdFullPath();
 
-		for (FileMetadata childFile : childFiles) {
-			childFile.updateIdFullPath(parentIdPath);
-			childFile.updateNameFullPath(parentNamePath);
-			childFile.updateNamePathLength(childFile.getNameFullPath().length());
+				for (FileMetadata childFile : childFiles) {
+					childFile.updateIdFullPath(parentIdPath);
+					childFile.updateNameFullPath(parentNamePath);
+					childFile.updateNamePathLength(childFile.getNameFullPath().length());
 
-			fileBuffer.add(childFile);
+					fileBuffer.add(childFile);
 
-			if (fileBuffer.size() >= batchLimit) {
-				// 파일 처리 시에는 스택 변경 없음
-				Stack<Long> emptyStack = new Stack<>();
-				batchUpdateHelper.batchUpdateFilesAndSaveProgress(
-					fileBuffer, job.getId(), parentId, null, childFile.getId(), emptyStack);
-				fileBuffer.clear();
+					if (fileBuffer.size() >= batchLimit) {
+						// 파일 처리 시에는 스택 변경 없음
+						Stack<Long> emptyStack = new Stack<>();
+						batchUpdateHelper.batchUpdateFilesAndSaveProgress(
+							fileBuffer, job.getId(), parentId, null, childFile.getId(), emptyStack);
+						fileBuffer.clear();
+					}
+
+					lastProcessed[0] = childFile.getId();
+				}
 			}
-		}
+		);
 
-		Long lastProcessedId = childFiles.get(childFiles.size() - 1).getId();
+		Long lastProcessedId = lastProcessed[0];
 		if (!fileBuffer.isEmpty()) {
 			Stack<Long> emptyStack = new Stack<>();
 			batchUpdateHelper.batchUpdateFilesAndSaveProgress(
@@ -221,7 +227,6 @@ public class FolderMoveProcessor {
 			batchUpdateHelper.saveProgressOnly(job.getId(), parentId, null, lastProcessedId, emptyStack);
 		}
 
-		return childFiles.size() >= pageSize;
 	}
 
 	/**

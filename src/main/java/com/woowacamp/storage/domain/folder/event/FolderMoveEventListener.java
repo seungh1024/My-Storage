@@ -8,8 +8,8 @@ import org.springframework.transaction.event.TransactionalEventListener;
 import com.woowacamp.storage.domain.message.entity.MessageInfo;
 import com.woowacamp.storage.domain.message.repository.MessageInfoJpaRepository;
 import com.woowacamp.storage.domain.message.service.SendMessageService;
-import com.woowacamp.storage.domain.message.util.EventType;
 import com.woowacamp.storage.domain.message.util.JsonSerializer;
+import com.woowacamp.storage.domain.message.util.MessageStatus;
 
 import lombok.RequiredArgsConstructor;
 
@@ -47,11 +47,17 @@ public class FolderMoveEventListener {
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 	public void sendMessageHandler(FolderSizeEvent folderSizeEvent) {
 		sendMessageService.send(folderSizeEvent.message());
+		updateMessageStatusSent(folderSizeEvent.getId());
 	}
 
 	@Async(value = "SEND_MESSAGE_EXECUTOR")
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 	public void sendMessageHandler(FolderMoveEvent folderMoveEvent) {
 		sendMessageService.send(folderMoveEvent.message());
+		updateMessageStatusSent(folderMoveEvent.getId());
+	}
+
+	private void updateMessageStatusSent(Long id) {
+		messageInfoJpaRepository.updateMessageInfoStatus(id, MessageStatus.SENT);
 	}
 }

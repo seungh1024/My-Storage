@@ -99,6 +99,10 @@ public class FolderJob {
 		this.parentStack = parentStack;
 	}
 
+	public void updateCurrentParent(Long currentParentId) {
+		this.currentParentId = currentParentId;
+	}
+
 	public void updateStatus(FolderJobStatus status) {
 		this.status = status;
 	}

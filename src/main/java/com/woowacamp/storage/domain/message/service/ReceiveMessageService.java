@@ -40,6 +40,8 @@ public class ReceiveMessageService {
 				StringFormat.format("Update failed. outboxId={}, folderId={}", message.id(),
 					message.folderMetadataId()));
 		}
+		log.info("[ReceiveMessageService] size update success, folder id: {}, size: {}", message.folderMetadataId(),
+			message.size());
 	}
 
 	/**

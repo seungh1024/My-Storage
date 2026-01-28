@@ -4,8 +4,10 @@ import com.woowacamp.storage.domain.message.dto.FolderMoveMessageDto;
 import com.woowacamp.storage.domain.message.entity.MessageInfo;
 import com.woowacamp.storage.domain.message.util.EventType;
 
+import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 
+@Getter
 @RequiredArgsConstructor
 public class FolderMoveEvent {
 	private Long id;

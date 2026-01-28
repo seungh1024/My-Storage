@@ -65,6 +65,7 @@ public class FileService {
 
 		long originParentId = fileMetadata.getParentFolderId();
 		fileMetadata.updateParentFolderId(dto.targetFolderId());
+		fileMetadataJpaRepository.save(fileMetadata);
 
 		eventPublisher.publishEvent(new FolderSizeEvent(originParentId, -fileMetadata.getFileSize()));
 		eventPublisher.publishEvent(new FolderSizeEvent(targetFolder.getId(), fileMetadata.getFileSize()));

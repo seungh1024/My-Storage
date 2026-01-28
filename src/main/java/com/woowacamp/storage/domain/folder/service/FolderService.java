@@ -5,7 +5,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
-import java.util.Stack;
 import java.util.concurrent.Executor;
 
 import org.springframework.beans.factory.annotation.Value;
@@ -39,7 +38,6 @@ import com.woowacamp.storage.domain.user.entity.User;
 import com.woowacamp.storage.domain.user.repository.UserRepository;
 import com.woowacamp.storage.global.background.BackgroundJob;
 import com.woowacamp.storage.global.constant.CommonConstant;
-import com.woowacamp.storage.global.error.CustomException;
 import com.woowacamp.storage.global.error.ErrorCode;
 import com.woowacamp.storage.global.util.StorageStringUtil;
 import com.woowacamp.storage.global.util.ValidateParentsUtil;
@@ -155,12 +153,23 @@ public class FolderService {
 
 		folderMetadataJpaRepository.save(sourceFolder);
 
+
+		log.info("[moveFolder] About to publish events. sourceId={}, originalParentId={}, targetId={}, size={}",
+			sourceFolderId, originalParentId, targetFolder.getId(), sourceFolder.getSize());
 		// 현재 폴더의 부모 폴더에 감소하는 용량 처리 이벤트 발행
 		publisher.publishEvent(new FolderSizeEvent(originalParentId, -sourceFolder.getSize()));
+		log.info("[moveFolder] Published FolderSizeEvent for originalParent. parentId={}, size={}",
+			originalParentId, -sourceFolder.getSize());
 		// 이동한 폴더의 대상 폴더에 증가하는 용량 처리 이벤트 발행
 		publisher.publishEvent(new FolderSizeEvent(targetFolder.getId(), sourceFolder.getSize()));
+		log.info("[moveFolder] Published FolderSizeEvent for target. targetId={}, size={}",
+			targetFolder.getId(), sourceFolder.getSize());
+
 		// 폴더 이동 이벤트 발행
 		publisher.publishEvent(new FolderMoveEvent(sourceFolderId));
+		log.info("[moveFolder] Published FolderMoveEvent. folderId={}", sourceFolderId);
+
+		log.info("[moveFolder] All events published successfully.");
 	}
 
 	/**
@@ -391,16 +400,26 @@ public class FolderService {
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
 
 		// 처리되지 않은 메세지가 없다면 리턴
-		if (!messageInfoJpaRepository.existsByIdAndStatusIn(id, List.of(MessageStatus.SENT))) {
+		if (!messageInfoJpaRepository.existsByIdAndStatusIn(id, List.of(MessageStatus.SENT,MessageStatus.PENDING))) {
+			log.info("[update folder size] early returned id: {}, folderId: {}, size: {}",id,folderId,size);
 			return 1;
 		}
 
 		// 사이즈 업데이트
-		int result = folderMetadataJpaRepository.updateFolderSizeWithVersion(size, folderMetadata.getId(),
+		int result = 0;
+		int cnt = 3;
+		while (result == 0 && cnt-- > 0) {
+			result = folderMetadataJpaRepository.updateFolderSizeWithVersion(size, folderMetadata.getId(),
 			folderMetadata.getVersion());
+			folderMetadata = folderMetadataJpaRepository.findById(folderId)
+				.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
+			log.info("[update folder size] id: {}, folderId: {}, size: {}, update result: {}, version: {}",id,folderId,size,result,folderMetadata.getVersion());
+		}
+		log.info("[update folder size] id: {}, folderId: {}, size: {}, update result: {}",id,folderId,size,result);
 		if (result == 0) {
 			return 0;
 		}
+		log.info("[update folder size] id: {}, folderId: {}, size: {}, folderMetadata.id: {}, folderMetadata.rootId:{}, folderMetadata.size:{}",id,folderId,size,folderMetadata.getId(),folderMetadata.getRootId(), folderMetadata.getSize());
 
 		// MessageInfo 완료 처리
 		publisher.publishEvent(new MessageInfoEvent(id));
