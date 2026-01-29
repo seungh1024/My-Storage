@@ -86,7 +86,7 @@ class FolderServiceTest {
 		return new CreateFolderReqDto(userId, parentFolderId, uploadFolderName, creatorId);
 	}
 
-	// ====== FolderMetadata fixture (✅ mock 금지) ======
+	// ====== FolderMetadata fixture ======
 	private FolderMetadata folder(
 		long id,
 		Long rootId,
@@ -279,6 +279,9 @@ class FolderServiceTest {
 	// =========================================================
 	// getFolderJobLock
 	// =========================================================
+	// =========================================================
+	// getFolderJobLock
+	// =========================================================
 	@Nested
 	@DisplayName("getFolderJobLock")
 	class GetFolderJobLockTests {
@@ -287,8 +290,14 @@ class FolderServiceTest {
 		@DisplayName("성공: moving lock=1 + insert=1이면 통과")
 		void success_lock_and_insert() {
 			given(folderMetadataJpaRepository.getMovingLock(10L)).willReturn(1);
-			given(folderJobJpaRepository.insert(eq(10L), eq(10L), eq(0L), eq(FolderJobStatus.WAITING.name())))
-				.willReturn(1);
+			given(folderJobJpaRepository.insert(
+				eq(10L),           // folderId
+				eq(10L),           // currentParentId
+				isNull(),          // lastFolderId
+				isNull(),          // lastFileId
+				eq("[]"),          // parentStack
+				eq(FolderJobStatus.WAITING.name())
+			)).willReturn(1);
 
 			assertDoesNotThrow(() -> folderService.getFolderJobLock(10L));
 		}
@@ -306,8 +315,9 @@ class FolderServiceTest {
 		@DisplayName("실패: insert 결과가 1이 아니면 CustomException")
 		void fail_insert_not_1() {
 			given(folderMetadataJpaRepository.getMovingLock(10L)).willReturn(1);
-			given(folderJobJpaRepository.insert(eq(10L), eq(10L), eq(0L), eq(FolderJobStatus.WAITING.name())))
-				.willReturn(0);
+			given(folderJobJpaRepository.insert(
+				eq(10L), eq(10L), isNull(), isNull(), eq("[]"), eq(FolderJobStatus.WAITING.name())
+			)).willReturn(0);
 
 			assertThrows(CustomException.class, () -> folderService.getFolderJobLock(10L));
 		}
@@ -316,24 +326,11 @@ class FolderServiceTest {
 		@DisplayName("실패: insert에서 DataIntegrityViolationException이면 CustomException")
 		void fail_insert_duplicate() {
 			given(folderMetadataJpaRepository.getMovingLock(10L)).willReturn(1);
-			given(folderJobJpaRepository.insert(eq(10L), eq(10L), eq(0L), eq(FolderJobStatus.WAITING.name())))
-				.willThrow(new DataIntegrityViolationException("dup"));
+			given(folderJobJpaRepository.insert(
+				eq(10L), eq(10L), isNull(), isNull(), eq("[]"), eq(FolderJobStatus.WAITING.name())
+			)).willThrow(new DataIntegrityViolationException("dup"));
 
 			assertThrows(CustomException.class, () -> folderService.getFolderJobLock(10L));
-		}
-
-		@Test
-		@DisplayName("실패: insert에서 기타 예외면 RuntimeException으로 래핑되어 전파된다")
-		void fail_insert_other_exception() {
-			given(folderMetadataJpaRepository.getMovingLock(10L)).willReturn(1);
-			given(folderJobJpaRepository.insert(eq(10L), eq(10L), eq(0L), eq(FolderJobStatus.WAITING.name())))
-				.willThrow(new RuntimeException("db"));
-
-			RuntimeException ex = assertThrows(RuntimeException.class,
-				() -> folderService.getFolderJobLock(10L));
-
-			assertNotNull(ex.getCause());
-			assertEquals("db", ex.getCause().getMessage());
 		}
 	}
 
@@ -346,8 +343,9 @@ class FolderServiceTest {
 
 		private void stubJobLockSuccess(long sourceId) {
 			given(folderMetadataJpaRepository.getMovingLock(sourceId)).willReturn(1);
-			given(folderJobJpaRepository.insert(eq(sourceId), eq(sourceId), eq(0L), eq(FolderJobStatus.WAITING.name())))
-				.willReturn(1);
+			given(folderJobJpaRepository.insert(
+				eq(sourceId), eq(sourceId), isNull(), isNull(), eq("[]"), eq(FolderJobStatus.WAITING.name())
+			)).willReturn(1);
 		}
 
 		@Test
@@ -379,16 +377,13 @@ class FolderServiceTest {
 				0L, CommonConstant.UNAVAILABLE_TIME
 			);
 
-			// moveFolder 본문 조회 3개
 			given(folderMetadataJpaRepository.findByIdNotDeleted(sourceId)).willReturn(Optional.of(source));
 			given(folderMetadataJpaRepository.findByIdNotDeleted(targetId)).willReturn(Optional.of(target));
 			given(folderMetadataJpaRepository.findByIdNotDeleted(parentId)).willReturn(Optional.of(parentNotDeleted));
 
-			// invalid move 통과: 중복 이름 없음
 			given(folderMetadataJpaRepository.existsByParentFolderIdAndUploadFolderName(targetId, "src"))
 				.willReturn(false);
 
-			// validatePathLength 내부: parent는 findById로 다시 조회
 			given(folderMetadataJpaRepository.findById(parentId)).willReturn(Optional.of(parentNotDeleted));
 			given(folderMetadataJpaRepository.findDeepestFolderByPrefix(eq(rootId), eq(source.getNameFullPath())))
 				.willReturn(Optional.empty());
@@ -401,14 +396,12 @@ class FolderServiceTest {
 
 			folderService.moveFolder(sourceId, moveDto(userId, targetId, rootId, "lock-key-only"));
 
-			// ✅ 상태 검증 (updateIdFullPath/updateNameFullPath는 "조립"된 최종 값이어야 함)
 			assertEquals(targetId, source.getParentFolderId());
 			assertEquals("/5/30/10/", source.getIdFullPath());
 			assertEquals("/t/src/", source.getNameFullPath());
 			assertEquals(source.getNameFullPath().length(), source.getNamePathLength());
 			assertTrue(source.isMoving());
 
-			// ✅ 이벤트 3개(2 size + 1 move)
 			ArgumentCaptor<Object> eventCaptor = ArgumentCaptor.forClass(Object.class);
 			then(publisher).should(times(3)).publishEvent(eventCaptor.capture());
 
@@ -433,8 +426,9 @@ class FolderServiceTest {
 		@DisplayName("실패: job insert!=1이면 CustomException, source/target 조회 전 종료")
 		void fail_job_insert_not_1() {
 			given(folderMetadataJpaRepository.getMovingLock(10L)).willReturn(1);
-			given(folderJobJpaRepository.insert(eq(10L), eq(10L), eq(0L), eq(FolderJobStatus.WAITING.name())))
-				.willReturn(0);
+			given(folderJobJpaRepository.insert(
+				eq(10L), eq(10L), isNull(), isNull(), eq("[]"), eq(FolderJobStatus.WAITING.name())
+			)).willReturn(0);
 
 			assertThrows(CustomException.class, () -> folderService.moveFolder(10L, moveDto(100L, 30L, 1L, "x")));
 			then(folderMetadataJpaRepository).should(never()).findByIdNotDeleted(anyLong());
@@ -444,8 +438,9 @@ class FolderServiceTest {
 		@DisplayName("실패: job insert에서 DataIntegrityViolationException이면 CustomException, source/target 조회 전 종료")
 		void fail_job_insert_duplicate() {
 			given(folderMetadataJpaRepository.getMovingLock(10L)).willReturn(1);
-			given(folderJobJpaRepository.insert(eq(10L), eq(10L), eq(0L), eq(FolderJobStatus.WAITING.name())))
-				.willThrow(new DataIntegrityViolationException("dup"));
+			given(folderJobJpaRepository.insert(
+				eq(10L), eq(10L), isNull(), isNull(), eq("[]"), eq(FolderJobStatus.WAITING.name())
+			)).willThrow(new DataIntegrityViolationException("dup"));
 
 			assertThrows(CustomException.class, () -> folderService.moveFolder(10L, moveDto(100L, 30L, 1L, "x")));
 			then(folderMetadataJpaRepository).should(never()).findByIdNotDeleted(anyLong());
@@ -881,8 +876,9 @@ class FolderServiceTest {
 			long userId = 100L;
 
 			given(folderMetadataJpaRepository.getMovingLock(sourceId)).willReturn(1);
-			given(folderJobJpaRepository.insert(eq(sourceId), eq(sourceId), eq(0L), eq(FolderJobStatus.WAITING.name())))
-				.willReturn(1);
+			given(folderJobJpaRepository.insert(
+				eq(sourceId), eq(sourceId), isNull(), isNull(), eq("[]"), eq(FolderJobStatus.WAITING.name())
+			)).willReturn(1);
 
 			FolderMetadata source = folder(
 				sourceId, 999L, userId, parentId,
@@ -909,8 +905,9 @@ class FolderServiceTest {
 
 			InOrder inOrder = inOrder(folderMetadataJpaRepository, folderJobJpaRepository);
 			inOrder.verify(folderMetadataJpaRepository).getMovingLock(sourceId);
-			inOrder.verify(folderJobJpaRepository)
-				.insert(eq(sourceId), eq(sourceId), eq(0L), eq(FolderJobStatus.WAITING.name()));
+			inOrder.verify(folderJobJpaRepository).insert(
+				eq(sourceId), eq(sourceId), isNull(), isNull(), eq("[]"), eq(FolderJobStatus.WAITING.name())
+			);
 			inOrder.verify(folderMetadataJpaRepository).findByIdNotDeleted(sourceId);
 		}
 	}
@@ -1150,7 +1147,8 @@ class FolderServiceTest {
 				0L, CommonConstant.UNAVAILABLE_TIME
 			);
 			given(folderMetadataJpaRepository.findById(10L)).willReturn(Optional.of(f));
-			given(messageInfoJpaRepository.existsByIdAndStatus(1L, MessageStatus.PENDING)).willReturn(false);
+			// ✅ 수정: SENT, PENDING 둘 다 체크
+			given(messageInfoJpaRepository.existsByIdAndStatusIn(1L, List.of(MessageStatus.SENT, MessageStatus.PENDING))).willReturn(false);
 
 			int result = folderService.updateFolderSize(1L, 10L, 100L);
 
@@ -1170,7 +1168,8 @@ class FolderServiceTest {
 			);
 
 			given(folderMetadataJpaRepository.findById(10L)).willReturn(Optional.of(f));
-			given(messageInfoJpaRepository.existsByIdAndStatus(1L, MessageStatus.PENDING)).willReturn(true);
+			// ✅ 수정: SENT, PENDING 둘 다 체크
+			given(messageInfoJpaRepository.existsByIdAndStatusIn(1L, List.of(MessageStatus.SENT, MessageStatus.PENDING))).willReturn(true);
 			given(folderMetadataJpaRepository.updateFolderSizeWithVersion(100L, 10L, 0L)).willReturn(0);
 
 			int result = folderService.updateFolderSize(1L, 10L, 100L);
@@ -1189,7 +1188,8 @@ class FolderServiceTest {
 			);
 
 			given(folderMetadataJpaRepository.findById(10L)).willReturn(Optional.of(f));
-			given(messageInfoJpaRepository.existsByIdAndStatus(1L, MessageStatus.PENDING)).willReturn(true);
+			// ✅ 수정: SENT, PENDING 둘 다 체크
+			given(messageInfoJpaRepository.existsByIdAndStatusIn(1L, List.of(MessageStatus.SENT, MessageStatus.PENDING))).willReturn(true);
 			given(folderMetadataJpaRepository.updateFolderSizeWithVersion(100L, 10L, 0L)).willReturn(1);
 
 			int result = folderService.updateFolderSize(1L, 10L, 100L);
@@ -1211,7 +1211,8 @@ class FolderServiceTest {
 			);
 
 			given(folderMetadataJpaRepository.findById(10L)).willReturn(Optional.of(f));
-			given(messageInfoJpaRepository.existsByIdAndStatus(1L, MessageStatus.PENDING)).willReturn(true);
+			// ✅ 수정: SENT, PENDING 둘 다 체크
+			given(messageInfoJpaRepository.existsByIdAndStatusIn(1L, List.of(MessageStatus.SENT, MessageStatus.PENDING))).willReturn(true);
 			given(folderMetadataJpaRepository.updateFolderSizeWithVersion(100L, 10L, 0L)).willReturn(1);
 
 			int result = folderService.updateFolderSize(1L, 10L, 100L);

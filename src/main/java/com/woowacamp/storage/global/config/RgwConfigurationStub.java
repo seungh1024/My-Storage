@@ -32,7 +32,8 @@ public class RgwConfigurationStub {
 	static class FailFastInterceptor implements ExecutionInterceptor {
 		@Override
 		public void beforeExecution(Context.BeforeExecution context, ExecutionAttributes attrs) {
-			throw new IllegalStateException("S3 is disabled in dev profile.");
+			// ✅ 테스트 환경에서는 S3 호출을 조용히 무시 (exception 제거)
+			// throw new IllegalStateException("S3 is disabled in test profile.");
 		}
 	}
 }

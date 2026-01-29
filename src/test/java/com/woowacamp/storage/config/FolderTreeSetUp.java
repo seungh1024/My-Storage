@@ -4,10 +4,6 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Scope;
-import org.springframework.stereotype.Component;
-
 import com.woowacamp.storage.domain.file.entity.FileMetadata;
 import com.woowacamp.storage.domain.file.repository.FileMetadataJpaRepository;
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
@@ -15,17 +11,20 @@ import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepositor
 import com.woowacamp.storage.global.constant.PermissionType;
 import com.woowacamp.storage.global.constant.UploadStatus;
 
-import jakarta.annotation.PostConstruct;
 import lombok.Getter;
 
 @Getter
-@Component
 public class FolderTreeSetUp {
-	@Autowired
 	private FolderMetadataJpaRepository folderMetadataRepository;
-
-	@Autowired
 	private FileMetadataJpaRepository fileMetadataJpaRepository;
+
+	public FolderTreeSetUp(
+		FolderMetadataJpaRepository folderMetadataRepository,
+		FileMetadataJpaRepository fileMetadataJpaRepository
+	) {
+		this.folderMetadataRepository = folderMetadataRepository;
+		this.fileMetadataJpaRepository = fileMetadataJpaRepository;
+	}
 
 	private FolderMetadata rootFolder;
 	private List<FolderMetadata> subFolders;
@@ -36,7 +35,7 @@ public class FolderTreeSetUp {
 	private FolderMetadata longestFolder;
 
 	// @PostConstruct
-	public void folderTreeSetUp() {
+	public void setupFolderTree() {
 		now = LocalDateTime.now();
 		fileMetadataJpaRepository.deleteAll();
 		folderMetadataRepository.deleteAll();
@@ -160,7 +159,7 @@ public class FolderTreeSetUp {
 		sub1.addSize(1000);
 		folderMetadataRepository.save(sub1);
 
-		FolderMetadata parent = subFolders.get(0);
+		FolderMetadata parent = rootFolder;
 		for (int i = 0; i < 3; i++) {
 			String folderName = "";
 			int range = Math.min(100, 250 - parent.getNamePathLength());
@@ -177,7 +176,7 @@ public class FolderTreeSetUp {
 				.parentFolderId(parent.getId())
 				.uploadFolderName(folderName)
 				.sharingExpiredAt(now)
-				.size(1000)
+				.size(0)
 				.ownerId(userId)
 				.permissionType(PermissionType.WRITE)
 				.nameFullPath(nameFullPath)
