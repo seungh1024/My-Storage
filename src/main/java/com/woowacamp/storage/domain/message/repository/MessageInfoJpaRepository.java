@@ -13,6 +13,7 @@ import com.woowacamp.storage.domain.message.util.MessageStatus;
 
 public interface MessageInfoJpaRepository extends JpaRepository<MessageInfo, Long> {
 
+	@Transactional
 	@Modifying
 	@Query("""
 			UPDATE MessageInfo m
