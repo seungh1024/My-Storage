@@ -31,6 +31,9 @@ public class RabbitMqConfig {
 	@Value("${spring.rabbitmq.folder.exchange}")
 	private String folderExchangeName;
 
+	@Value("${spring.rabbitmq.folder.ttl}")
+	private int messageTtl;  // TTL 추가
+
 	// ===== size =====
 	@Value("${spring.rabbitmq.folder.size.queue}")
 	private String folderSizeQueueName;
@@ -73,6 +76,7 @@ public class RabbitMqConfig {
 		return QueueBuilder.durable(folderSizeQueueName)
 			.withArgument("x-dead-letter-exchange", folderSizeDlxExchangeName)
 			.withArgument("x-dead-letter-routing-key", folderSizeDlxRoutingKey)
+			.withArgument("x-message-ttl", messageTtl)  // ✅ TTL 추가
 			.build();
 	}
 
@@ -104,6 +108,7 @@ public class RabbitMqConfig {
 		return QueueBuilder.durable(folderMoveQueueName)
 			.withArgument("x-dead-letter-exchange", folderMoveDlxExchangeName)
 			.withArgument("x-dead-letter-routing-key", folderMoveDlxRoutingKey)
+			.withArgument("x-message-ttl", messageTtl)  // ✅ TTL 추가
 			.build();
 	}
 

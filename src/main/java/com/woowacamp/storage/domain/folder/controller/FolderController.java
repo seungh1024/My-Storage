@@ -39,20 +39,18 @@ public class FolderController {
 
 	private final FolderService folderService;
 
-	@RequestType(permission = PermissionType.WRITE, fileType = FileType.FOLDER)
 	@ResponseStatus(HttpStatus.CREATED)
 	@PostMapping
-	public FolderCreateResponseDto createFolder(@CheckDto @Valid @RequestBody CreateFolderReqDto req,
+	public FolderCreateResponseDto createFolder(@Valid @RequestBody CreateFolderReqDto req,
 		HttpServletResponse response) {
 		Long folder = folderService.createFolder(req);
 		return new FolderCreateResponseDto(folder);
 		// response.setHeader("Location", UrlUtil.getAbsoluteUrl("/api/v1/folders/" + folder));
 	}
 
-	@RequestType(permission = PermissionType.READ, fileType = FileType.FOLDER)
 	@GetMapping("/{folderId}")
-	public FolderContentsDto getFolderContents(@CheckField(value = FieldType.FOLDER_ID) @PathVariable Long folderId,
-		@CheckDto @Valid @ModelAttribute GetFolderContentsRequestParams request) {
+	public FolderContentsDto getFolderContents(@PathVariable Long folderId,
+		@Valid @ModelAttribute GetFolderContentsRequestParams request) {
 
 		folderService.checkFolderOwnedBy(folderId, request.userId());
 
@@ -68,7 +66,6 @@ public class FolderController {
 
 	}
 
-	@RequestType(permission = PermissionType.WRITE, fileType = FileType.FOLDER)
 	@DeleteMapping("/{folderId}")
 	@ResponseStatus(HttpStatus.OK)
 	public void delete(@CheckField(FieldType.FOLDER_ID) @PathVariable Long folderId,

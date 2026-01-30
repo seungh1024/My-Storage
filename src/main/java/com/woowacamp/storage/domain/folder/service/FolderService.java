@@ -71,8 +71,6 @@ public class FolderService {
 
 	@Value("${constant.batchSize}")
 	private int pageSize;
-	@Value("${constant.retryCnt}")
-	private int retryCnt;
 
 	@Value("${folder.path.maxLength}")
 	private int maxPathLength;
@@ -265,7 +263,7 @@ public class FolderService {
 
 		long parentFolderId = req.parentFolderId();
 		FolderMetadata parentFolder = folderMetadataJpaRepository.findById(parentFolderId)
-			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
+			.orElseThrow(()->ErrorCode.FOLDER_NOT_FOUND.baseException(StorageStringUtil.format("folder not found when creating folder. find folder id:{}",parentFolderId)));
 		validateFolder(req, parentFolder);
 		validateFolderOwner(parentFolder, req.userId());
 		FolderMetadata folderMetadata = createFolderMetadata(user, parentFolder, req);

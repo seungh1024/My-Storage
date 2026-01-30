@@ -73,7 +73,6 @@ class FolderServiceTest {
 	@BeforeEach
 	void setUp() {
 		ReflectionTestUtils.setField(folderService, "pageSize", 100);
-		ReflectionTestUtils.setField(folderService, "retryCnt", 3);
 		ReflectionTestUtils.setField(folderService, "maxPathLength", 250);
 	}
 
