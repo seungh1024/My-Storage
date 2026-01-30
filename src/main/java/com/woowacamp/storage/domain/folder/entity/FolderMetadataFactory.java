@@ -19,6 +19,7 @@ public class FolderMetadataFactory {
 			.permissionType(PermissionType.NONE)
 			.nameFullPath("/")
 			.namePathLength(1)
+			.idFullPath("/")
 			.build();
 	}
 
@@ -37,7 +38,7 @@ public class FolderMetadataFactory {
 			.parentFolderId(req.parentFolderId())
 			.uploadFolderName(req.uploadFolderName())
 			.sharingExpiredAt(parentFolder.getSharingExpiredAt())
-			.permissionType(parentFolder.getPermissionType())
+			.permissionType(PermissionType.WRITE)
 			.nameFullPath(nameFullPath)
 			.namePathLength(namePathLength)
 			.idFullPath(parentFolder.getIdFullPath())
