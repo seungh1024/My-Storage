@@ -40,10 +40,9 @@ spring:
       size:
         queue: folder.size.queue
         key: folder.size.key
-        batchSize: 10
-        consumerSize: 2
-        maxConsumerSize: 2
-        prefetch: 1
+        consumerSize: 3
+        maxConsumerSize: 3
+        prefetch: 5
         receiveTimeout: 1000
         dlx:
           exchange: folder.dlx.size.exchange
@@ -52,10 +51,9 @@ spring:
       move:
         queue: folder.move.queue
         key: folder.move.key
-        batchSize: 10
-        consumerSize: 2
-        maxConsumerSize: 2
-        prefetch: 1
+        consumerSize: 3
+        maxConsumerSize: 3
+        prefetch: 5
         receiveTimeout: 1000
         dlx:
           exchange: folder.dlx.move.exchange

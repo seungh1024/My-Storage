@@ -5,19 +5,17 @@ import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.context.ApplicationEventPublisher;
 
 import com.woowacamp.storage.domain.folder.service.FolderMoveProcessor;
 import com.woowacamp.storage.domain.folder.service.FolderService;
 import com.woowacamp.storage.domain.message.dto.FolderMoveMessageDto;
 import com.woowacamp.storage.domain.message.dto.FolderSizeMessageDto;
-import com.woowacamp.storage.domain.message.event.MessageInfoEvent;
 import com.woowacamp.storage.domain.message.repository.MessageInfoJpaRepository;
 import com.woowacamp.storage.domain.message.util.EventType;
+import com.woowacamp.storage.domain.message.util.MessageStatus;
 import com.woowacamp.storage.global.error.CustomException;
 import com.woowacamp.storage.global.error.ErrorCode;
 
@@ -39,9 +37,6 @@ class ReceiveMessageServiceTest {
 
 	@Mock
 	private MessageInfoJpaRepository messageInfoJpaRepository;
-
-	@Mock
-	private ApplicationEventPublisher publisher;
 
 	@Test
 	@DisplayName("handleFolderSizeEvent: update 성공 시 예외 없이 처리")
@@ -66,29 +61,26 @@ class ReceiveMessageServiceTest {
 	}
 
 	@Test
-	@DisplayName("handleFolderMoveEvent: 이미 처리된 메시지면 종료")
+	@DisplayName("handleFolderMoveEvent: 완료된 메시지면 종료")
 	void handleFolderMoveEvent_alreadyProcessed() {
 		FolderMoveMessageDto message = new FolderMoveMessageDto(2L, 20L, EventType.FOLDER_MOVE);
-		given(messageInfoJpaRepository.existsByIdAndStatusIn(eq(2L), anyList())).willReturn(false);
+		given(messageInfoJpaRepository.existsByIdAndStatusIn(eq(2L), anyList())).willReturn(true);
 
 		receiveMessageService.handleFolderMoveEvent(message);
 
-		then(publisher).shouldHaveNoInteractions();
 		then(folderMoveProcessor).shouldHaveNoInteractions();
+		then(messageInfoJpaRepository).should(never()).updateMessageInfoStatus(anyLong(), any());
 	}
 
 	@Test
-	@DisplayName("handleFolderMoveEvent: 정상 처리 시 이벤트 발행 및 프로세스 수행")
+	@DisplayName("handleFolderMoveEvent: 정상 처리 시 상태 갱신 및 프로세스 수행")
 	void handleFolderMoveEvent_success() {
 		FolderMoveMessageDto message = new FolderMoveMessageDto(3L, 30L, EventType.FOLDER_MOVE);
-		given(messageInfoJpaRepository.existsByIdAndStatusIn(eq(3L), anyList())).willReturn(true);
+		given(messageInfoJpaRepository.existsByIdAndStatusIn(eq(3L), anyList())).willReturn(false);
 
 		receiveMessageService.handleFolderMoveEvent(message);
 
-		ArgumentCaptor<MessageInfoEvent> captor = ArgumentCaptor.forClass(MessageInfoEvent.class);
-		then(publisher).should().publishEvent(captor.capture());
-		assertEquals(3L, captor.getValue().getId());
-
 		then(folderMoveProcessor).should().processMove(30L);
+		then(messageInfoJpaRepository).should().updateMessageInfoStatus(3L, MessageStatus.SUCCESS);
 	}
 }
