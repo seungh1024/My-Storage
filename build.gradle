@@ -2,6 +2,9 @@ plugins {
 	id 'java'
 	id 'org.springframework.boot' version '3.3.2'
 	id 'io.spring.dependency-management' version '1.1.6'
+	id 'checkstyle'
+	id 'jacoco'
+	id "org.sonarqube" version "4.3.1.3277"
 }
 
 group = 'com.woowacamp'
@@ -58,6 +61,7 @@ dependencies {
 	testImplementation 'org.testcontainers:testcontainers:1.19.4'
 	testImplementation 'org.testcontainers:junit-jupiter:1.19.4'
 	testImplementation 'org.testcontainers:mysql:1.19.4'
+	testImplementation 'org.testcontainers:mongodb:1.16.3'
 	testImplementation 'org.testcontainers:rabbitmq:1.19.4'
 	testCompileOnly 'org.projectlombok:lombok'
 	testAnnotationProcessor 'org.projectlombok:lombok'
@@ -65,6 +69,29 @@ dependencies {
 
 }
 
+checkstyle {
+	configFile = file("${rootDir}/naver-checkstyle.xml")
+	configProperties = ["suppressionFile": "${rootDir}/naver-checkstyle-suppressions.xml"]
+	toolVersion = "9.2"
+}
+
 tasks.named('test') {
 	useJUnitPlatform()
+	finalizedBy 'jacocoTestReport'
+}
+
+jacocoTestReport {
+	reports {
+		xml.required = true
+	}
+}
+
+sonar {
+	properties {
+		property "sonar.projectKey", "seungh1024_My-Storage"
+		property "sonar.organization", "seungh1024"
+		property "sonar.host.url", "https://sonarcloud.io"
+		property "sonar.coverage.jacoco.xmlReportPaths", "build/reports/jacoco/test/jacocoTestReport.xml"
+		property "sonar.java.checkstyle.reportPaths", "build/reports/checkstyle/main.xml"
+	}
 }
