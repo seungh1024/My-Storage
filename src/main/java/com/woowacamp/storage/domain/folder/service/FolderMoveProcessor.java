@@ -48,6 +48,9 @@ public class FolderMoveProcessor {
 	@Value("${constant.batchLimit}")
 	private int batchLimit;
 
+	@Value("${folder.job.maxRetry:3}")
+	private int maxRetry;
+
 	/**
 	 * 폴더 이동의 실제 배치 작업을 수행
 	 * 트랜잭션 없음
@@ -80,7 +83,7 @@ public class FolderMoveProcessor {
 			log.error("[FolderMoveProcessor] Failed. rootFolderId={}", rootFolderId, e);
 
 			// 실패 처리 - 별도 트랜잭션
-			folderJobRepository.markJobFailed(rootFolderId);
+			folderJobRepository.markJobFailed(rootFolderId, maxRetry);
 
 			throw ErrorCode.MESSAGE_CONSUME_FAILED.baseException(
 				StorageStringUtil.format("FolderMove failed. folderId: {}", rootFolderId), e);

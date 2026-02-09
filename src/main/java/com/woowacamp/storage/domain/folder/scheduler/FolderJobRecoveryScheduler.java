@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 import com.woowacamp.storage.domain.folder.entity.FolderJob;
 import com.woowacamp.storage.domain.folder.repository.FolderJobRepository;
 import com.woowacamp.storage.domain.folder.utils.QueryExecuteTemplate;
+import com.woowacamp.storage.domain.folder.utils.FolderJobStatus;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -28,6 +29,9 @@ public class FolderJobRecoveryScheduler {
 	@Value("${constant.batchSize:1000}")
 	private int pageSize;
 
+	@Value("${folder.job.maxRetry:3}")
+	private int maxRetry;
+
 	private static final int STUCK_THRESHOLD_MINUTES = 10;
 	private static final int CLEANUP_THRESHOLD_DAYS = 7;
 
@@ -40,19 +44,20 @@ public class FolderJobRecoveryScheduler {
 		log.info("[FolderJobRecoveryScheduler] Starting recovery check...");
 
 		LocalDateTime thresholdTime = LocalDateTime.now().minusMinutes(STUCK_THRESHOLD_MINUTES);
+		List<FolderJobStatus> retryableStatuses = List.of(FolderJobStatus.RUNNING, FolderJobStatus.FAILED);
 
 		// QueryExecuteTemplate으로 페이징 처리
 		QueryExecuteTemplate.<FolderJob>selectFilesAndExecuteWithCursor(
 			pageSize,
 			lastJob ->
-				folderJobRepository.findStuckJobsWithCursor(thresholdTime, lastJob == null ? null : lastJob.getId(),
-					pageSize)
+				folderJobRepository.findStuckJobsWithCursor(retryableStatuses, thresholdTime,
+					lastJob == null ? null : lastJob.getId(), pageSize)
 			,
 			stuckJobs -> {
 				for (FolderJob job : stuckJobs) {
 					try {
 						// 별도 트랜잭션으로 복구
-						folderJobRepository.recoverSingleJob(job);
+						folderJobRepository.recoverSingleJob(job, maxRetry);
 					} catch (Exception e) {
 						log.error("[FolderJobRecoveryScheduler] Failed to recover. jobId={}",
 							job.getId(), e);

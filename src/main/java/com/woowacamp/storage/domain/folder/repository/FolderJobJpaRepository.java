@@ -19,17 +19,18 @@ public interface FolderJobJpaRepository extends JpaRepository<FolderJob, Long> {
 	@Transactional
 	@Modifying(clearAutomatically = true, flushAutomatically = true)
 	@Query(value = """
-			INSERT INTO folder_job (folder_id, current_parent_id, last_folder_id, 
-									last_file_id, parent_stack, updated_at, status) 
-			VALUES (:folderId, :currentParentId, :lastFolderId, :lastFileId, 
-					:parentStack, CURRENT_TIMESTAMP, :status)
+			INSERT INTO folder_job (folder_id, current_parent_id, last_folder_id,
+									last_file_id, parent_stack, updated_at, status, retry_count)
+			VALUES (:folderId, :currentParentId, :lastFolderId, :lastFileId,
+					:parentStack, CURRENT_TIMESTAMP, :status, :retryCount)
 		""", nativeQuery = true)
 	int insert(@Param("folderId") Long folderId,
 		@Param("currentParentId") Long currentParentId,
 		@Param("lastFolderId") Long lastFolderId,
 		@Param("lastFileId") Long lastFileId,
 		@Param("parentStack") String parentStack,
-		@Param("status") String status);
+		@Param("status") String status,
+		@Param("retryCount") int retryCount);
 
 	@Transactional
 	@Modifying
@@ -64,12 +65,12 @@ public interface FolderJobJpaRepository extends JpaRepository<FolderJob, Long> {
 	 */
 	@Query("""
 		SELECT fj FROM FolderJob fj
-		WHERE fj.status = :status
+		WHERE fj.status IN :status
 		AND fj.updatedAt < :thresholdTime
 		ORDER BY fj.id ASC
 		LIMIT :limit
 	""")
-	List<FolderJob> findStuckJobsFirstPage(@Param("status") FolderJobStatus status,
+	List<FolderJob> findStuckJobsFirstPage(@Param("status") List<FolderJobStatus> status,
 		@Param("thresholdTime") LocalDateTime thresholdTime,
 		@Param("limit") int limit);
 
@@ -78,13 +79,13 @@ public interface FolderJobJpaRepository extends JpaRepository<FolderJob, Long> {
 	 */
 	@Query("""
 		SELECT fj FROM FolderJob fj
-		WHERE fj.status = :status
+		WHERE fj.status IN :status
 		AND fj.updatedAt < :thresholdTime
 		AND fj.id > :lastId
 		ORDER BY fj.id ASC
 		LIMIT :limit
 	""")
-	List<FolderJob> findStuckJobsWithCursor(@Param("status") FolderJobStatus status,
+	List<FolderJob> findStuckJobsWithCursor(@Param("status") List<FolderJobStatus> status,
 		@Param("thresholdTime") LocalDateTime thresholdTime,
 		@Param("lastId") Long lastId,
 		@Param("limit") int limit);

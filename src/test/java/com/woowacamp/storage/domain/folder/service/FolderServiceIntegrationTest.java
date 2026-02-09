@@ -203,6 +203,15 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 					assertEquals(value + moveSize, movedSizeInfo.get(key));
 				}
 			}
+
+			// ✅ 이동 처리 완료 후 is_moving 해제 확인
+			await(() -> {
+				FolderMetadata movingCheck = folderMetadataJpaRepository.findById(sourceId).orElseThrow();
+				return !movingCheck.isMoving();
+			}, 20_000, 500);
+
+			FolderMetadata afterMove = folderMetadataJpaRepository.findById(sourceId).orElseThrow();
+			assertFalse(afterMove.isMoving());
 		}
 
 		private void findSize(Map<Long, Long> map, Long id) {
@@ -454,6 +463,25 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 
 			FolderMetadata moved = folderMetadataJpaRepository.findById(childId).orElseThrow();
 			assertEquals(targetId, moved.getParentFolderId());
+		}
+
+		@Test
+		@DisplayName("검증 실패 시 is_moving 해제 및 folder_job 삭제가 수행된다")
+		void validation_failure_releases_moving_lock_and_deletes_job() {
+			FolderMetadata sourceFolder = folderTreeSetUp.getSubFolders().get(1);
+			long sourceId = sourceFolder.getId();
+
+			long invalidTargetId = 999999L; // 존재하지 않는 target
+			FolderMoveDto dto = moveDto(userId, invalidTargetId, sourceFolder.getRootId(), defaultFolderName);
+
+			CustomException ex = assertThrows(CustomException.class,
+				() -> folderService.moveFolder(sourceId, dto));
+
+			assertEquals(ErrorCode.FOLDER_NOT_FOUND.getMessage(), ex.getMessage());
+
+			FolderMetadata refreshedSource = folderMetadataJpaRepository.findById(sourceId).orElseThrow();
+			assertFalse(refreshedSource.isMoving());
+			assertTrue(folderJobJpaRepository.findById(sourceId).isEmpty());
 		}
 	}
 

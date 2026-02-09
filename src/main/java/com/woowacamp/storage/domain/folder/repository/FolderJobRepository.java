@@ -20,16 +20,18 @@ import lombok.extern.slf4j.Slf4j;
 public class FolderJobRepository {
 
 	private final FolderJobJpaRepository folderJobJpaRepository;
+	private final FolderMetadataJpaRepository folderMetadataJpaRepository;
 	private final ApplicationEventPublisher publisher;
 
 	@Transactional
-	public List<FolderJob> findStuckJobsWithCursor(LocalDateTime thresholdTime, Long lastId, int pageSize) {
+	public List<FolderJob> findStuckJobsWithCursor(List<FolderJobStatus> statuses,
+		LocalDateTime thresholdTime, Long lastId, int pageSize) {
 		if (lastId == null) {
 			return folderJobJpaRepository.findStuckJobsFirstPage(
-				FolderJobStatus.RUNNING, thresholdTime, pageSize);
+				statuses, thresholdTime, pageSize);
 		}
 		return folderJobJpaRepository.findStuckJobsWithCursor(
-			FolderJobStatus.RUNNING, thresholdTime, lastId, pageSize);
+			statuses, thresholdTime, lastId, pageSize);
 	}
 
 	@Transactional
@@ -53,9 +55,30 @@ public class FolderJobRepository {
 	 * 단일 Job 복구 처리 (스케줄러용)
 	 */
 	@Transactional
-	public void recoverSingleJob(FolderJob job) {
+	public void recoverSingleJob(FolderJob job, int maxRetry) {
 		log.warn("[FolderJobTransactionHelper] Recovering stuck job. jobId={}, updatedAt={}",
 			job.getId(), job.getUpdatedAt());
+
+		if (job.getRetryCount() >= maxRetry) {
+			job.markTerminated();
+			folderJobJpaRepository.save(job);
+			folderMetadataJpaRepository.releaseMovingLock(job.getId());
+			log.error("[FolderJobTransactionHelper] Job terminated (max retries exceeded). jobId={}",
+				job.getId());
+			return;
+		}
+
+		if (job.getStatus() == FolderJobStatus.RUNNING) {
+			job.incrementRetryCount();
+			if (job.getRetryCount() >= maxRetry) {
+				job.markTerminated();
+				folderJobJpaRepository.save(job);
+				folderMetadataJpaRepository.releaseMovingLock(job.getId());
+				log.error("[FolderJobTransactionHelper] Job terminated (max retries exceeded). jobId={}",
+					job.getId());
+				return;
+			}
+		}
 
 		job.updateStatus(FolderJobStatus.WAITING);
 		folderJobJpaRepository.save(job);
@@ -76,6 +99,7 @@ public class FolderJobRepository {
 
 		job.markCompleted();
 		folderJobJpaRepository.save(job);
+		folderMetadataJpaRepository.releaseMovingLock(jobId);
 
 		log.info("[FolderJobTransactionHelper] Job marked as COMPLETED. jobId={}", jobId);
 	}
@@ -84,14 +108,24 @@ public class FolderJobRepository {
 	 * Job 실패 처리
 	 */
 	@Transactional
-	public void markJobFailed(Long jobId) {
+	public boolean markJobFailed(Long jobId, int maxRetry) {
 		FolderJob job = folderJobJpaRepository.findById(jobId)
 			.orElseThrow(() -> new IllegalStateException("FolderJob not found: " + jobId));
+
+		job.incrementRetryCount();
+		if (job.getRetryCount() >= maxRetry) {
+			job.markTerminated();
+			folderJobJpaRepository.save(job);
+			folderMetadataJpaRepository.releaseMovingLock(jobId);
+			log.error("[FolderJobTransactionHelper] Job terminated (max retries exceeded). jobId={}", jobId);
+			return true;
+		}
 
 		job.markFailed();
 		folderJobJpaRepository.save(job);
 
 		log.error("[FolderJobTransactionHelper] Job marked as FAILED. jobId={}", jobId);
+		return false;
 	}
 
 	/**

@@ -107,7 +107,7 @@ class FolderMoveProcessorUnitTest {
 
 			// then
 			verify(folderJobRepository, never()).markJobCompleted(any());
-			verify(folderJobRepository, never()).markJobFailed(any());
+			verify(folderJobRepository, never()).markJobFailed(anyLong(), anyInt());
 		}
 
 		@Test
@@ -119,6 +119,7 @@ class FolderMoveProcessorUnitTest {
 			FolderMetadata root = createFolder(folderId, null, "/1/", "/root/");
 			ReflectionTestUtils.setField(folderMoveProcessor, "pageSize", 100);
 			ReflectionTestUtils.setField(folderMoveProcessor, "batchLimit", 500);
+			ReflectionTestUtils.setField(folderMoveProcessor, "maxRetry", 3);
 
 			given(folderJobJpaRepository.findById(folderId)).willReturn(Optional.of(job));
 			given(folderJobRepository.tryAcquireJob(folderId)).willReturn(true);
@@ -133,7 +134,7 @@ class FolderMoveProcessorUnitTest {
 
 			// then
 			verify(folderJobRepository, times(1)).markJobCompleted(folderId);
-			verify(folderJobRepository, never()).markJobFailed(any());
+			verify(folderJobRepository, never()).markJobFailed(anyLong(), anyInt());
 		}
 	}
 
@@ -163,6 +164,7 @@ class FolderMoveProcessorUnitTest {
 
 			ReflectionTestUtils.setField(folderMoveProcessor, "pageSize", 2);
 			ReflectionTestUtils.setField(folderMoveProcessor, "batchLimit", 500);
+			ReflectionTestUtils.setField(folderMoveProcessor, "maxRetry", 3);
 
 			given(folderJobJpaRepository.findById(folderId)).willReturn(Optional.of(job));
 			given(folderJobRepository.tryAcquireJob(folderId)).willReturn(true);
@@ -215,7 +217,7 @@ class FolderMoveProcessorUnitTest {
 				.anySatisfy(ids -> assertThat(ids).containsExactly(2L, 3L));
 
 			then(folderJobRepository).should(times(1)).markJobCompleted(folderId);
-			then(folderJobRepository).should(never()).markJobFailed(anyLong());
+			then(folderJobRepository).should(never()).markJobFailed(anyLong(), anyInt());
 		}
 
 		@Test
@@ -231,13 +233,14 @@ class FolderMoveProcessorUnitTest {
 			given(folderMetadataJpaRepository.findById(folderId)).willReturn(Optional.of(root));
 			given(folderMetadataRepository.findByParentFolderIdWithLastId(anyLong(), any(), anyInt()))
 				.willThrow(new RuntimeException("DB Connection Error"));
+			ReflectionTestUtils.setField(folderMoveProcessor, "maxRetry", 3);
 
 			// when & then
 			assertThatThrownBy(() -> folderMoveProcessor.processMove(folderId))
 				.isInstanceOf(CustomException.class)
 				.hasMessageContaining("메시지 처리에 실패했습니다.");
 
-			verify(folderJobRepository, times(1)).markJobFailed(folderId);
+			verify(folderJobRepository, times(1)).markJobFailed(folderId, 3);
 		}
 	}
 }

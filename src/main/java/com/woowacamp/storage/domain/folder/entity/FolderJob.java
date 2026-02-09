@@ -79,10 +79,13 @@ public class FolderJob {
 	@Enumerated(EnumType.STRING)
 	private FolderJobStatus status;
 
+	@Column(name = "retry_count", nullable = false, columnDefinition = "int default 0")
+	private int retryCount;
+
 	@Builder
 	public FolderJob(Long id, Long currentParentId, Long lastFolderId,
 		Long lastFileId, String parentStack, LocalDateTime updatedAt,
-		FolderJobStatus status) {
+		FolderJobStatus status, int retryCount) {
 		this.id = id;
 		this.currentParentId = currentParentId;
 		this.lastFolderId = lastFolderId;
@@ -90,6 +93,7 @@ public class FolderJob {
 		this.parentStack = parentStack;
 		this.updatedAt = updatedAt;
 		this.status = status;
+		this.retryCount = retryCount;
 	}
 
 	public void updateProgress(Long currentParentId, Long lastFolderId, Long lastFileId, String parentStack) {
@@ -117,6 +121,14 @@ public class FolderJob {
 
 	public void markFailed() {
 		this.status = FolderJobStatus.FAILED;
+	}
+
+	public void markTerminated() {
+		this.status = FolderJobStatus.TERMINATED;
+	}
+
+	public void incrementRetryCount() {
+		this.retryCount++;
 	}
 
 	public void resetFolderProgress() {

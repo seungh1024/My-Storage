@@ -43,6 +43,7 @@ spring:
         batchSize: 10
         consumerSize: 2
         maxConsumerSize: 2
+        prefetch: 1
         receiveTimeout: 1000
         dlx:
           exchange: folder.dlx.size.exchange
@@ -54,6 +55,7 @@ spring:
         batchSize: 10
         consumerSize: 2
         maxConsumerSize: 2
+        prefetch: 1
         receiveTimeout: 1000
         dlx:
           exchange: folder.dlx.move.exchange
@@ -88,6 +90,8 @@ folder:
     threadName: FileSearch-
   path:
     maxLength: 250
+  job:
+    maxRetry: 3
 
 file:
   reader:

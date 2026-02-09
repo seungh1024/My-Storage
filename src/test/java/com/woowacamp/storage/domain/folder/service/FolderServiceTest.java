@@ -295,7 +295,8 @@ class FolderServiceTest {
 				isNull(),          // lastFolderId
 				isNull(),          // lastFileId
 				eq("[]"),          // parentStack
-				eq(FolderJobStatus.WAITING.name())
+				eq(FolderJobStatus.WAITING.name()),
+				eq(0)
 			)).willReturn(1);
 
 			assertDoesNotThrow(() -> folderService.getFolderJobLock(10L));
@@ -315,7 +316,7 @@ class FolderServiceTest {
 		void fail_insert_not_1() {
 			given(folderMetadataJpaRepository.getMovingLock(10L)).willReturn(1);
 			given(folderJobJpaRepository.insert(
-				eq(10L), eq(10L), isNull(), isNull(), eq("[]"), eq(FolderJobStatus.WAITING.name())
+				eq(10L), eq(10L), isNull(), isNull(), eq("[]"), eq(FolderJobStatus.WAITING.name()), eq(0)
 			)).willReturn(0);
 
 			assertThrows(CustomException.class, () -> folderService.getFolderJobLock(10L));
@@ -326,7 +327,7 @@ class FolderServiceTest {
 		void fail_insert_duplicate() {
 			given(folderMetadataJpaRepository.getMovingLock(10L)).willReturn(1);
 			given(folderJobJpaRepository.insert(
-				eq(10L), eq(10L), isNull(), isNull(), eq("[]"), eq(FolderJobStatus.WAITING.name())
+				eq(10L), eq(10L), isNull(), isNull(), eq("[]"), eq(FolderJobStatus.WAITING.name()), eq(0)
 			)).willThrow(new DataIntegrityViolationException("dup"));
 
 			assertThrows(CustomException.class, () -> folderService.getFolderJobLock(10L));
@@ -343,7 +344,7 @@ class FolderServiceTest {
 		private void stubJobLockSuccess(long sourceId) {
 			given(folderMetadataJpaRepository.getMovingLock(sourceId)).willReturn(1);
 			given(folderJobJpaRepository.insert(
-				eq(sourceId), eq(sourceId), isNull(), isNull(), eq("[]"), eq(FolderJobStatus.WAITING.name())
+				eq(sourceId), eq(sourceId), isNull(), isNull(), eq("[]"), eq(FolderJobStatus.WAITING.name()), eq(0)
 			)).willReturn(1);
 		}
 
@@ -426,7 +427,7 @@ class FolderServiceTest {
 		void fail_job_insert_not_1() {
 			given(folderMetadataJpaRepository.getMovingLock(10L)).willReturn(1);
 			given(folderJobJpaRepository.insert(
-				eq(10L), eq(10L), isNull(), isNull(), eq("[]"), eq(FolderJobStatus.WAITING.name())
+				eq(10L), eq(10L), isNull(), isNull(), eq("[]"), eq(FolderJobStatus.WAITING.name()), eq(0)
 			)).willReturn(0);
 
 			assertThrows(CustomException.class, () -> folderService.moveFolder(10L, moveDto(100L, 30L, 1L, "x")));
@@ -438,7 +439,7 @@ class FolderServiceTest {
 		void fail_job_insert_duplicate() {
 			given(folderMetadataJpaRepository.getMovingLock(10L)).willReturn(1);
 			given(folderJobJpaRepository.insert(
-				eq(10L), eq(10L), isNull(), isNull(), eq("[]"), eq(FolderJobStatus.WAITING.name())
+				eq(10L), eq(10L), isNull(), isNull(), eq("[]"), eq(FolderJobStatus.WAITING.name()), eq(0)
 			)).willThrow(new DataIntegrityViolationException("dup"));
 
 			assertThrows(CustomException.class, () -> folderService.moveFolder(10L, moveDto(100L, 30L, 1L, "x")));
@@ -876,7 +877,7 @@ class FolderServiceTest {
 
 			given(folderMetadataJpaRepository.getMovingLock(sourceId)).willReturn(1);
 			given(folderJobJpaRepository.insert(
-				eq(sourceId), eq(sourceId), isNull(), isNull(), eq("[]"), eq(FolderJobStatus.WAITING.name())
+				eq(sourceId), eq(sourceId), isNull(), isNull(), eq("[]"), eq(FolderJobStatus.WAITING.name()), eq(0)
 			)).willReturn(1);
 
 			FolderMetadata source = folder(
@@ -905,7 +906,7 @@ class FolderServiceTest {
 			InOrder inOrder = inOrder(folderMetadataJpaRepository, folderJobJpaRepository);
 			inOrder.verify(folderMetadataJpaRepository).getMovingLock(sourceId);
 			inOrder.verify(folderJobJpaRepository).insert(
-				eq(sourceId), eq(sourceId), isNull(), isNull(), eq("[]"), eq(FolderJobStatus.WAITING.name())
+				eq(sourceId), eq(sourceId), isNull(), isNull(), eq("[]"), eq(FolderJobStatus.WAITING.name()), eq(0)
 			);
 			inOrder.verify(folderMetadataJpaRepository).findByIdNotDeleted(sourceId);
 		}

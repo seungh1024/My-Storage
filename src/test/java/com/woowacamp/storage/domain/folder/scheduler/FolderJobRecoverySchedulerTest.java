@@ -47,9 +47,9 @@ class FolderJobRecoverySchedulerTest extends IntegrationTestBase {
 	 */
 	private void createJobWithUpdatedAt(Long folderId, FolderJobStatus status, LocalDateTime updatedAt) {
 		jdbcTemplate.update(
-			"INSERT INTO folder_job (folder_id, current_parent_id, last_folder_id, last_file_id, parent_stack, updated_at, status) " +
-				"VALUES (?, ?, ?, ?, ?, ?, ?)",
-			folderId, folderId, null, null, "[]", updatedAt, status.name()
+			"INSERT INTO folder_job (folder_id, current_parent_id, last_folder_id, last_file_id, parent_stack, updated_at, status, retry_count) " +
+				"VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+			folderId, folderId, null, null, "[]", updatedAt, status.name(), 0
 		);
 	}
 
@@ -93,6 +93,44 @@ class FolderJobRecoverySchedulerTest extends IntegrationTestBase {
 		// then
 		FolderJob result = folderJobJpaRepository.findById(1L).orElseThrow();
 		assertThat(result.getStatus()).isEqualTo(FolderJobStatus.RUNNING); // 변경되지 않음
+	}
+
+	@Test
+	@DisplayName("FAILED 상태의 오래된 Job도 복구한다")
+	void recoverStuckJobs_RecoverOldFailedJobs() {
+		// given
+		LocalDateTime oldTime = LocalDateTime.now().minusMinutes(20);
+		createJobWithUpdatedAt(1L, FolderJobStatus.FAILED, oldTime);
+
+		// when
+		scheduler.recoverStuckJobs();
+
+		// then
+		FolderJob recovered = folderJobJpaRepository.findById(1L).orElseThrow();
+		assertThat(recovered.getStatus()).isIn(
+			FolderJobStatus.WAITING,
+			FolderJobStatus.RUNNING,
+			FolderJobStatus.COMPLETED,
+			FolderJobStatus.FAILED
+		);
+		assertThat(recovered.getRetryCount()).isEqualTo(0);
+	}
+
+	@Test
+	@DisplayName("재시도 한계를 넘은 Job은 TERMINATED로 전환한다")
+	void recoverStuckJobs_TerminatesWhenMaxRetryExceeded() {
+		// given
+		LocalDateTime oldTime = LocalDateTime.now().minusMinutes(20);
+		createJobWithUpdatedAt(1L, FolderJobStatus.RUNNING, oldTime);
+		jdbcTemplate.update("UPDATE folder_job SET retry_count = ? WHERE folder_id = ?", 2, 1L);
+
+		// when
+		scheduler.recoverStuckJobs();
+
+		// then
+		FolderJob result = folderJobJpaRepository.findById(1L).orElseThrow();
+		assertThat(result.getStatus()).isEqualTo(FolderJobStatus.TERMINATED);
+		assertThat(result.getRetryCount()).isEqualTo(3);
 	}
 
 	@Test

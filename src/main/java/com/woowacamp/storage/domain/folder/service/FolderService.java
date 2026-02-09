@@ -121,53 +121,64 @@ public class FolderService {
 		""")
 	public void moveFolder(Long sourceFolderId, FolderMoveDto dto) {
 		getFolderJobLock(sourceFolderId);
+		boolean moveEventPublished = false;
 
-		FolderMetadata sourceFolder = folderMetadataJpaRepository.findByIdNotDeleted(sourceFolderId)
-			.orElseThrow(() -> ErrorCode.FOLDER_NOT_FOUND.baseException(
-				StorageStringUtil.format("Folder id: {}", sourceFolderId)));
-		validateFolderOwner(sourceFolder, dto.userId());
+		try {
+			FolderMetadata sourceFolder = folderMetadataJpaRepository.findByIdNotDeleted(sourceFolderId)
+				.orElseThrow(() -> ErrorCode.FOLDER_NOT_FOUND.baseException(
+					StorageStringUtil.format("Folder id: {}", sourceFolderId)));
+			validateFolderOwner(sourceFolder, dto.userId());
 
-		FolderMetadata targetFolder = folderMetadataJpaRepository.findByIdNotDeleted(dto.targetFolderId())
-			.orElseThrow(() -> ErrorCode.FOLDER_NOT_FOUND.baseException(
-				StorageStringUtil.format("Folder id: {}", dto.targetFolderId())));
-		validateFolderOwner(targetFolder, dto.userId());
+			FolderMetadata targetFolder = folderMetadataJpaRepository.findByIdNotDeleted(dto.targetFolderId())
+				.orElseThrow(() -> ErrorCode.FOLDER_NOT_FOUND.baseException(
+					StorageStringUtil.format("Folder id: {}", dto.targetFolderId())));
+			validateFolderOwner(targetFolder, dto.userId());
 
-		FolderMetadata parentFolder = folderMetadataJpaRepository.findByIdNotDeleted(sourceFolder.getParentFolderId())
-			.orElseThrow(() -> ErrorCode.FOLDER_NOT_FOUND.baseException(
-				StorageStringUtil.format("Folder id: {}", sourceFolder.getParentFolderId())));
-		validateFolderOwner(parentFolder, dto.userId());
+			FolderMetadata parentFolder = folderMetadataJpaRepository.findByIdNotDeleted(sourceFolder.getParentFolderId())
+				.orElseThrow(() -> ErrorCode.FOLDER_NOT_FOUND.baseException(
+					StorageStringUtil.format("Folder id: {}", sourceFolder.getParentFolderId())));
+			validateFolderOwner(parentFolder, dto.userId());
 
-		validateInvalidMove(targetFolder, sourceFolder);
-		validatePathLength(sourceFolder, targetFolder);
-		validateParentsUtil.validateParentsFolderLock(parentFolder, targetFolder);
+			validateInvalidMove(targetFolder, sourceFolder);
+			validatePathLength(sourceFolder, targetFolder);
+			validateParentsUtil.validateParentsFolderLock(parentFolder, targetFolder);
 
-		Long originalParentId = sourceFolder.getParentFolderId();
+			Long originalParentId = sourceFolder.getParentFolderId();
 
-		sourceFolder.updateParentFolderId(targetFolder.getId()); // 부모 변경
-		sourceFolder.updateIdFullPath(targetFolder.getIdFullPath()); // pk 전체 경로 변경
-		sourceFolder.updateNameFullPath(targetFolder.getNameFullPath()); // 이름 전체 경로 변경
-		sourceFolder.updateNamePathLength(sourceFolder.getNameFullPath().length()); // 이름 전체 경로 길이 변경
-		sourceFolder.markMoving(); // 영속성 컨텍스트 이슈로 같이 true로 맞춰주기
+			sourceFolder.updateParentFolderId(targetFolder.getId()); // 부모 변경
+			sourceFolder.updateIdFullPath(targetFolder.getIdFullPath()); // pk 전체 경로 변경
+			sourceFolder.updateNameFullPath(targetFolder.getNameFullPath()); // 이름 전체 경로 변경
+			sourceFolder.updateNamePathLength(sourceFolder.getNameFullPath().length()); // 이름 전체 경로 길이 변경
+			sourceFolder.markMoving(); // 영속성 컨텍스트 이슈로 같이 true로 맞춰주기
 
-		folderMetadataJpaRepository.save(sourceFolder);
+			folderMetadataJpaRepository.save(sourceFolder);
 
+			log.info("[moveFolder] About to publish events. sourceId={}, originalParentId={}, targetId={}, size={}",
+				sourceFolderId, originalParentId, targetFolder.getId(), sourceFolder.getSize());
+			// 현재 폴더의 부모 폴더에 감소하는 용량 처리 이벤트 발행
+			publisher.publishEvent(new FolderSizeEvent(originalParentId, -sourceFolder.getSize()));
+			log.info("[moveFolder] Published FolderSizeEvent for originalParent. parentId={}, size={}",
+				originalParentId, -sourceFolder.getSize());
+			// 이동한 폴더의 대상 폴더에 증가하는 용량 처리 이벤트 발행
+			publisher.publishEvent(new FolderSizeEvent(targetFolder.getId(), sourceFolder.getSize()));
+			log.info("[moveFolder] Published FolderSizeEvent for target. targetId={}, size={}",
+				targetFolder.getId(), sourceFolder.getSize());
 
-		log.info("[moveFolder] About to publish events. sourceId={}, originalParentId={}, targetId={}, size={}",
-			sourceFolderId, originalParentId, targetFolder.getId(), sourceFolder.getSize());
-		// 현재 폴더의 부모 폴더에 감소하는 용량 처리 이벤트 발행
-		publisher.publishEvent(new FolderSizeEvent(originalParentId, -sourceFolder.getSize()));
-		log.info("[moveFolder] Published FolderSizeEvent for originalParent. parentId={}, size={}",
-			originalParentId, -sourceFolder.getSize());
-		// 이동한 폴더의 대상 폴더에 증가하는 용량 처리 이벤트 발행
-		publisher.publishEvent(new FolderSizeEvent(targetFolder.getId(), sourceFolder.getSize()));
-		log.info("[moveFolder] Published FolderSizeEvent for target. targetId={}, size={}",
-			targetFolder.getId(), sourceFolder.getSize());
+			// 폴더 이동 이벤트 발행
+			publisher.publishEvent(new FolderMoveEvent(sourceFolderId));
+			moveEventPublished = true;
+			log.info("[moveFolder] Published FolderMoveEvent. folderId={}", sourceFolderId);
 
-		// 폴더 이동 이벤트 발행
-		publisher.publishEvent(new FolderMoveEvent(sourceFolderId));
-		log.info("[moveFolder] Published FolderMoveEvent. folderId={}", sourceFolderId);
-
-		log.info("[moveFolder] All events published successfully.");
+			log.info("[moveFolder] All events published successfully.");
+		} catch (RuntimeException e) {
+			if (!moveEventPublished) {
+				folderMetadataJpaRepository.releaseMovingLock(sourceFolderId);
+				folderJobJpaRepository.deleteById(sourceFolderId);
+				log.warn("[moveFolder] Released moving lock and deleted job due to validation failure. folderId={}",
+					sourceFolderId, e);
+			}
+			throw e;
+		}
 	}
 
 	/**
@@ -449,7 +460,8 @@ public class FolderService {
 				null,                  // lastFolderId
 				null,                  // lastFileId
 				"[]",                  // parentStack
-				FolderJobStatus.WAITING.name()
+				FolderJobStatus.WAITING.name(),
+				0
 			);
 
 			if (insertResult != 1) {

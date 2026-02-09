@@ -195,6 +195,15 @@ public interface FolderMetadataJpaRepository extends JpaRepository<FolderMetadat
 		""")
 	int getMovingLock(@Param("id") Long id);
 
+	@Transactional
+	@Modifying(flushAutomatically = true, clearAutomatically = true)
+	@Query(value = """
+			UPDATE FolderMetadata f
+			SET f.isMoving = false, f.updatedAt = NOW()
+			WHERE f.id = :id AND f.isMoving = true
+		""")
+	int releaseMovingLock(@Param("id") Long id);
+
 	@Query(value = """
 			SELECT f.id
 			FROM FolderMetadata f

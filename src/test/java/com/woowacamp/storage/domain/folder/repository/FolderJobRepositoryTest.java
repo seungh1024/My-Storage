@@ -43,9 +43,9 @@ class FolderJobRepositoryTest extends IntegrationTestBase {
 	 */
 	private void createJobWithUpdatedAt(Long folderId, FolderJobStatus status, LocalDateTime updatedAt) {
 		jdbcTemplate.update(
-			"INSERT INTO folder_job (folder_id, current_parent_id, last_folder_id, last_file_id, parent_stack, updated_at, status) " +
-				"VALUES (?, ?, ?, ?, ?, ?, ?)",
-			folderId, folderId, null, null, "[]", updatedAt, status.name()
+			"INSERT INTO folder_job (folder_id, current_parent_id, last_folder_id, last_file_id, parent_stack, updated_at, status, retry_count) " +
+				"VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+			folderId, folderId, null, null, "[]", updatedAt, status.name(), 0
 		);
 	}
 
@@ -113,11 +113,28 @@ class FolderJobRepositoryTest extends IntegrationTestBase {
 		FolderJob job = createJob(1L, FolderJobStatus.RUNNING);
 
 		// when
-		folderJobRepository.markJobFailed(1L);
+		folderJobRepository.markJobFailed(1L, 3);
 
 		// then
 		FolderJob failed = folderJobJpaRepository.findById(1L).orElseThrow();
 		assertThat(failed.getStatus()).isEqualTo(FolderJobStatus.FAILED);
+		assertThat(failed.getRetryCount()).isEqualTo(1);
+	}
+
+	@Test
+	@DisplayName("재시도 한계를 넘으면 Job을 TERMINATED로 마킹한다")
+	void markJobFailed_TerminatesWhenMaxRetryExceeded() {
+		// given
+		FolderJob job = createJob(1L, FolderJobStatus.RUNNING);
+		jdbcTemplate.update("UPDATE folder_job SET retry_count = ? WHERE folder_id = ?", 2, 1L);
+
+		// when
+		folderJobRepository.markJobFailed(1L, 3);
+
+		// then
+		FolderJob terminated = folderJobJpaRepository.findById(1L).orElseThrow();
+		assertThat(terminated.getStatus()).isEqualTo(FolderJobStatus.TERMINATED);
+		assertThat(terminated.getRetryCount()).isEqualTo(3);
 	}
 
 	@Test
@@ -136,7 +153,8 @@ class FolderJobRepositoryTest extends IntegrationTestBase {
 
 		// when
 		LocalDateTime threshold = LocalDateTime.now().minusMinutes(10);
-		List<FolderJob> stuckJobs = folderJobRepository.findStuckJobsWithCursor(threshold, null, 10);
+		List<FolderJob> stuckJobs = folderJobRepository.findStuckJobsWithCursor(
+			List.of(FolderJobStatus.RUNNING, FolderJobStatus.FAILED), threshold, null, 10);
 
 		// then
 		assertThat(stuckJobs).hasSize(3);
@@ -198,11 +216,13 @@ class FolderJobRepositoryTest extends IntegrationTestBase {
 		LocalDateTime threshold = LocalDateTime.now().minusMinutes(10);
 
 		// when - 첫 페이지 (2개)
-		List<FolderJob> page1 = folderJobRepository.findStuckJobsWithCursor(threshold, null, 2);
+		List<FolderJob> page1 = folderJobRepository.findStuckJobsWithCursor(
+			List.of(FolderJobStatus.RUNNING, FolderJobStatus.FAILED), threshold, null, 2);
 
 		// when - 두 번째 페이지
 		Long lastId = page1.get(page1.size() - 1).getId();
-		List<FolderJob> page2 = folderJobRepository.findStuckJobsWithCursor(threshold, lastId, 2);
+		List<FolderJob> page2 = folderJobRepository.findStuckJobsWithCursor(
+			List.of(FolderJobStatus.RUNNING, FolderJobStatus.FAILED), threshold, lastId, 2);
 
 		// then
 		assertThat(page1).hasSize(2);
