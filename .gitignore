@@ -42,6 +42,7 @@ application-secret.yml
 /logs/*
 /ceph/*
 *.yml
+!.github/workflows/*.yml
 
 
 telegraf.conf
