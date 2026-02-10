@@ -16,10 +16,14 @@ import com.woowacamp.storage.global.constant.PermissionType;
 import com.woowacamp.storage.global.util.StorageStringUtil;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class DummyService {
+	private static final SecureRandom RANDOM = new SecureRandom();
+
 	private final UserDummyRepository userDummyRepository;
 	private final FolderDummyRepository folderDummyRepository;
 	private final FolderMetadataJpaRepository folderMetadataJpaRepository;
@@ -75,7 +79,7 @@ public class DummyService {
 		long size = 1000;
 		long minSize = 100;
 		long id = 0;
-		System.out.println("id = "+id);
+		log.info("[DummyService] start createFolderDummy id={}", id);
 		List<FolderMetadata> idListById = folderMetadataJpaRepository.findFolderListById(id, size);
 		idQueue.addAll(idListById);
 		id = idListById.get(idListById.size() - 1).getId();
@@ -83,11 +87,10 @@ public class DummyService {
 		long childId = startId+1;
 		long total = 10_000_000 -startId;
 
-		SecureRandom sr = new SecureRandom();
 		List<FolderMetadata> childList = new ArrayList<>();
 		while (total > 0 && !idQueue.isEmpty()) {
 			FolderMetadata parent = idQueue.poll();
-			long cnt = sr.nextLong(1, 5);
+			long cnt = RANDOM.nextLong(1, 5);
 
 			for (int i = 0; i < cnt; i++) {
 				String folderName = "folder "+childId;
