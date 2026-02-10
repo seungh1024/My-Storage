@@ -276,11 +276,12 @@ class FolderMoveProcessorIntegrationTest extends IntegrationTestBase {
 		void processMove_NoJob_ThrowsException() {
 			// given
 			FolderMetadata root = createAndSaveFolder(null, 1L, "/1/", "/root/");
+			long rootId = root.getId();
 
 			// Job 생성하지 않음
 
 			// when & then
-			assertThatThrownBy(() -> folderMoveProcessor.processMove(root.getId()))
+			assertThatThrownBy(() -> folderMoveProcessor.processMove(rootId))
 				.hasMessageContaining("폴더를 찾을 수 없습니다.");
 		}
 	}

@@ -145,7 +145,8 @@ class FileServiceIntegrationTest extends IntegrationTestBase {
 			);
 
 			// when & then
-			assertThatThrownBy(() -> fileService.moveFile(sourceFile.getId(), dto))
+			long sourceFileId = sourceFile.getId();
+			assertThatThrownBy(() -> fileService.moveFile(sourceFileId, dto))
 				.isInstanceOf(CustomException.class);
 		}
 	}

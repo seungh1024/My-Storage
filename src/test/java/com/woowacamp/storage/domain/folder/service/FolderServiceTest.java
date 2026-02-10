@@ -415,7 +415,8 @@ class FolderServiceTest {
 		void fail_moving_lock_conflict() {
 			given(folderMetadataJpaRepository.getMovingLock(10L)).willReturn(0);
 
-			assertThrows(CustomException.class, () -> folderService.moveFolder(10L, moveDto(100L, 30L, 1L, "x")));
+			FolderMoveDto dto = moveDto(100L, 30L, 1L, "x");
+			assertThrows(CustomException.class, () -> folderService.moveFolder(10L, dto));
 
 			then(folderJobJpaRepository).shouldHaveNoInteractions();
 			then(folderMetadataJpaRepository).should(never()).findByIdNotDeleted(anyLong());
@@ -430,7 +431,8 @@ class FolderServiceTest {
 				eq(10L), eq(10L), isNull(), isNull(), eq("[]"), eq(FolderJobStatus.WAITING.name()), eq(0)
 			)).willReturn(0);
 
-			assertThrows(CustomException.class, () -> folderService.moveFolder(10L, moveDto(100L, 30L, 1L, "x")));
+			FolderMoveDto dto = moveDto(100L, 30L, 1L, "x");
+			assertThrows(CustomException.class, () -> folderService.moveFolder(10L, dto));
 			then(folderMetadataJpaRepository).should(never()).findByIdNotDeleted(anyLong());
 		}
 
@@ -442,7 +444,8 @@ class FolderServiceTest {
 				eq(10L), eq(10L), isNull(), isNull(), eq("[]"), eq(FolderJobStatus.WAITING.name()), eq(0)
 			)).willThrow(new DataIntegrityViolationException("dup"));
 
-			assertThrows(CustomException.class, () -> folderService.moveFolder(10L, moveDto(100L, 30L, 1L, "x")));
+			FolderMoveDto dto = moveDto(100L, 30L, 1L, "x");
+			assertThrows(CustomException.class, () -> folderService.moveFolder(10L, dto));
 			then(folderMetadataJpaRepository).should(never()).findByIdNotDeleted(anyLong());
 		}
 
@@ -452,7 +455,8 @@ class FolderServiceTest {
 			stubJobLockSuccess(10L);
 			given(folderMetadataJpaRepository.findByIdNotDeleted(10L)).willReturn(Optional.empty());
 
-			assertThrows(CustomException.class, () -> folderService.moveFolder(10L, moveDto(100L, 30L, 1L, "x")));
+			FolderMoveDto dto = moveDto(100L, 30L, 1L, "x");
+			assertThrows(CustomException.class, () -> folderService.moveFolder(10L, dto));
 			then(folderMetadataJpaRepository).should(never()).findByIdNotDeleted(30L);
 		}
 
@@ -469,7 +473,8 @@ class FolderServiceTest {
 			);
 			given(folderMetadataJpaRepository.findByIdNotDeleted(sourceId)).willReturn(Optional.of(source));
 
-			assertThrows(CustomException.class, () -> folderService.moveFolder(sourceId, moveDto(100L, 30L, 1L, "x")));
+			FolderMoveDto dto = moveDto(100L, 30L, 1L, "x");
+			assertThrows(CustomException.class, () -> folderService.moveFolder(sourceId, dto));
 			then(folderMetadataJpaRepository).should(never()).findByIdNotDeleted(30L);
 		}
 
@@ -489,7 +494,8 @@ class FolderServiceTest {
 			given(folderMetadataJpaRepository.findByIdNotDeleted(sourceId)).willReturn(Optional.of(source));
 			given(folderMetadataJpaRepository.findByIdNotDeleted(targetId)).willReturn(Optional.empty());
 
-			assertThrows(CustomException.class, () -> folderService.moveFolder(sourceId, moveDto(100L, targetId, 1L, "x")));
+			FolderMoveDto dto = moveDto(100L, targetId, 1L, "x");
+			assertThrows(CustomException.class, () -> folderService.moveFolder(sourceId, dto));
 			then(folderMetadataJpaRepository).should(never()).findByIdNotDeleted(20L);
 		}
 
@@ -514,7 +520,8 @@ class FolderServiceTest {
 			given(folderMetadataJpaRepository.findByIdNotDeleted(sourceId)).willReturn(Optional.of(source));
 			given(folderMetadataJpaRepository.findByIdNotDeleted(targetId)).willReturn(Optional.of(target));
 
-			assertThrows(CustomException.class, () -> folderService.moveFolder(sourceId, moveDto(100L, targetId, 1L, "x")));
+			FolderMoveDto dto = moveDto(100L, targetId, 1L, "x");
+			assertThrows(CustomException.class, () -> folderService.moveFolder(sourceId, dto));
 			then(folderMetadataJpaRepository).should(never()).findByIdNotDeleted(20L);
 		}
 
@@ -548,8 +555,8 @@ class FolderServiceTest {
 			given(folderMetadataJpaRepository.findByIdNotDeleted(targetId)).willReturn(Optional.of(target));
 			given(folderMetadataJpaRepository.findByIdNotDeleted(parentId)).willReturn(Optional.of(parent));
 
-			assertThrows(CustomException.class,
-				() -> folderService.moveFolder(sourceId, moveDto(userId, targetId, 1L, "x")));
+			FolderMoveDto dto = moveDto(userId, targetId, 1L, "x");
+			assertThrows(CustomException.class, () -> folderService.moveFolder(sourceId, dto));
 
 			then(folderMetadataJpaRepository).should(never())
 				.existsByParentFolderIdAndUploadFolderName(anyLong(), anyString());
@@ -582,8 +589,8 @@ class FolderServiceTest {
 			given(folderMetadataJpaRepository.findByIdNotDeleted(sourceId)).willReturn(Optional.of(same)); // target 조회도 같은 id
 			given(folderMetadataJpaRepository.findByIdNotDeleted(parentId)).willReturn(Optional.of(parent));
 
-			assertThrows(CustomException.class,
-				() -> folderService.moveFolder(sourceId, moveDto(userId, sourceId, rootId, "x")));
+			FolderMoveDto dto = moveDto(userId, sourceId, rootId, "x");
+			assertThrows(CustomException.class, () -> folderService.moveFolder(sourceId, dto));
 
 			then(folderMetadataJpaRepository).should(never()).save(any());
 			then(validateParentsUtil).shouldHaveNoInteractions();
@@ -621,8 +628,8 @@ class FolderServiceTest {
 			given(folderMetadataJpaRepository.findByIdNotDeleted(targetId)).willReturn(Optional.of(target));
 			given(folderMetadataJpaRepository.findByIdNotDeleted(parentId)).willReturn(Optional.of(parent));
 
-			assertThrows(CustomException.class,
-				() -> folderService.moveFolder(sourceId, moveDto(userId, targetId, rootId, "x")));
+			FolderMoveDto dto = moveDto(userId, targetId, rootId, "x");
+			assertThrows(CustomException.class, () -> folderService.moveFolder(sourceId, dto));
 
 			then(folderMetadataJpaRepository).should(never())
 				.existsByParentFolderIdAndUploadFolderName(anyLong(), anyString());
@@ -663,8 +670,8 @@ class FolderServiceTest {
 			given(folderMetadataJpaRepository.existsByParentFolderIdAndUploadFolderName(targetId, "dup"))
 				.willReturn(true);
 
-			assertThrows(CustomException.class,
-				() -> folderService.moveFolder(sourceId, moveDto(userId, targetId, rootId, "dtoNameIrrelevant")));
+			FolderMoveDto dto = moveDto(userId, targetId, rootId, "dtoNameIrrelevant");
+			assertThrows(CustomException.class, () -> folderService.moveFolder(sourceId, dto));
 
 			then(folderMetadataJpaRepository).should(never()).save(any());
 			then(validateParentsUtil).shouldHaveNoInteractions();
@@ -709,8 +716,8 @@ class FolderServiceTest {
 			// ✅ validatePathLength 내부 parent 조회 실패 유도
 			given(folderMetadataJpaRepository.findById(parentId)).willReturn(Optional.empty());
 
-			assertThrows(CustomException.class,
-				() -> folderService.moveFolder(sourceId, moveDto(userId, targetId, rootId, "x")));
+			FolderMoveDto dto = moveDto(userId, targetId, rootId, "x");
+			assertThrows(CustomException.class, () -> folderService.moveFolder(sourceId, dto));
 
 			then(folderMetadataJpaRepository).should().findById(parentId);
 			then(validateParentsUtil).shouldHaveNoInteractions();
@@ -760,8 +767,8 @@ class FolderServiceTest {
 			given(fileMetadataJpaRepository.findDeepestFileByPrefix(eq(rootId), eq(source.getNameFullPath())))
 				.willReturn(Optional.empty());
 
-			assertThrows(CustomException.class,
-				() -> folderService.moveFolder(sourceId, moveDto(userId, targetId, rootId, "x")));
+			FolderMoveDto dto = moveDto(userId, targetId, rootId, "x");
+			assertThrows(CustomException.class, () -> folderService.moveFolder(sourceId, dto));
 
 			then(validateParentsUtil).shouldHaveNoInteractions();
 			then(folderMetadataJpaRepository).should(never()).save(any());
@@ -811,8 +818,8 @@ class FolderServiceTest {
 			willThrow(ErrorCode.PARENT_LOCKED.baseException())
 				.given(validateParentsUtil).validateParentsFolderLock(parentNotDeleted, target);
 
-			assertThrows(CustomException.class,
-				() -> folderService.moveFolder(sourceId, moveDto(userId, targetId, rootId, "x")));
+			FolderMoveDto dto = moveDto(userId, targetId, rootId, "x");
+			assertThrows(CustomException.class, () -> folderService.moveFolder(sourceId, dto));
 
 			then(folderMetadataJpaRepository).should(never()).save(any());
 			then(publisher).shouldHaveNoInteractions();
@@ -861,8 +868,8 @@ class FolderServiceTest {
 			willDoNothing().given(validateParentsUtil).validateParentsFolderLock(parentNotDeleted, target);
 			willThrow(new RuntimeException("db")).given(folderMetadataJpaRepository).save(any(FolderMetadata.class));
 
-			assertThrows(RuntimeException.class,
-				() -> folderService.moveFolder(sourceId, moveDto(userId, targetId, rootId, "x")));
+			FolderMoveDto dto = moveDto(userId, targetId, rootId, "x");
+			assertThrows(RuntimeException.class, () -> folderService.moveFolder(sourceId, dto));
 
 			then(publisher).shouldHaveNoInteractions();
 		}
@@ -900,8 +907,8 @@ class FolderServiceTest {
 			given(folderMetadataJpaRepository.findByIdNotDeleted(targetId)).willReturn(Optional.of(target));
 			given(folderMetadataJpaRepository.findByIdNotDeleted(parentId)).willReturn(Optional.of(parent));
 
-			assertThrows(CustomException.class,
-				() -> folderService.moveFolder(sourceId, moveDto(userId, targetId, 1L, "x")));
+			FolderMoveDto dto = moveDto(userId, targetId, 1L, "x");
+			assertThrows(CustomException.class, () -> folderService.moveFolder(sourceId, dto));
 
 			InOrder inOrder = inOrder(folderMetadataJpaRepository, folderJobJpaRepository);
 			inOrder.verify(folderMetadataJpaRepository).getMovingLock(sourceId);
@@ -979,7 +986,6 @@ class FolderServiceTest {
 			ArgumentCaptor<FolderMetadata> saveCaptor = ArgumentCaptor.forClass(FolderMetadata.class);
 			then(folderMetadataJpaRepository).should(times(2)).save(saveCaptor.capture());
 
-			FolderMetadata firstArg = saveCaptor.getAllValues().get(0);  // factory 생성 객체(보통 id null)
 			FolderMetadata secondArg = saveCaptor.getAllValues().get(1); // id 부여된 객체
 
 			// 두번째 save 대상은 id가 존재하고, updateIdFullPath가 적용되어야 함

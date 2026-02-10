@@ -66,7 +66,7 @@ class FolderJobRepositoryTest extends IntegrationTestBase {
 	@DisplayName("WAITING 상태의 Job을 RUNNING으로 변경한다 (CAS 성공)")
 	void tryAcquireJob_Success() {
 		// given
-		FolderJob job = createJob(1L, FolderJobStatus.WAITING);
+		createJob(1L, FolderJobStatus.WAITING);
 
 		// when
 		boolean acquired = folderJobRepository.tryAcquireJob(1L);
@@ -81,7 +81,7 @@ class FolderJobRepositoryTest extends IntegrationTestBase {
 	@DisplayName("이미 RUNNING 상태의 Job은 획득 실패 (CAS 실패)")
 	void tryAcquireJob_AlreadyRunning_Fails() {
 		// given
-		FolderJob job = createJob(1L, FolderJobStatus.RUNNING);
+		createJob(1L, FolderJobStatus.RUNNING);
 
 		// when
 		boolean acquired = folderJobRepository.tryAcquireJob(1L);
@@ -96,7 +96,7 @@ class FolderJobRepositoryTest extends IntegrationTestBase {
 	@DisplayName("Job을 COMPLETED로 마킹한다")
 	void markJobCompleted_Success() {
 		// given
-		FolderJob job = createJob(1L, FolderJobStatus.RUNNING);
+		createJob(1L, FolderJobStatus.RUNNING);
 
 		// when
 		folderJobRepository.markJobCompleted(1L);
@@ -110,7 +110,7 @@ class FolderJobRepositoryTest extends IntegrationTestBase {
 	@DisplayName("Job을 FAILED로 마킹한다")
 	void markJobFailed_Success() {
 		// given
-		FolderJob job = createJob(1L, FolderJobStatus.RUNNING);
+		createJob(1L, FolderJobStatus.RUNNING);
 
 		// when
 		folderJobRepository.markJobFailed(1L, 3);
@@ -125,7 +125,7 @@ class FolderJobRepositoryTest extends IntegrationTestBase {
 	@DisplayName("재시도 한계를 넘으면 Job을 TERMINATED로 마킹한다")
 	void markJobFailed_TerminatesWhenMaxRetryExceeded() {
 		// given
-		FolderJob job = createJob(1L, FolderJobStatus.RUNNING);
+		createJob(1L, FolderJobStatus.RUNNING);
 		jdbcTemplate.update("UPDATE folder_job SET retry_count = ? WHERE folder_id = ?", 2, 1L);
 
 		// when
@@ -149,7 +149,7 @@ class FolderJobRepositoryTest extends IntegrationTestBase {
 		createJobWithUpdatedAt(3L, FolderJobStatus.RUNNING, oldTime);
 
 		// 최근 Job (조회되지 않아야 함)
-		FolderJob recentJob = createJob(4L, FolderJobStatus.RUNNING);
+		createJob(4L, FolderJobStatus.RUNNING);
 
 		// when
 		LocalDateTime threshold = LocalDateTime.now().minusMinutes(10);
@@ -173,7 +173,7 @@ class FolderJobRepositoryTest extends IntegrationTestBase {
 		createJobWithUpdatedAt(2L, FolderJobStatus.COMPLETED, oldTime.minusDays(1));
 
 		// 최근 Job (조회되지 않아야 함)
-		FolderJob recentJob = createJob(3L, FolderJobStatus.COMPLETED);
+		createJob(3L, FolderJobStatus.COMPLETED);
 
 		// when
 		LocalDateTime threshold = LocalDateTime.now().minusDays(7);
@@ -189,9 +189,9 @@ class FolderJobRepositoryTest extends IntegrationTestBase {
 	@DisplayName("Job을 일괄 삭제한다")
 	void deleteJobsBatch_Success() {
 		// given
-		FolderJob job1 = createJob(1L, FolderJobStatus.COMPLETED);
-		FolderJob job2 = createJob(2L, FolderJobStatus.COMPLETED);
-		FolderJob job3 = createJob(3L, FolderJobStatus.COMPLETED);
+		createJob(1L, FolderJobStatus.COMPLETED);
+		createJob(2L, FolderJobStatus.COMPLETED);
+		createJob(3L, FolderJobStatus.COMPLETED);
 
 		// when
 		int deleted = folderJobRepository.deleteJobsBatch(List.of(1L, 2L));

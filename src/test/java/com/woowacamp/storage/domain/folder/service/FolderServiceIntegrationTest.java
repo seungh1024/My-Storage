@@ -1,11 +1,13 @@
 package com.woowacamp.storage.domain.folder.service;
 
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+import org.awaitility.Awaitility;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -59,19 +61,22 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 		folderService.getFolderJobLock(folderId);
 	}
 
-	private void await(BooleanSupplierWithException condition, long timeoutMs, long intervalMs) throws Exception {
-		long start = System.currentTimeMillis();
-		while (System.currentTimeMillis() - start < timeoutMs) {
-			if (condition.getAsBoolean())
-				return;
-			Thread.sleep(intervalMs);
-		}
-		fail("condition not satisfied within timeout: " + timeoutMs + "ms");
-	}
-
 	@FunctionalInterface
 	private interface BooleanSupplierWithException {
 		boolean getAsBoolean() throws Exception;
+	}
+
+	private void await(BooleanSupplierWithException condition, long timeoutMs, long intervalMs) {
+		Awaitility.await()
+			.atMost(Duration.ofMillis(timeoutMs))
+			.pollInterval(Duration.ofMillis(intervalMs))
+			.until(() -> {
+				try {
+					return condition.getAsBoolean();
+				} catch (Exception e) {
+					return false;
+				}
+			});
 	}
 
 	// =========================================================
@@ -150,7 +155,7 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 
 		@Test
 		@DisplayName("폴더 이동 성공 테스트(용량 전파 포함)")
-		void folder_move_success_test() throws Exception {
+		void folder_move_success_test() {
 			FolderMetadata sourceFolder = folderTreeSetUp.getSubFolders().get(1);
 			long sourceId = sourceFolder.getId();
 
@@ -309,6 +314,7 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 		@DisplayName("폴더 이름 길이가 최대치를 초과하면 폴더 이동에 실패한다.")
 		void folder_move_maximum_depth_test() {
 			FolderMetadata sourceFolder = folderTreeSetUp.getSubFolders().get(1);
+			long sourceId = sourceFolder.getId();
 
 			FolderMetadata targetFolder = folderTreeSetUp.getLongestFolder();
 			long targetId = targetFolder.getId();
@@ -316,7 +322,7 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 			FolderMoveDto dto = moveDto(userId, targetId, targetFolder.getRootId(), sourceFolder.getUploadFolderName());
 
 			CustomException ex = assertThrows(CustomException.class,
-				() -> folderService.moveFolder(sourceFolder.getId(), dto));
+				() -> folderService.moveFolder(sourceId, dto));
 
 			assertEquals(ErrorCode.EXCEED_MAX_PATH_LENGTH.getMessage(), ex.getMessage());
 		}
@@ -430,6 +436,7 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 		@DisplayName("폴더 이름 길이가 최대치를 초과하면 폴더 이동에 실패한다.")
 		void folder_move_maximum_depth_test() {
 			FolderMetadata sourceFolder = folderTreeSetUp.getSubFolders().get(1);
+			long sourceId = sourceFolder.getId();
 
 			FolderMetadata targetFolder = folderTreeSetUp.getLongestFolder();
 			long targetId = targetFolder.getId();
@@ -437,7 +444,7 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 			FolderMoveDto dto = moveDto(userId, targetId, targetFolder.getRootId(), sourceFolder.getUploadFolderName());
 
 			CustomException ex = assertThrows(CustomException.class,
-				() -> folderService.moveFolder(sourceFolder.getId(), dto));
+				() -> folderService.moveFolder(sourceId, dto));
 
 			assertEquals(ErrorCode.EXCEED_MAX_PATH_LENGTH.getMessage(), ex.getMessage());
 		}
@@ -491,7 +498,7 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 
 		@Test
 		@DisplayName("폴더 이동 동시성 테스트: 루트 용량은 깨지지 않는다")
-		void concurrent_folder_move_test() throws Exception {
+		void concurrent_folder_move_test() {
 			FolderMetadata folderA = folderTreeSetUp.getSubSubFolder();
 			FolderMetadata folderB = folderMetadataJpaRepository.findById(folderA.getParentFolderId()).orElseThrow();
 
@@ -519,6 +526,7 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 					try {
 						folderService.moveFolder(aId, moveDto(userId, targetFolderId, rootId, defaultFolderName));
 					} catch (Exception ignored) {
+						// Expected: concurrent moves may fail due to lock contention; final size is asserted below.
 					} finally {
 						latch.countDown();
 					}
@@ -528,6 +536,7 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 					try {
 						folderService.moveFolder(bId, moveDto(userId, targetFolderId, rootId, defaultFolderName));
 					} catch (Exception ignored) {
+						// Expected: concurrent moves may fail due to lock contention; final size is asserted below.
 					} finally {
 						latch.countDown();
 					}
@@ -537,6 +546,7 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 					try {
 						folderService.moveFolder(aId, moveDto(userId, aParent, rootId, defaultFolderName));
 					} catch (Exception ignored) {
+						// Expected: concurrent moves may fail due to lock contention; final size is asserted below.
 					} finally {
 						latch.countDown();
 					}
@@ -546,13 +556,19 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 					try {
 						folderService.moveFolder(bId, moveDto(userId, bParent, rootId, defaultFolderName));
 					} catch (Exception ignored) {
+						// Expected: concurrent moves may fail due to lock contention; final size is asserted below.
 					} finally {
 						latch.countDown();
 					}
 				});
 			}
 
-			latch.await();
+			try {
+				latch.await();
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+				fail("Concurrent move test interrupted");
+			}
 			executorService.shutdown();
 
 			// ✅ 비동기 용량 반영 안정화 대기 (폴링)

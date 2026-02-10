@@ -49,14 +49,7 @@ public abstract class IntegrationTestBase extends ContainerBaseConfig {
 	protected void cleanup() {
 		// ✅ RabbitMQ 큐를 먼저 비우기 (새 메시지 유입 차단)
 		purgeAllQueues(rabbitTemplate);
-		
-		// ✅ Consumer가 처리 중인 메시지를 완료할 시간 제공
-		try {
-			Thread.sleep(500); // Consumer가 처리 완료하도록 대기
-		} catch (InterruptedException e) {
-			Thread.currentThread().interrupt();
-		}
-		
+
 		// ✅ DB 정리 (이제 안전하게 삭제)
 		messageInfoJpaRepository.deleteAllInBatch();
 		folderJobJpaRepository.deleteAllInBatch();
@@ -65,12 +58,5 @@ public abstract class IntegrationTestBase extends ContainerBaseConfig {
 		
 		// ✅ 다시 한번 큐 비우기 (전파된 메시지 제거)
 		purgeAllQueues(rabbitTemplate);
-		
-		// ✅ 최종 대기
-		try {
-			Thread.sleep(200);
-		} catch (InterruptedException e) {
-			Thread.currentThread().interrupt();
-		}
 	}
 }

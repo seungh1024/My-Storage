@@ -2,7 +2,6 @@ package com.woowacamp.storage.domain.folder.scheduler;
 
 import java.time.LocalDateTime;
 
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -13,7 +12,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
 import com.woowacamp.storage.config.IntegrationTestBase;
-import com.woowacamp.storage.container.ContainerBaseConfig;
 import com.woowacamp.storage.domain.folder.entity.FolderJob;
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
 import com.woowacamp.storage.domain.folder.repository.FolderJobJpaRepository;
@@ -85,7 +83,7 @@ class FolderJobRecoverySchedulerTest extends IntegrationTestBase {
 	@DisplayName("최근 RUNNING Job은 복구하지 않는다")
 	void recoverStuckJobs_DoesNotRecoverRecentJobs() {
 		// given - 방금 생성 (threshold보다 최근)
-		FolderJob recentJob = createJob(1L, FolderJobStatus.RUNNING);
+		createJob(1L, FolderJobStatus.RUNNING);
 
 		// when
 		scheduler.recoverStuckJobs();
@@ -135,7 +133,7 @@ class FolderJobRecoverySchedulerTest extends IntegrationTestBase {
 
 	@Test
 	@DisplayName("여러 개의 stuck Job을 복구한다")
-	void recoverStuckJobs_RecoverMultipleJobs() throws InterruptedException {
+	void recoverStuckJobs_RecoverMultipleJobs() {
 		// given
 		LocalDateTime oldTime = LocalDateTime.now().minusMinutes(20);
 		
@@ -152,9 +150,6 @@ class FolderJobRecoverySchedulerTest extends IntegrationTestBase {
 		scheduler.recoverStuckJobs();
 
 		// then
-		// ✅ 충분한 시간을 주고, FAILED도 허용 (처리 중 에러 발생 가능)
-		Thread.sleep(2000); // Consumer가 처리할 충분한 시간 제공
-		
 		// ✅ WAITING, RUNNING, COMPLETED, FAILED 모두 허용
 		// - WAITING: 복구되었지만 아직 처리 안됨
 		// - RUNNING: 현재 처리 중
@@ -177,7 +172,7 @@ class FolderJobRecoverySchedulerTest extends IntegrationTestBase {
 		createJobWithUpdatedAt(2L, FolderJobStatus.COMPLETED, oldTime.minusDays(1));
 
 		// 최근 Job (삭제되지 않아야 함)
-		FolderJob recentJob = createJob(3L, FolderJobStatus.COMPLETED);
+		createJob(3L, FolderJobStatus.COMPLETED);
 
 		// when
 		scheduler.cleanupCompletedJobs();
@@ -222,7 +217,7 @@ class FolderJobRecoverySchedulerTest extends IntegrationTestBase {
 	@DisplayName("최근 COMPLETED Job은 삭제하지 않는다")
 	void cleanupCompletedJobs_DoesNotDeleteRecentJobs() {
 		// given - 방금 생성
-		FolderJob recentJob = createJob(1L, FolderJobStatus.COMPLETED);
+		createJob(1L, FolderJobStatus.COMPLETED);
 
 		// when
 		scheduler.cleanupCompletedJobs();
