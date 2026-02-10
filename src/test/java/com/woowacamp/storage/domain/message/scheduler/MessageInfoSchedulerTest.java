@@ -1,7 +1,9 @@
 package com.woowacamp.storage.domain.message.scheduler;
 
+import java.time.Duration;
 import java.util.List;
 
+import org.awaitility.Awaitility;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -47,7 +49,7 @@ class MessageInfoSchedulerTest extends IntegrationTestBase {
 	class FolderMoveTest {
 
 		@Test
-		@DisplayName("PENDING 상태의 메세지를 처리하면 SUCCESS 상태로 변한다.")
+		@DisplayName("PENDING 상태의 메세지를 처리하면 SENT 상태로 변한다.")
 		void retry_pending_message_will_be_success() {
 			long temp = 1;
 			for (int i = 0; i < batchSize; i++) {
@@ -60,13 +62,15 @@ class MessageInfoSchedulerTest extends IntegrationTestBase {
 
 			messageInfoScheduler.retryMessage();
 
-			List<MessageInfo> messageInfoList = messageInfoJpaRepository.findAll();
-
-			long count = messageInfoList.stream()
-				.filter(messageInfo -> messageInfo.getStatus().equals(MessageStatus.SUCCESS))
-				.count();
-
-			assertEquals(batchSize, count);
+			Awaitility.await()
+				.atMost(Duration.ofSeconds(10))
+				.untilAsserted(() -> {
+					List<MessageInfo> messageInfoList = messageInfoJpaRepository.findAll();
+					long count = messageInfoList.stream()
+						.filter(messageInfo -> messageInfo.getStatus().equals(MessageStatus.SENT))
+						.count();
+					assertEquals(batchSize, count);
+				});
 		}
 
 		@Test

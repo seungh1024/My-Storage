@@ -12,6 +12,8 @@ spring:
     open-in-view: false
 
   rabbitmq:
+    publisher-confirm-type: correlated
+    publisher-returns: true
     # 테스트 컨테이너 설정은 ContainerBaseConfig의 @DynamicPropertySource에서 주입됨
     listener:
       simple:
