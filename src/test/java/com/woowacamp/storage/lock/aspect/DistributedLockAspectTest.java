@@ -80,6 +80,7 @@ class DistributedLockAspectTest {
 			// Given
 			given(redissonClient.getLock("folder:1")).willReturn(singleLock);
 			given(singleLock.tryLock(0L, TimeUnit.SECONDS)).willReturn(true);
+			given(singleLock.isHeldByCurrentThread()).willReturn(true);
 
 			// When
 			String result = proxy.singleWatchdog(1L);
@@ -122,29 +123,28 @@ class DistributedLockAspectTest {
 		}
 
 		@Test
-		@DisplayName("tryLock 실패(false)면 예외를 던지고 proceed는 호출되지 않는다. unlock은 IllegalMonitorStateException이어도 swallow")
+		@DisplayName("tryLock 실패(false)면 예외를 던지고 proceed는 호출되지 않는다")
 		void tryLock_false_no_proceed_unlock_swallow() throws Throwable {
 			// Given
 			given(redissonClient.getLock("folder:3")).willReturn(singleLock);
 			given(singleLock.tryLock(0L, TimeUnit.SECONDS)).willReturn(false);
-			willThrow(new IllegalMonitorStateException()).given(singleLock).unlock();
 
 			// When
 			CustomException ex = assertThrows(CustomException.class, () -> proxy.singleWatchdog(3L));
 
 			// Then
-			assertTrue(ex.getHttpStatus().equals(ErrorCode.FOLDER_LOCK_CONFLICT.getStatus()));
+			assertEquals(ErrorCode.FOLDER_LOCK_CONFLICT.getStatus(), ex.getHttpStatus());
 			then(aopTxManager).should(never()).proceed(any());
-			then(singleLock).should(times(1)).unlock();
+			then(singleLock).should(never()).unlock();
 		}
 
 		@Test
-		@DisplayName("unlock이 IllegalMonitorStateException을 던져도 결과는 정상 반환된다(= swallow)")
+		@DisplayName("unlock이 가능한 경우 정상적으로 해제된다")
 		void unlock_exception_swallowed_success_returns_result() throws Throwable {
 			// Given
 			given(redissonClient.getLock("folder:1")).willReturn(singleLock);
 			given(singleLock.tryLock(0L, TimeUnit.SECONDS)).willReturn(true);
-			willThrow(new IllegalMonitorStateException()).given(singleLock).unlock();
+			given(singleLock.isHeldByCurrentThread()).willReturn(true);
 
 			// When
 			String result = proxy.singleWatchdog(1L);
@@ -156,21 +156,19 @@ class DistributedLockAspectTest {
 		}
 
 		@Test
-		@DisplayName("tryLock 중 InterruptedException이면 RuntimeException으로 래핑되고 proceed는 호출되지 않는다. unlock은 swallow")
+		@DisplayName("tryLock 중 InterruptedException이면 CustomException으로 전파되고 proceed는 호출되지 않는다")
 		void interrupted_wrap_runtime_no_proceed_unlock_swallow() throws Throwable {
 			// Given
 			given(redissonClient.getLock("folder:4")).willReturn(singleLock);
 			given(singleLock.tryLock(0L, TimeUnit.SECONDS)).willThrow(new InterruptedException("interrupted"));
-			willThrow(new IllegalMonitorStateException()).given(singleLock).unlock();
 
 			// When
-			RuntimeException ex = assertThrows(RuntimeException.class, () -> proxy.singleWatchdog(4L));
+			CustomException ex = assertThrows(CustomException.class, () -> proxy.singleWatchdog(4L));
 
 			// Then
-			assertNotNull(ex.getCause());
-			assertEquals(InterruptedException.class, ex.getCause().getClass());
+			assertEquals(ErrorCode.FAILED_TO_GET_FOLDER_LOCK.getStatus(), ex.getHttpStatus());
 			then(aopTxManager).should(never()).proceed(any());
-			then(singleLock).should(times(1)).unlock();
+			then(singleLock).should(never()).unlock();
 		}
 
 		@Test
@@ -179,6 +177,7 @@ class DistributedLockAspectTest {
 			// Given
 			given(redissonClient.getLock("folder:5")).willReturn(singleLock);
 			given(singleLock.tryLock(0L, TimeUnit.SECONDS)).willReturn(true);
+			given(singleLock.isHeldByCurrentThread()).willReturn(true);
 
 			// When
 			IllegalStateException ex = assertThrows(IllegalStateException.class, () -> proxy.boom(5L));
@@ -202,6 +201,7 @@ class DistributedLockAspectTest {
 
 			given(redissonClient.getMultiLock(any(RLock[].class))).willReturn(multiLock);
 			given(multiLock.tryLock(0L, TimeUnit.SECONDS)).willReturn(true);
+			given(multiLock.isHeldByCurrentThread()).willReturn(true);
 
 			// When
 			String result = proxy.multiLiteral();
@@ -229,6 +229,7 @@ class DistributedLockAspectTest {
 
 			given(redissonClient.getMultiLock(any(RLock[].class))).willReturn(multiLock);
 			given(multiLock.tryLock(0L, TimeUnit.SECONDS)).willReturn(true);
+			given(multiLock.isHeldByCurrentThread()).willReturn(true);
 
 			// When
 			String result = proxy.multiTwoIds(2L, 1L);
@@ -253,6 +254,7 @@ class DistributedLockAspectTest {
 
 			given(redissonClient.getMultiLock(any(RLock[].class))).willReturn(multiLock);
 			given(multiLock.tryLock(0L, TimeUnit.SECONDS)).willReturn(true);
+			given(multiLock.isHeldByCurrentThread()).willReturn(true);
 
 			// When
 			String result = proxy.multiList(List.of(3L, 1L, 2L));
@@ -295,6 +297,7 @@ class DistributedLockAspectTest {
 			// Given: keys = {'k1','', '   '} -> filter -> ['k1'] -> 단일락
 			given(redissonClient.getLock("k1")).willReturn(singleLock);
 			given(singleLock.tryLock(0L, TimeUnit.SECONDS)).willReturn(true);
+			given(singleLock.isHeldByCurrentThread()).willReturn(true);
 
 			// When
 			String result = proxy.keysWithBlanks();
@@ -314,6 +317,7 @@ class DistributedLockAspectTest {
 
 			given(redissonClient.getMultiLock(any(RLock[].class))).willReturn(multiLock);
 			given(multiLock.tryLock(0L, TimeUnit.SECONDS)).willReturn(true);
+			given(multiLock.isHeldByCurrentThread()).willReturn(true);
 
 			// When
 			String result = proxy.multiFromArray();
@@ -329,33 +333,32 @@ class DistributedLockAspectTest {
 		}
 
 		@Test
-		@DisplayName("멀티락: tryLock 실패(false)면 예외를 던지고 proceed는 호출되지 않는다(unlock swallow)")
+		@DisplayName("멀티락: tryLock 실패(false)면 예외를 던지고 proceed는 호출되지 않는다")
 		void multiLock_tryLock_false_throws() throws Throwable {
 			// Given
 			given(redissonClient.getLock("k1")).willReturn(lock1);
 			given(redissonClient.getLock("k2")).willReturn(lock2);
 			given(redissonClient.getMultiLock(any(RLock[].class))).willReturn(multiLock);
 			given(multiLock.tryLock(0L, TimeUnit.SECONDS)).willReturn(false);
-			willThrow(new IllegalMonitorStateException()).given(multiLock).unlock();
 
 			// When
 			CustomException ex = assertThrows(CustomException.class, () -> proxy.multiLiteral());
 
 			// Then
-			assertTrue(ex.getHttpStatus().equals(ErrorCode.FOLDER_LOCK_CONFLICT.getStatus()));
+			assertEquals(ErrorCode.FOLDER_LOCK_CONFLICT.getStatus(), ex.getHttpStatus());
 			then(aopTxManager).should(never()).proceed(any());
-			then(multiLock).should(times(1)).unlock();
+			then(multiLock).should(never()).unlock();
 		}
 
 		@Test
-		@DisplayName("멀티락: unlock이 IllegalMonitorStateException이어도 결과는 정상 반환된다(= swallow)")
+		@DisplayName("멀티락: unlock 가능한 경우 정상적으로 해제된다")
 		void multiLock_unlock_exception_swallowed_success_returns_result() throws Throwable {
 			// Given
 			given(redissonClient.getLock("k1")).willReturn(lock1);
 			given(redissonClient.getLock("k2")).willReturn(lock2);
 			given(redissonClient.getMultiLock(any(RLock[].class))).willReturn(multiLock);
 			given(multiLock.tryLock(0L, TimeUnit.SECONDS)).willReturn(true);
-			willThrow(new IllegalMonitorStateException()).given(multiLock).unlock();
+			given(multiLock.isHeldByCurrentThread()).willReturn(true);
 
 			// When
 			String result = proxy.multiLiteral();

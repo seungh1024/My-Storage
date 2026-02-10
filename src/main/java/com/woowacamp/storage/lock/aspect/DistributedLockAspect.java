@@ -82,14 +82,18 @@ public class DistributedLockAspect {
 			// 실제 메서드 호출(그리고 안쪽 Aspect, @Transactional 등이 이어서 실행됨)
 			return aopTxManager.proceed(pjp);
 
-		}catch (InterruptedException e) {
-			log.error("[RedisLockService] error = {}", e);
-			throw new RuntimeException(e);
-		}finally{
-			try {
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			log.error("[RedisLockService] interrupted while acquiring lock. method={}, lockKeys={}", method.getName(),
+				lockKeys, e);
+			throw ErrorCode.FAILED_TO_GET_FOLDER_LOCK.baseException("Lock interrupted. method=%s, lockKeys=%s",
+				method.getName(), lockKeys);
+		} finally {
+			if (lock.isHeldByCurrentThread()) {
 				lock.unlock();
-			} catch (IllegalMonitorStateException e) {
-				log.error("[Redisson Lock Already Unlocked] Service name: {}, lock keys: {}",method.getName(),lockKeys);
+			} else {
+				log.warn("[Redisson Lock Already Unlocked] Service name: {}, lock keys: {}", method.getName(),
+					lockKeys);
 			}
 		}
 	}
