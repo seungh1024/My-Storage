@@ -10,11 +10,14 @@ import org.springframework.transaction.annotation.Transactional;
 import com.woowacamp.storage.domain.file.util.StringFormat;
 import com.woowacamp.storage.domain.folder.utils.QueryExecuteTemplate;
 import com.woowacamp.storage.domain.message.dto.FolderSizeMessageDto;
+import com.woowacamp.storage.domain.message.dto.FolderMoveMessageDto;
+import com.woowacamp.storage.domain.message.dto.OutboxMessage;
 import com.woowacamp.storage.domain.message.entity.MessageInfo;
 import com.woowacamp.storage.domain.message.repository.MessageInfoJpaRepository;
 import com.woowacamp.storage.domain.message.repository.MessageInfoRepository;
 import com.woowacamp.storage.domain.message.service.SendMessageService;
 import com.woowacamp.storage.domain.message.util.JsonSerializer;
+import com.woowacamp.storage.domain.message.util.EventType;
 import com.woowacamp.storage.domain.message.util.MessageStatus;
 
 import lombok.RequiredArgsConstructor;
@@ -47,20 +50,59 @@ public class MessageInfoScheduler {
 			findMessage -> messageInfoRepository.findPendingMessageWithSize(
 				findMessage == null ? null : findMessage.getId(), limit, maxRetry),
 			findMessageList -> findMessageList.stream().forEach(message -> {
-				messageInfoJpaRepository.updateMessageInfoStatus(message.getId(), MessageStatus.SUCCESS);
 				sendMessage(message);
 			}));
 	}
 
 	private void sendMessage(MessageInfo message) {
-		FolderSizeMessageDto folderSizeMessageDto = jsonSerializer.deserialize(message.getPayload(),
-			FolderSizeMessageDto.class);
+		OutboxMessage outboxMessage = buildOutboxMessage(message);
+		if (outboxMessage == null) {
+			log.warn("[SEND MESSAGE SCHEDULER] skip message. id={}, eventType={}", message.getId(),
+				message.getEventType());
+			return;
+		}
 		try {
-			sendMessageService.send(folderSizeMessageDto);
+			sendMessageService.send(outboxMessage);
 		} catch (Exception e) {
 			messageInfoJpaRepository.updateRetryCount(message.getId());
 			log.error(StringFormat.format("[SEND MESSAGE SCHEDULER ERROR] ID = {}", message.getId()), e);
 		}
+	}
+
+	private OutboxMessage buildOutboxMessage(MessageInfo message) {
+		EventType type = message.getEventType();
+		if (type == null) {
+			return null;
+		}
+		return switch (type) {
+			case FOLDER_SIZE -> buildFolderSizeMessage(message);
+			case FOLDER_MOVE -> buildFolderMoveMessage(message);
+		};
+	}
+
+	private FolderSizeMessageDto buildFolderSizeMessage(MessageInfo message) {
+		FolderSizeMessageDto dto = jsonSerializer.deserialize(message.getPayload(), FolderSizeMessageDto.class);
+		if (dto.folderMetadataId() == null) {
+			return null;
+		}
+		return new FolderSizeMessageDto(message.getId(), dto.folderMetadataId(), dto.size(), EventType.FOLDER_SIZE);
+	}
+
+	private FolderMoveMessageDto buildFolderMoveMessage(MessageInfo message) {
+		FolderMoveMessageDto dto = jsonSerializer.deserialize(message.getPayload(), FolderMoveMessageDto.class);
+		Long parentId = dto.parentFolderMetadataId();
+		if (parentId == null) {
+			LegacyFolderMovePayload legacy = jsonSerializer.deserialize(message.getPayload(),
+				LegacyFolderMovePayload.class);
+			parentId = legacy.parentFolderId();
+		}
+		if (parentId == null) {
+			return null;
+		}
+		return new FolderMoveMessageDto(message.getId(), parentId, EventType.FOLDER_MOVE);
+	}
+
+	private record LegacyFolderMovePayload(Long id, Long parentFolderId) {
 	}
 
 	@Scheduled(fixedDelay = deleteMessageDelay)
@@ -84,4 +126,3 @@ public class MessageInfoScheduler {
 			}));
 	}
 }
-
