@@ -24,7 +24,7 @@ public class MessageConfig {
 	@Value("${folder.message.threadName}")
 	private String threadName;
 
-	@Bean(name = "SEND_MESSAGE_EXECUTOR")
+	@Bean(name = "sendMessageExecutor")
 	public Executor sendMessageExecutor() {
 		ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
 		executor.setCorePoolSize(threadCount);
