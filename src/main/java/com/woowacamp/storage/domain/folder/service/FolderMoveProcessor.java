@@ -207,10 +207,8 @@ public class FolderMoveProcessor {
 					fileBuffer.add(childFile);
 
 					if (fileBuffer.size() >= batchLimit) {
-						// 파일 처리 시에는 스택 변경 없음
-						Stack<Long> emptyStack = new Stack<>();
 						batchUpdateHelper.batchUpdateFilesAndSaveProgress(
-							fileBuffer, job.getId(), parentId, null, childFile.getId(), emptyStack);
+							fileBuffer, job.getId(), parentId, null, childFile.getId(), parentStack);
 						fileBuffer.clear();
 					}
 
@@ -221,13 +219,11 @@ public class FolderMoveProcessor {
 
 		Long lastProcessedId = lastProcessed[0];
 		if (!fileBuffer.isEmpty()) {
-			Stack<Long> emptyStack = new Stack<>();
 			batchUpdateHelper.batchUpdateFilesAndSaveProgress(
-				fileBuffer, job.getId(), parentId, null, lastProcessedId, emptyStack);
+				fileBuffer, job.getId(), parentId, null, lastProcessedId, parentStack);
 			fileBuffer.clear();
 		} else {
-			Stack<Long> emptyStack = new Stack<>();
-			batchUpdateHelper.saveProgressOnly(job.getId(), parentId, null, lastProcessedId, emptyStack);
+			batchUpdateHelper.saveProgressOnly(job.getId(), parentId, null, lastProcessedId, parentStack);
 		}
 
 	}
