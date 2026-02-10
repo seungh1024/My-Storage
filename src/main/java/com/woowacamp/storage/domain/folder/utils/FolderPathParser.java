@@ -28,6 +28,6 @@ public class FolderPathParser {
 			.filter(s -> !s.isEmpty())
 			.toList();
 
-		return idList.isEmpty() ? Optional.of(idList) : Optional.of(idList);
+		return Optional.of(idList);
 	}
 }

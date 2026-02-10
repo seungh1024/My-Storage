@@ -6,10 +6,8 @@ import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.slf4j.helpers.MessageFormatter;
-
-import com.woowacamp.storage.global.util.StorageStringUtil;
-
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import static org.junit.jupiter.api.Assertions.*;
 
 class FolderPathParserTest {
@@ -125,38 +123,10 @@ class FolderPathParserTest {
 	@DisplayName("경로 포맷 오류(시작/끝 '/' 불일치)")
 	class InvalidInputs_Format {
 
-		@Test
-		@DisplayName("시작이 '/'가 아니면 Optional.empty")
-		void not_start_with_slash_returns_empty_optional() {
-			// Given
-			String path = "1/2/3/";
-
-			// When
-			Optional<List<String>> resultOpt = FolderPathParser.parsing(path);
-
-			// Then
-			assertTrue(resultOpt.isEmpty());
-		}
-
-		@Test
-		@DisplayName("끝이 '/'가 아니면 Optional.empty")
-		void not_end_with_slash_returns_empty_optional() {
-			// Given
-			String path = "/1/2/3";
-
-			// When
-			Optional<List<String>> resultOpt = FolderPathParser.parsing(path);
-
-			// Then
-			assertTrue(resultOpt.isEmpty());
-		}
-
-		@Test
-		@DisplayName("시작/끝 둘 다 만족하지 않으면 Optional.empty")
-		void both_invalid_returns_empty_optional() {
-			// Given
-			String path = "1/2/3";
-
+		@ParameterizedTest
+		@ValueSource(strings = {"1/2/3/", "/1/2/3", "1/2/3"})
+		@DisplayName("시작/끝 '/' 불일치면 Optional.empty")
+		void invalid_format_returns_empty_optional(String path) {
 			// When
 			Optional<List<String>> resultOpt = FolderPathParser.parsing(path);
 
