@@ -15,6 +15,7 @@ import lombok.RequiredArgsConstructor;
 @Component
 @RequiredArgsConstructor
 public class ValidateParentsUtil {
+	private static final String PATH_PARSE_FAILED = "Failed to parsing path, id full path: {}";
 
 	private final FolderMetadataJpaRepository folderMetadataJpaRepository;
 
@@ -27,10 +28,10 @@ public class ValidateParentsUtil {
 	public void validateParentsFolderLock(FolderMetadata sourceFolder, FolderMetadata targetFolder) {
 		List<String> sourceParents = FolderPathParser.parsing(sourceFolder.getIdFullPath())
 			.orElseThrow(() -> ErrorCode.FOLDER_PATH_ERROR.baseException(
-				StorageStringUtil.format("Failed to parsing path, id full path: {}", sourceFolder.getIdFullPath())));
+				StorageStringUtil.format(PATH_PARSE_FAILED, sourceFolder.getIdFullPath())));
 		List<String> targetParents = FolderPathParser.parsing(targetFolder.getIdFullPath())
 			.orElseThrow(() -> ErrorCode.FOLDER_PATH_ERROR.baseException(
-				StorageStringUtil.format("Failed to parsing path, id full path: {}", targetFolder.getIdFullPath())));
+				StorageStringUtil.format(PATH_PARSE_FAILED, targetFolder.getIdFullPath())));
 
 		List<Long> lockNames = Stream.concat(sourceParents.stream(), targetParents.stream())
 			.distinct()
@@ -50,7 +51,7 @@ public class ValidateParentsUtil {
 	public void validateParentsFolderLock(FolderMetadata targetFolder) {
 		List<String> targetParents = FolderPathParser.parsing(targetFolder.getIdFullPath())
 			.orElseThrow(() -> ErrorCode.FOLDER_PATH_ERROR.baseException(
-				StorageStringUtil.format("Failed to parsing path, id full path: {}", targetFolder.getIdFullPath())));
+				StorageStringUtil.format(PATH_PARSE_FAILED, targetFolder.getIdFullPath())));
 
 		List<Long> lockNames = targetParents.stream()
 			.distinct()

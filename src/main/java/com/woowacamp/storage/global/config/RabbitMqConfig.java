@@ -146,37 +146,61 @@ public class RabbitMqConfig {
 		template.setMessageConverter(messageConverter);
 		template.setMandatory(true);
 
-		template.setConfirmCallback((correlationData, ack, cause) -> {
-			if (correlationData == null || correlationData.getId() == null) return;
-
-			long outboxId = Long.parseLong(correlationData.getId());
-
-			if (ack) {
-				int updated = messageInfoJpaRepository.markSent(outboxId, MessageStatus.SENT);
-				if (updated == 0) {
-					log.debug("markSent skipped in confirm callback. id={}", outboxId);
-				}
-			} else {
-				int updated = messageInfoJpaRepository.markFailed(outboxId, MessageStatus.FAILED);
-				if (updated == 0) {
-					log.debug("markFailed skipped in confirm callback. id={}", outboxId);
-				}
-			}
-		});
-
-		template.setReturnsCallback(returned -> {
-			var props = returned.getMessage().getMessageProperties();
-			String corrId = props.getCorrelationId(); // 아래 send()에서 우리가 심어줄 것
-			if (corrId == null) return;
-
-			long outboxId = Long.parseLong(corrId);
-			int updated = messageInfoJpaRepository.markFailed(outboxId,MessageStatus.FAILED);
-			if (updated == 0) {
-				log.debug("markFailed skipped in return callback. id={}", outboxId);
-			}
-		});
+		template.setConfirmCallback(this::handleConfirm);
+		template.setReturnsCallback(this::handleReturn);
 
 
 		return template;
+	}
+
+	private void handleConfirm(org.springframework.amqp.rabbit.connection.CorrelationData correlationData,
+		boolean ack, String cause) {
+		Long outboxId = extractOutboxId(correlationData);
+		if (outboxId == null) {
+			return;
+		}
+		if (ack) {
+			markSent(outboxId);
+		} else {
+			markFailed(outboxId);
+		}
+	}
+
+	private void handleReturn(org.springframework.amqp.core.ReturnedMessage returned) {
+		Long outboxId = extractOutboxId(returned);
+		if (outboxId == null) {
+			return;
+		}
+		markFailed(outboxId);
+	}
+
+	private Long extractOutboxId(org.springframework.amqp.rabbit.connection.CorrelationData correlationData) {
+		if (correlationData == null || correlationData.getId() == null) {
+			return null;
+		}
+		return Long.parseLong(correlationData.getId());
+	}
+
+	private Long extractOutboxId(org.springframework.amqp.core.ReturnedMessage returned) {
+		var props = returned.getMessage().getMessageProperties();
+		String corrId = props.getCorrelationId(); // send()에서 주입
+		if (corrId == null) {
+			return null;
+		}
+		return Long.parseLong(corrId);
+	}
+
+	private void markSent(long outboxId) {
+		int updated = messageInfoJpaRepository.markSent(outboxId, MessageStatus.SENT);
+		if (updated == 0) {
+			log.debug("markSent skipped in confirm callback. id={}", outboxId);
+		}
+	}
+
+	private void markFailed(long outboxId) {
+		int updated = messageInfoJpaRepository.markFailed(outboxId, MessageStatus.FAILED);
+		if (updated == 0) {
+			log.debug("markFailed skipped in return/confirm callback. id={}", outboxId);
+		}
 	}
 }

@@ -18,6 +18,8 @@ import lombok.extern.slf4j.Slf4j;
 @Repository
 @RequiredArgsConstructor
 public class FolderJobRepository {
+	private static final String LOG_JOB_TERMINATED =
+		"[FolderJobTransactionHelper] Job terminated (max retries exceeded). jobId={}";
 
 	private final FolderJobJpaRepository folderJobJpaRepository;
 	private final FolderMetadataJpaRepository folderMetadataJpaRepository;
@@ -63,8 +65,7 @@ public class FolderJobRepository {
 			job.markTerminated();
 			folderJobJpaRepository.save(job);
 			folderMetadataJpaRepository.releaseMovingLock(job.getId());
-			log.error("[FolderJobTransactionHelper] Job terminated (max retries exceeded). jobId={}",
-				job.getId());
+			log.error(LOG_JOB_TERMINATED, job.getId());
 			return;
 		}
 
@@ -74,8 +75,7 @@ public class FolderJobRepository {
 				job.markTerminated();
 				folderJobJpaRepository.save(job);
 				folderMetadataJpaRepository.releaseMovingLock(job.getId());
-				log.error("[FolderJobTransactionHelper] Job terminated (max retries exceeded). jobId={}",
-					job.getId());
+				log.error(LOG_JOB_TERMINATED, job.getId());
 				return;
 			}
 		}
@@ -117,7 +117,7 @@ public class FolderJobRepository {
 			job.markTerminated();
 			folderJobJpaRepository.save(job);
 			folderMetadataJpaRepository.releaseMovingLock(jobId);
-			log.error("[FolderJobTransactionHelper] Job terminated (max retries exceeded). jobId={}", jobId);
+			log.error(LOG_JOB_TERMINATED, jobId);
 			return true;
 		}
 

@@ -54,6 +54,7 @@ import static com.woowacamp.storage.global.constant.CommonConstant.*;
 @Service
 @RequiredArgsConstructor
 public class FolderService {
+	private static final String FOLDER_ID_MESSAGE = "Folder id: {}";
 	private static final long INITIAL_CURSOR_ID = 0L;
 	private final FileMetadataJpaRepository fileMetadataJpaRepository;
 	private final FileMetadataRepository fileMetadataRepository;
@@ -114,11 +115,11 @@ public class FolderService {
 	 *
 	 */
 	@DistributedLock(keys = """
-		{
-			@lockKeys.folderJob(#dto.rootId()),
-		   	@lockKeys.folderName(#dto.targetFolderId(), #dto.folderName())
-		}
-		""")
+        {
+            @lockKeys.folderJob(#dto.rootId()),
+               @lockKeys.folderName(#dto.targetFolderId(), #dto.folderName())
+        }
+        """)
 	public void moveFolder(Long sourceFolderId, FolderMoveDto dto) {
 		getFolderJobLock(sourceFolderId);
 		boolean moveEventPublished = false;
@@ -126,17 +127,17 @@ public class FolderService {
 		try {
 			FolderMetadata sourceFolder = folderMetadataJpaRepository.findByIdNotDeleted(sourceFolderId)
 				.orElseThrow(() -> ErrorCode.FOLDER_NOT_FOUND.baseException(
-					StorageStringUtil.format("Folder id: {}", sourceFolderId)));
+					StorageStringUtil.format(FOLDER_ID_MESSAGE, sourceFolderId)));
 			validateFolderOwner(sourceFolder, dto.userId());
 
 			FolderMetadata targetFolder = folderMetadataJpaRepository.findByIdNotDeleted(dto.targetFolderId())
 				.orElseThrow(() -> ErrorCode.FOLDER_NOT_FOUND.baseException(
-					StorageStringUtil.format("Folder id: {}", dto.targetFolderId())));
+					StorageStringUtil.format(FOLDER_ID_MESSAGE, dto.targetFolderId())));
 			validateFolderOwner(targetFolder, dto.userId());
 
 			FolderMetadata parentFolder = folderMetadataJpaRepository.findByIdNotDeleted(sourceFolder.getParentFolderId())
 				.orElseThrow(() -> ErrorCode.FOLDER_NOT_FOUND.baseException(
-					StorageStringUtil.format("Folder id: {}", sourceFolder.getParentFolderId())));
+					StorageStringUtil.format(FOLDER_ID_MESSAGE, sourceFolder.getParentFolderId())));
 			validateFolderOwner(parentFolder, dto.userId());
 
 			validateInvalidMove(targetFolder, sourceFolder);
@@ -267,8 +268,8 @@ public class FolderService {
 	}
 
 	@DistributedLock(keys = """
-			@lockKeys.folderName(#req.parentFolderId(), #req.uploadFolderName())
-		""")
+            @lockKeys.folderName(#req.parentFolderId(), #req.uploadFolderName())
+        """)
 	public Long createFolder(CreateFolderReqDto req) {
 		User user = userRepository.findById(req.userId()).orElseThrow(ErrorCode.USER_NOT_FOUND::baseException);
 
