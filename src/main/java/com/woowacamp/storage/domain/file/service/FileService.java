@@ -44,11 +44,11 @@ public class FileService {
 	 * source folder, target folder의 모든 정보를 수정한다.
 	 */
 	@DistributedLock(keys = """
-			{
-				@lockKeys.folderJob(#dto.targetFolderId()),
-				@lockKeys.folderName(#dto.targetFolderId(), #dto.fileName())
-		   	}
-		""")
+            {
+                @lockKeys.folderJob(#dto.targetFolderId()),
+                @lockKeys.folderName(#dto.targetFolderId(), #dto.fileName())
+               }
+        """)
 	public void moveFile(Long fileId, FileMoveDto dto) {
 		FileMetadata fileMetadata = fileMetadataJpaRepository.findById(fileId)
 			.orElseThrow(ErrorCode.FILE_NOT_FOUND::baseException);

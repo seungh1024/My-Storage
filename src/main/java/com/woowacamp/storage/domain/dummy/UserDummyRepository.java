@@ -21,9 +21,9 @@ public class UserDummyRepository {
 	public void saveAll(List<User> users) {
 		log.info("[Save User Dummy] List : {}",users);
 		String sql = StorageStringUtil.format("""
-			INSERT INTO users (user_id,user_name,root_folder_id)
-			VALUES(?,?,?)
-			""");
+            INSERT INTO users (user_id,user_name,root_folder_id)
+            VALUES(?,?,?)
+            """);
 
 
 

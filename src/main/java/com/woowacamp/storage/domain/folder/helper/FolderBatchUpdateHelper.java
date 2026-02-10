@@ -41,13 +41,13 @@ public class FolderBatchUpdateHelper {
 		// 1. 폴더 배치 업데이트
 		if (folders != null && !folders.isEmpty()) {
 			String sql = """
-				UPDATE folder_metadata
-				SET id_full_path = ?,
-					name_full_path = ?,
-					name_path_length = ?,
-					updated_at = CURRENT_TIMESTAMP
-				WHERE folder_metadata_id = ?
-			""";
+                UPDATE folder_metadata
+                SET id_full_path = ?,
+                    name_full_path = ?,
+                    name_path_length = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE folder_metadata_id = ?
+            """;
 
 			jdbcTemplate.batchUpdate(sql, folders, folders.size(),
 				(PreparedStatement ps, FolderMetadata folder) -> {
@@ -82,13 +82,13 @@ public class FolderBatchUpdateHelper {
 		// 1. 파일 배치 업데이트
 		if (files != null && !files.isEmpty()) {
 			String sql = """
-				UPDATE file_metadata
-				SET id_full_path = ?,
-					name_full_path = ?,
-					name_path_length = ?,
-					updated_at = CURRENT_TIMESTAMP
-				WHERE file_metadata_id = ?
-			""";
+                UPDATE file_metadata
+                SET id_full_path = ?,
+                    name_full_path = ?,
+                    name_path_length = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE file_metadata_id = ?
+            """;
 
 			jdbcTemplate.batchUpdate(sql, files, files.size(),
 				(PreparedStatement ps, FileMetadata file) -> {

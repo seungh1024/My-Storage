@@ -43,9 +43,9 @@ public class S3FileService {
 	private long MAX_STORAGE_SIZE;
 
 	@DistributedLock(keys = """
-			@lockKeys.folderJob(#dto.rootId()),
-		   	@lockKeys.folderName(#dto.parentFolderId(), #dto.fileName())
-		""")
+            @lockKeys.folderJob(#dto.rootId()),
+               @lockKeys.folderName(#dto.parentFolderId(), #dto.fileName())
+        """)
 	public FileUploadResponseDto createFileMetadata(FileUploadRequestDto dto) {
 		FolderMetadata parentFolder = folderMetadataJpaRepository.findById(dto.parentFolderId())
 			.orElseThrow(FOLDER_NOT_FOUND::baseException);

@@ -22,14 +22,14 @@ public class FolderDummyRepository {
 
 	public void saveAll(List<FolderMetadata> folderMetadataList) {
 		String sql = StorageStringUtil.format("""
-			INSERT INTO folder_metadata (folder_metadata_id, root_id, owner_id, creator_id, created_at,
-			updated_at, parent_folder_id, upload_folder_name, folder_size, sharing_expired_at,
-			permission_type, is_deleted, name_full_path, id_full_path,version)
-						
-			VALUES(?,?,?,?,?,
-			?,?,?,?,?,
-			?,?,?,?,0)
-			""");
+            INSERT INTO folder_metadata (folder_metadata_id, root_id, owner_id, creator_id, created_at,
+            updated_at, parent_folder_id, upload_folder_name, folder_size, sharing_expired_at,
+            permission_type, is_deleted, name_full_path, id_full_path,version)
+                        
+            VALUES(?,?,?,?,?,
+            ?,?,?,?,?,
+            ?,?,?,?,0)
+            """);
 
 		jdbcTemplate.batchUpdate(sql, folderMetadataList, folderMetadataList.size(),
 			(PreparedStatement ps, FolderMetadata folderMetadata) -> {
@@ -62,10 +62,10 @@ public class FolderDummyRepository {
 
 	public void batchUpdateNamePathLength(List<FolderMetadata> folderMetadataList) {
 		String sql = """
-			UPDATE folder_metadata
-			SET name_path_length = ?
-			WHERE folder_metadata_id = ?
-			     """;
+            UPDATE folder_metadata
+            SET name_path_length = ?
+            WHERE folder_metadata_id = ?
+                 """;
 
 		jdbcTemplate.batchUpdate(sql, folderMetadataList, folderMetadataList.size(), (PreparedStatement ps, FolderMetadata folderMetadata)  -> {
 			ps.setInt(1, folderMetadata.getNamePathLength());
