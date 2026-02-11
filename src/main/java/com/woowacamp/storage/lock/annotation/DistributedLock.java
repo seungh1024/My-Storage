@@ -11,7 +11,7 @@ import java.util.concurrent.TimeUnit;
 public @interface DistributedLock {
 	String keys();
 
-	long waitTime() default 3L;
+	long waitTime() default 1L;
 
 	long leaseTime() default -1L; // -1 -> watchdog
 
