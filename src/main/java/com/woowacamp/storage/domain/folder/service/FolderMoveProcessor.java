@@ -5,7 +5,6 @@ import java.util.List;
 import java.util.Stack;
 
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 
 import com.woowacamp.storage.domain.file.entity.FileMetadata;
@@ -40,7 +39,6 @@ public class FolderMoveProcessor {
 	private final FolderJobJpaRepository folderJobJpaRepository;
 
 	private final FolderBatchUpdateHelper batchUpdateHelper;
-	private final Environment environment;
 
 	@Value("${constant.batchSize}")
 	private int pageSize;
@@ -55,18 +53,19 @@ public class FolderMoveProcessor {
 	 * 폴더 이동의 실제 배치 작업을 수행
 	 * 트랜잭션 없음
 	 */
-	public void processMove(Long rootFolderId) {
-		log.info("[FolderMoveProcessor] Start processing. rootFolderId={}", rootFolderId);
+	public void processMove(Long subtreeRootFolderId) {
+		log.info("[FolderMoveProcessor] Start processing. subtreeRootFolderId={}", subtreeRootFolderId);
 
 		// 1. FolderJob 조회
-		FolderJob job = folderJobJpaRepository.findById(rootFolderId)
+		FolderJob job = folderJobJpaRepository.findById(subtreeRootFolderId)
 			.orElseThrow(() -> ErrorCode.FOLDER_NOT_FOUND.baseException(
-				StorageStringUtil.format("FolderJob not found. folderId: {}", rootFolderId)));
+				StorageStringUtil.format("FolderJob not found. folderId: {}", subtreeRootFolderId)));
 
 		// 2. Job 획득 시도 (CAS) - 별도 트랜잭션
-		boolean acquired = folderJobRepository.tryAcquireJob(rootFolderId);
+		boolean acquired = folderJobRepository.tryAcquireJob(job.getRootId(), job.getId());
 		if (!acquired) {
-			log.warn("[FolderMoveProcessor] Job already running. rootFolderId={}", rootFolderId);
+			log.warn("[FolderMoveProcessor] Job already running. rootId={}, subtreeRootFolderId={}",
+				job.getRootId(), subtreeRootFolderId);
 			return;
 		}
 
@@ -75,18 +74,20 @@ public class FolderMoveProcessor {
 			processDFS(job);
 
 			// 4. 완료 처리 - 별도 트랜잭션
-			folderJobRepository.markJobCompleted(rootFolderId);
+			folderJobRepository.markJobCompleted(job.getRootId(), job.getId());
 
-			log.info("[FolderMoveProcessor] Completed successfully. rootFolderId={}", rootFolderId);
+			log.info("[FolderMoveProcessor] Completed successfully. rootId={}, subtreeRootFolderId={}",
+				job.getRootId(), subtreeRootFolderId);
 
 		} catch (Exception e) {
-			log.error("[FolderMoveProcessor] Failed. rootFolderId={}", rootFolderId, e);
+			log.error("[FolderMoveProcessor] Failed. rootId={}, subtreeRootFolderId={}", job.getRootId(),
+				subtreeRootFolderId, e);
 
 			// 실패 처리 - 별도 트랜잭션
-			folderJobRepository.markJobFailed(rootFolderId, maxRetry);
+			folderJobRepository.markJobFailed(job.getRootId(), job.getId(), maxRetry);
 
 			throw ErrorCode.MESSAGE_CONSUME_FAILED.baseException(
-				StorageStringUtil.format("FolderMove failed. folderId: {}", rootFolderId), e);
+				StorageStringUtil.format("FolderMove failed. folderId: {}", subtreeRootFolderId), e);
 		}
 	}
 
@@ -163,7 +164,8 @@ public class FolderMoveProcessor {
 
 					if (folderBuffer.size() >= batchLimit) {
 						batchUpdateHelper.batchUpdateFoldersAndSaveProgress(
-							folderBuffer, job.getId(), parentId, childFolder.getId(), null, parentStack);
+							folderBuffer, job.getRootId(), job.getId(), parentId, childFolder.getId(), null,
+							parentStack);
 						folderBuffer.clear();
 					}
 
@@ -176,10 +178,11 @@ public class FolderMoveProcessor {
 		Long lastProcessedId = lastProcessed[0];
 		if (!folderBuffer.isEmpty()) {
 			batchUpdateHelper.batchUpdateFoldersAndSaveProgress(
-				folderBuffer, job.getId(), parentId, lastProcessedId, null, parentStack);
+				folderBuffer, job.getRootId(), job.getId(), parentId, lastProcessedId, null, parentStack);
 			folderBuffer.clear();
 		} else {
-			batchUpdateHelper.saveProgressOnly(job.getId(), parentId, lastProcessedId, null, parentStack);
+			batchUpdateHelper.saveProgressOnly(job.getRootId(), job.getId(), parentId, lastProcessedId, null,
+				parentStack);
 		}
 	}
 
@@ -208,7 +211,8 @@ public class FolderMoveProcessor {
 
 					if (fileBuffer.size() >= batchLimit) {
 						batchUpdateHelper.batchUpdateFilesAndSaveProgress(
-							fileBuffer, job.getId(), parentId, null, childFile.getId(), parentStack);
+							fileBuffer, job.getRootId(), job.getId(), parentId, null, childFile.getId(),
+							parentStack);
 						fileBuffer.clear();
 					}
 
@@ -220,10 +224,11 @@ public class FolderMoveProcessor {
 		Long lastProcessedId = lastProcessed[0];
 		if (!fileBuffer.isEmpty()) {
 			batchUpdateHelper.batchUpdateFilesAndSaveProgress(
-				fileBuffer, job.getId(), parentId, null, lastProcessedId, parentStack);
+				fileBuffer, job.getRootId(), job.getId(), parentId, null, lastProcessedId, parentStack);
 			fileBuffer.clear();
 		} else {
-			batchUpdateHelper.saveProgressOnly(job.getId(), parentId, null, lastProcessedId, parentStack);
+			batchUpdateHelper.saveProgressOnly(job.getRootId(), job.getId(), parentId, null, lastProcessedId,
+				parentStack);
 		}
 
 	}
@@ -235,13 +240,13 @@ public class FolderMoveProcessor {
 		Long currentParentId, Long lastFolderId, Long lastFileId, Stack<Long> parentStack) {
 		if (!folderBuffer.isEmpty()) {
 			batchUpdateHelper.batchUpdateFoldersAndSaveProgress(
-				folderBuffer, job.getId(), currentParentId, lastFolderId, lastFileId, parentStack);
+				folderBuffer, job.getRootId(), job.getId(), currentParentId, lastFolderId, lastFileId, parentStack);
 			folderBuffer.clear();
 		}
 
 		if (!fileBuffer.isEmpty()) {
 			batchUpdateHelper.batchUpdateFilesAndSaveProgress(
-				fileBuffer, job.getId(), currentParentId, lastFolderId, lastFileId, parentStack);
+				fileBuffer, job.getRootId(), job.getId(), currentParentId, lastFolderId, lastFileId, parentStack);
 			fileBuffer.clear();
 		}
 	}

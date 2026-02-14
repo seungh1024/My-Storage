@@ -13,6 +13,7 @@ import jakarta.persistence.EntityListeners;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
+import jakarta.persistence.IdClass;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import jakarta.validation.constraints.NotNull;
@@ -24,23 +25,28 @@ import lombok.NoArgsConstructor;
 /**
  * 폴더 이동 작업의 배치 처리 상태를 관리하는 엔티티
  *
- * id: 이동 시작하는 서브트리의 루트 폴더 ID (PK)
- *     - 동일 폴더에 대한 중복 작업 방지
- *     - INSERT 실패 시 이미 작업 진행 중임을 의미
+ * PK: (rootId, id)
+ * - rootId: 드라이브/루트 단위 식별자
+ * - id: 이동 시작 서브트리 루트 폴더 ID
  */
 @Entity
 @Table(name = "folder_job", indexes = {
 	@Index(name = "idx_folder_job_status_updated_at", columnList = "status, updated_at")
 })
+@IdClass(FolderJobId.class)
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @EntityListeners(AuditingEntityListener.class)
 public class FolderJob {
 
 	/**
-	 * 이동 작업의 대상 폴더 ID (서브트리 루트)
-	 * PK로 사용하여 동일 폴더의 중복 작업 방지
+	 * (root_id,folder_id) PK로 사용하여 동일 폴더의 중복 작업 방지
+	 * folder_operation_state와 동일하게 pk 관리
 	 */
+	@Id
+	@Column(name = "root_id")
+	private Long rootId;
+
 	@Id
 	@Column(name = "folder_id")
 	private Long id;
@@ -83,9 +89,10 @@ public class FolderJob {
 	private int retryCount;
 
 	@Builder
-	public FolderJob(Long id, Long currentParentId, Long lastFolderId,
+	public FolderJob(Long rootId, Long id, Long currentParentId, Long lastFolderId,
 		Long lastFileId, String parentStack, LocalDateTime updatedAt,
 		FolderJobStatus status, int retryCount) {
+		this.rootId = rootId;
 		this.id = id;
 		this.currentParentId = currentParentId;
 		this.lastFolderId = lastFolderId;

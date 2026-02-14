@@ -32,7 +32,9 @@ import lombok.NoArgsConstructor;
 	@Index(name = "folder_idx_parent_folder_id_size", columnList = "parent_folder_id, folder_size"),
 	@Index(name = "folder_idx_parent_folder_id_is_deleted", columnList = "parent_folder_id, is_deleted"),
 	@Index(name = "folder_idx_find_folder_with_cursor", columnList = "parent_folder_id, is_deleted, folder_metadata_id"),
-	@Index(name = "folder_idx_is_deleted_folder_metadata_id", columnList = "is_deleted, folder_metadata_id")
+	@Index(name = "folder_idx_is_deleted_folder_metadata_id", columnList = "is_deleted, folder_metadata_id"),
+	@Index(name = "folder_idx_root_deleted_namepath_length",
+		columnList = "root_id, is_deleted, name_full_path, name_path_length")
 })
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
@@ -173,6 +175,12 @@ public class FolderMetadata {
 	}
 
 	public void updateNamePathLength(int namePathLength) {
+		this.namePathLength = namePathLength;
+	}
+
+	public void updateMoveRootPath(String idFullPath, String nameFullPath, int namePathLength) {
+		this.idFullPath = idFullPath;
+		this.nameFullPath = nameFullPath;
 		this.namePathLength = namePathLength;
 	}
 

@@ -30,7 +30,9 @@ import lombok.ToString;
 	@Index(name = "file_idx_upload_status", columnList = "upload_status"),
 	@Index(name = "file_idx_parent_folder_id_file_metadata_id", columnList = "parent_folder_id, file_metadata_id"),
 	@Index(name = "file_idx_created_at_file_metadata_id", columnList = "created_at, file_metadata_id"),
-	@Index(name = "file_idx_is_deleted", columnList = "is_deleted")})
+	@Index(name = "file_idx_is_deleted", columnList = "is_deleted"),
+	@Index(name = "file_idx_root_deleted_namepath_length_status",
+		columnList = "root_id, is_deleted, name_full_path, name_path_length, upload_status")})
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Getter
 @ToString

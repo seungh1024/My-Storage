@@ -177,14 +177,13 @@ public interface FolderMetadataJpaRepository extends JpaRepository<FolderMetadat
 	List<FolderMetadata> findFolderListById(@Param("id") Long id, @Param("limit") Long limit);
 
 	@Query(value = """
-            SELECT *
+            SELECT MAX(name_path_length)
             FROM folder_metadata
             WHERE root_id = :id
-            AND name_full_path LIKE CONCAT(:prefix,'%')
-            ORDER BY name_path_length DESC
-            LIMIT 1;
+            AND is_deleted = false
+            AND name_full_path LIKE CONCAT(:prefix, '%')
         """, nativeQuery = true)
-	Optional<FolderMetadata> findDeepestFolderByPrefix(@Param("id") Long id, @Param("prefix") String prefix);
+	Optional<Integer> findMaxFolderNamePathLengthByPrefix(@Param("id") Long id, @Param("prefix") String prefix);
 
 	@Transactional
 	@Modifying(flushAutomatically = true, clearAutomatically = true)

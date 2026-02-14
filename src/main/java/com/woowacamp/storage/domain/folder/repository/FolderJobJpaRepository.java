@@ -2,6 +2,7 @@ package com.woowacamp.storage.domain.folder.repository;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -11,20 +12,34 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.woowacamp.storage.domain.folder.entity.FolderJob;
+import com.woowacamp.storage.domain.folder.entity.FolderJobId;
 import com.woowacamp.storage.domain.folder.utils.FolderJobStatus;
 
 @Repository
-public interface FolderJobJpaRepository extends JpaRepository<FolderJob, Long> {
+public interface FolderJobJpaRepository extends JpaRepository<FolderJob, FolderJobId> {
+
+	@Query("""
+		SELECT fj FROM FolderJob fj
+		WHERE fj.id = :folderId
+	""")
+	Optional<FolderJob> findByFolderId(@Param("folderId") Long folderId);
+
+	Optional<FolderJob> findByRootIdAndId(Long rootId, Long id);
+
+	default Optional<FolderJob> findById(Long folderId) {
+		return findByFolderId(folderId);
+	}
 
 	@Transactional
-	@Modifying(clearAutomatically = true, flushAutomatically = true)
+	@Modifying
 	@Query(value = """
-            INSERT INTO folder_job (folder_id, current_parent_id, last_folder_id,
+            INSERT INTO folder_job (root_id, folder_id, current_parent_id, last_folder_id,
                                     last_file_id, parent_stack, updated_at, status, retry_count)
-            VALUES (:folderId, :currentParentId, :lastFolderId, :lastFileId,
+            VALUES (:rootId, :folderId, :currentParentId, :lastFolderId, :lastFileId,
                     :parentStack, CURRENT_TIMESTAMP, :status, :retryCount)
         """, nativeQuery = true)
-	int insert(@Param("folderId") Long folderId,
+	int insert(@Param("rootId") Long rootId,
+		@Param("folderId") Long folderId,
 		@Param("currentParentId") Long currentParentId,
 		@Param("lastFolderId") Long lastFolderId,
 		@Param("lastFileId") Long lastFileId,
@@ -37,9 +52,10 @@ public interface FolderJobJpaRepository extends JpaRepository<FolderJob, Long> {
 	@Query("""
         UPDATE FolderJob fj
         SET fj.status = :newStatus, fj.updatedAt = CURRENT_TIMESTAMP
-        WHERE fj.id = :id AND fj.status = :expectedStatus
+        WHERE fj.rootId = :rootId AND fj.id = :id AND fj.status = :expectedStatus
     """)
-	int updateStatusCAS(@Param("id") Long id,
+	int updateStatusCAS(@Param("rootId") Long rootId,
+		@Param("id") Long id,
 		@Param("expectedStatus") FolderJobStatus expectedStatus,
 		@Param("newStatus") FolderJobStatus newStatus);
 
@@ -52,9 +68,10 @@ public interface FolderJobJpaRepository extends JpaRepository<FolderJob, Long> {
             fj.lastFileId = :lastFileId,
             fj.parentStack = :parentStack,
             fj.updatedAt = CURRENT_TIMESTAMP
-        WHERE fj.id = :id
+        WHERE fj.rootId = :rootId AND fj.id = :id
     """)
-	int updateProgress(@Param("id") Long id,
+	int updateProgress(@Param("rootId") Long rootId,
+		@Param("id") Long id,
 		@Param("currentParentId") Long currentParentId,
 		@Param("lastFolderId") Long lastFolderId,
 		@Param("lastFileId") Long lastFileId,
@@ -124,7 +141,7 @@ public interface FolderJobJpaRepository extends JpaRepository<FolderJob, Long> {
 	@Modifying
 	@Query("""
         DELETE FROM FolderJob fj
-        WHERE fj.id IN (:ids)
+        WHERE fj.id IN (:folderIds)
     """)
-	int deleteByIdIn(@Param("ids") List<Long> ids);
+	int deleteByFolderIdIn(@Param("folderIds") List<Long> folderIds);
 }

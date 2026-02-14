@@ -35,7 +35,7 @@ public class FolderBatchUpdateHelper {
 	 */
 	@Transactional(propagation = Propagation.REQUIRES_NEW)
 	public void batchUpdateFoldersAndSaveProgress(
-		List<FolderMetadata> folders, Long jobId, Long currentParentId,
+		List<FolderMetadata> folders, Long rootId, Long jobId, Long currentParentId,
 		Long lastFolderId, Long lastFileId, Stack<Long> parentStack) {
 
 		// 1. 폴더 배치 업데이트
@@ -63,7 +63,7 @@ public class FolderBatchUpdateHelper {
 		// 2. 진행 상황 저장
 		String stackJson = StackSerializationUtil.serialize(parentStack);
 		folderJobJpaRepository.updateProgress(
-			jobId, currentParentId, lastFolderId, lastFileId, stackJson);
+			rootId, jobId, currentParentId, lastFolderId, lastFileId, stackJson);
 
 		log.debug("[FolderBatchUpdateHelper] Progress saved. jobId={}, currentParentId={}, " +
 				"lastFolderId={}, lastFileId={}, stackSize={}",
@@ -76,7 +76,7 @@ public class FolderBatchUpdateHelper {
 	 */
 	@Transactional(propagation = Propagation.REQUIRES_NEW)
 	public void batchUpdateFilesAndSaveProgress(
-		List<FileMetadata> files, Long jobId, Long currentParentId,
+		List<FileMetadata> files, Long rootId, Long jobId, Long currentParentId,
 		Long lastFolderId, Long lastFileId, Stack<Long> parentStack) {
 
 		// 1. 파일 배치 업데이트
@@ -104,7 +104,7 @@ public class FolderBatchUpdateHelper {
 		// 2. 진행 상황 저장
 		String stackJson = StackSerializationUtil.serialize(parentStack);
 		folderJobJpaRepository.updateProgress(
-			jobId, currentParentId, lastFolderId, lastFileId, stackJson);
+			rootId, jobId, currentParentId, lastFolderId, lastFileId, stackJson);
 
 		log.debug("[FolderBatchUpdateHelper] Progress saved. jobId={}, currentParentId={}, " +
 				"lastFolderId={}, lastFileId={}",
@@ -116,11 +116,11 @@ public class FolderBatchUpdateHelper {
 	 * 별도 트랜잭션으로 처리
 	 */
 	@Transactional(propagation = Propagation.REQUIRES_NEW)
-	public void saveProgressOnly(Long jobId, Long currentParentId, Long lastFolderId,
+	public void saveProgressOnly(Long rootId, Long jobId, Long currentParentId, Long lastFolderId,
 		Long lastFileId, Stack<Long> parentStack) {
 		String stackJson = StackSerializationUtil.serialize(parentStack);
 		folderJobJpaRepository.updateProgress(
-			jobId, currentParentId, lastFolderId, lastFileId, stackJson);
+			rootId, jobId, currentParentId, lastFolderId, lastFileId, stackJson);
 
 		log.debug("[FolderBatchUpdateHelper] Progress only saved. jobId={}, currentParentId={}, " +
 				"lastFolderId={}, lastFileId={}",

@@ -21,6 +21,7 @@ import com.woowacamp.storage.domain.file.repository.FileMetadataRepository;
 import com.woowacamp.storage.domain.folder.dto.CursorType;
 import com.woowacamp.storage.domain.folder.dto.FolderContentsDto;
 import com.woowacamp.storage.domain.folder.dto.FolderContentsSortField;
+import com.woowacamp.storage.domain.folder.dto.MovePlan;
 import com.woowacamp.storage.domain.folder.dto.request.CreateFolderReqDto;
 import com.woowacamp.storage.domain.folder.dto.request.FolderMoveDto;
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
@@ -31,6 +32,7 @@ import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepositor
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataRepository;
 import com.woowacamp.storage.domain.folder.utils.FolderJobStatus;
 import com.woowacamp.storage.domain.folder.utils.QueryExecuteTemplate;
+import com.woowacamp.storage.domain.folderoperation.service.FolderOperationStateService;
 import com.woowacamp.storage.domain.message.event.MessageInfoEvent;
 import com.woowacamp.storage.domain.message.repository.MessageInfoJpaRepository;
 import com.woowacamp.storage.domain.message.util.MessageStatus;
@@ -42,7 +44,6 @@ import com.woowacamp.storage.global.error.ErrorCode;
 import com.woowacamp.storage.global.util.StorageStringUtil;
 import com.woowacamp.storage.global.util.ValidateParentsUtil;
 import com.woowacamp.storage.lock.annotation.DistributedLock;
-import com.woowacamp.storage.lock.util.LockKeys;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -63,12 +64,13 @@ public class FolderService {
 	private final UserRepository userRepository;
 	private final Executor searchThreadPoolExecutor;
 	private final BackgroundJob backgroundJob;
-	private final LockKeys lockKeys;
 	private final FolderJobJpaRepository folderJobJpaRepository;
 	private final ValidateParentsUtil validateParentsUtil;
 
 	private final ApplicationEventPublisher publisher;
 	private final MessageInfoJpaRepository messageInfoJpaRepository;
+
+	private final FolderOperationStateService folderOperationStateService;
 
 	@Value("${constant.batchSize}")
 	private int pageSize;
@@ -115,71 +117,59 @@ public class FolderService {
 	 *
 	 */
 	@DistributedLock(keys = """
-        {
-            @lockKeys.folderJob(#dto.rootId()),
-               @lockKeys.folderName(#dto.targetFolderId(), #dto.folderName())
-        }
-        """)
-	public void moveFolder(Long sourceFolderId, FolderMoveDto dto) {
-		getFolderJobLock(sourceFolderId);
-		boolean moveEventPublished = false;
-
-		try {
-			FolderMetadata sourceFolder = folderMetadataJpaRepository.findByIdNotDeleted(sourceFolderId)
-				.orElseThrow(() -> ErrorCode.FOLDER_NOT_FOUND.baseException(
-					StorageStringUtil.format(FOLDER_ID_MESSAGE, sourceFolderId)));
-			validateFolderOwner(sourceFolder, dto.userId());
-
-			FolderMetadata targetFolder = folderMetadataJpaRepository.findByIdNotDeleted(dto.targetFolderId())
-				.orElseThrow(() -> ErrorCode.FOLDER_NOT_FOUND.baseException(
-					StorageStringUtil.format(FOLDER_ID_MESSAGE, dto.targetFolderId())));
-			validateFolderOwner(targetFolder, dto.userId());
-
-			FolderMetadata parentFolder = folderMetadataJpaRepository.findByIdNotDeleted(sourceFolder.getParentFolderId())
-				.orElseThrow(() -> ErrorCode.FOLDER_NOT_FOUND.baseException(
-					StorageStringUtil.format(FOLDER_ID_MESSAGE, sourceFolder.getParentFolderId())));
-			validateFolderOwner(parentFolder, dto.userId());
-
-			validateInvalidMove(targetFolder, sourceFolder);
-			validatePathLength(sourceFolder, targetFolder);
-			validateParentsUtil.validateParentsFolderLock(parentFolder, targetFolder);
-
-			Long originalParentId = sourceFolder.getParentFolderId();
-
-			sourceFolder.updateParentFolderId(targetFolder.getId()); // 부모 변경
-			sourceFolder.updateIdFullPath(targetFolder.getIdFullPath()); // pk 전체 경로 변경
-			sourceFolder.updateNameFullPath(targetFolder.getNameFullPath()); // 이름 전체 경로 변경
-			sourceFolder.updateNamePathLength(sourceFolder.getNameFullPath().length()); // 이름 전체 경로 길이 변경
-			sourceFolder.markMoving(); // 영속성 컨텍스트 이슈로 같이 true로 맞춰주기
-
-			folderMetadataJpaRepository.save(sourceFolder);
-
-			log.info("[moveFolder] About to publish events. sourceId={}, originalParentId={}, targetId={}, size={}",
-				sourceFolderId, originalParentId, targetFolder.getId(), sourceFolder.getSize());
-			// 현재 폴더의 부모 폴더에 감소하는 용량 처리 이벤트 발행
-			publisher.publishEvent(new FolderSizeEvent(originalParentId, -sourceFolder.getSize()));
-			log.info("[moveFolder] Published FolderSizeEvent for originalParent. parentId={}, size={}",
-				originalParentId, -sourceFolder.getSize());
-			// 이동한 폴더의 대상 폴더에 증가하는 용량 처리 이벤트 발행
-			publisher.publishEvent(new FolderSizeEvent(targetFolder.getId(), sourceFolder.getSize()));
-			log.info("[moveFolder] Published FolderSizeEvent for target. targetId={}, size={}",
-				targetFolder.getId(), sourceFolder.getSize());
-
-			// 폴더 이동 이벤트 발행
-			publisher.publishEvent(new FolderMoveEvent(sourceFolderId));
-			moveEventPublished = true;
-			log.info("[moveFolder] Published FolderMoveEvent. folderId={}", sourceFolderId);
-
-			log.info("[moveFolder] All events published successfully.");
-		} catch (RuntimeException e) {
-			if (!moveEventPublished) {
-				folderMetadataJpaRepository.releaseMovingLock(sourceFolderId);
-				folderJobJpaRepository.deleteById(sourceFolderId);
-				log.warn("[moveFolder] Released moving lock and deleted job due to validation failure. folderId={}",
-					sourceFolderId, e);
-			}
-			throw e;
+		{
+		    @lockKeys.folderJob(#dto.rootId()),
+		       @lockKeys.folderName(#dto.targetFolderId(), #dto.folderName())
 		}
+		""")
+	public void moveFolder(Long sourceFolderId, FolderMoveDto dto) {
+		FolderMetadata sourceFolder = folderMetadataJpaRepository.findByIdNotDeleted(sourceFolderId)
+			.orElseThrow(() -> ErrorCode.FOLDER_NOT_FOUND.baseException(
+				StorageStringUtil.format(FOLDER_ID_MESSAGE, sourceFolderId)));
+		Long sourceRootId = sourceFolder.getRootId() == null ? sourceFolder.getId() : sourceFolder.getRootId();
+
+		validateFolderOwner(sourceFolder, dto.userId());
+
+		FolderMetadata targetFolder = folderMetadataJpaRepository.findByIdNotDeleted(dto.targetFolderId())
+			.orElseThrow(() -> ErrorCode.FOLDER_NOT_FOUND.baseException(
+				StorageStringUtil.format(FOLDER_ID_MESSAGE, dto.targetFolderId())));
+		validateFolderOwner(targetFolder, dto.userId());
+
+		FolderMetadata sourceParentFolder = folderMetadataJpaRepository.findByIdNotDeleted(
+				sourceFolder.getParentFolderId())
+			.orElseThrow(() -> ErrorCode.FOLDER_NOT_FOUND.baseException(
+				StorageStringUtil.format(FOLDER_ID_MESSAGE, sourceFolder.getParentFolderId())));
+		validateFolderOwner(sourceParentFolder, dto.userId());
+
+		validateInvalidMove(targetFolder, sourceFolder);
+
+		MovePlan movePlan = buildMovePlanAndValidate(sourceFolder, targetFolder, sourceParentFolder);
+		getFolderJobLock(sourceRootId, sourceFolderId, movePlan);
+
+		validateParentsUtil.validateParentsFolderLock(sourceParentFolder, targetFolder);
+
+		Long originalParentId = sourceFolder.getParentFolderId();
+		sourceFolder.updateParentFolderId(targetFolder.getId());
+		sourceFolder.updateMoveRootPath(
+			movePlan.nextSourceIdFullPath(),
+			movePlan.nextSourceNameFullPath(),
+			movePlan.nextSourceNamePathLength()
+		);
+		sourceFolder.markMoving();
+		folderMetadataJpaRepository.save(sourceFolder);
+
+		log.info("[moveFolder] About to publish events. sourceId={}, originalParentId={}, targetId={}, size={}",
+			sourceFolderId, originalParentId, targetFolder.getId(), sourceFolder.getSize());
+		publisher.publishEvent(new FolderSizeEvent(originalParentId, -sourceFolder.getSize()));
+		log.info("[moveFolder] Published FolderSizeEvent for originalParent. parentId={}, size={}",
+			originalParentId, -sourceFolder.getSize());
+		publisher.publishEvent(new FolderSizeEvent(targetFolder.getId(), sourceFolder.getSize()));
+		log.info("[moveFolder] Published FolderSizeEvent for target. targetId={}, size={}",
+			targetFolder.getId(), sourceFolder.getSize());
+
+		publisher.publishEvent(new FolderMoveEvent(sourceFolderId));
+		log.info("[moveFolder] Published FolderMoveEvent. folderId={}", sourceFolderId);
+		log.info("[moveFolder] All events published successfully.");
 	}
 
 	/**
@@ -225,26 +215,53 @@ public class FolderService {
 		}
 	}
 
-	private void validatePathLength(FolderMetadata sourceFolder, FolderMetadata targetFolder) {
-		FolderMetadata parentFolder = folderMetadataJpaRepository.findById(sourceFolder.getParentFolderId())
-			.orElseThrow(() -> ErrorCode.FOLDER_NOT_FOUND.baseException(
-				StorageStringUtil.format("Parent folder not found. parentId: {}", sourceFolder.getParentFolderId())));
-
-		long targetPathLength = targetFolder.getNamePathLength();
-		int longestFolderLength = folderMetadataJpaRepository.findDeepestFolderByPrefix(sourceFolder.getRootId(),
+	private MovePlan buildMovePlanAndValidate(FolderMetadata sourceFolder, FolderMetadata targetFolder, FolderMetadata sourceParentFolder) {
+		Long sourceRootId = sourceFolder.getRootId() == null ? sourceFolder.getId() : sourceFolder.getRootId();
+		int sourceParentPathLength = sourceParentFolder.getNamePathLength();
+		int targetParentPathLength = targetFolder.getNamePathLength();
+		int longestFolderLength = folderMetadataJpaRepository.findMaxFolderNamePathLengthByPrefix(sourceRootId,
 				sourceFolder.getNameFullPath())
-			.map(FolderMetadata::getNamePathLength)
 			.orElse(sourceFolder.getNamePathLength());
-		int longestFileLength = fileMetadataJpaRepository.findDeepestFileByPrefix(sourceFolder.getRootId(),
-			sourceFolder.getNameFullPath()).map(FileMetadata::getNamePathLength).orElse(0); // 파일이 없으면 0
+		int longestFileLength = fileMetadataJpaRepository.findMaxFileNamePathLengthByPrefix(sourceRootId,
+			sourceFolder.getNameFullPath()).orElse(0); // 파일이 없으면 0
 
-		// /parent/source/ 와 같은 경로이기 때문에, 부모 폴더의 경로는 /parent/ 이다. 남는 것은 source/이므로, 이를 targetFolder로 옮기면 된다.
-		int sourcePathLength = Math.max(longestFileLength, longestFolderLength) - parentFolder.getNamePathLength();
-		if (targetPathLength + sourcePathLength >= maxPathLength) {
+		int currentMaxNamePathLength = Math.max(longestFileLength, longestFolderLength); // source folder 하위의 가장 긴 경로 길이
+		int parentPathLengthChange = targetParentPathLength - sourceParentPathLength; // 부모 경로 길이 변화량
+		int projectedMaxNamePathLength = currentMaxNamePathLength + parentPathLengthChange; // 기존 폴더의 최대 경로 길이
+		int projectedActiveMoveMaxNamePathLength = folderOperationStateService.findMaxActiveMoveProjectedNamePathLengthByPrefix(
+				sourceRootId,
+				sourceFolder.getIdFullPath())
+			.map(maxProjectedNamePathLength -> maxProjectedNamePathLength + parentPathLengthChange)
+			.orElse(Integer.MIN_VALUE); // 활성 이동 상태의 최대 경로 길이
+		int finalProjectedMaxNamePathLength = Math.max(projectedMaxNamePathLength, projectedActiveMoveMaxNamePathLength);
+
+		if (finalProjectedMaxNamePathLength >= maxPathLength) {
 			throw ErrorCode.EXCEED_MAX_PATH_LENGTH.baseException(
-				StorageStringUtil.format("Total Path is too long. source folder length: {}, target folder length: {}",
-					sourcePathLength, targetPathLength));
+				StorageStringUtil.format(
+					"Total Path is too long. currentProjectedMax={}, activeMoveProjectedMax={}, parentPathLengthChange={}, finalProjectedMax={}",
+					currentMaxNamePathLength,
+					projectedActiveMoveMaxNamePathLength,
+					parentPathLengthChange,
+					finalProjectedMaxNamePathLength
+				));
 		}
+
+		String nextSourceIdFullPath = StorageStringUtil.format(
+			"{}{}/",
+			targetFolder.getIdFullPath(),
+			sourceFolder.getId()
+		);
+		String nextSourceNameFullPath = StorageStringUtil.format("{}{}/",
+			targetFolder.getNameFullPath(), sourceFolder.getUploadFolderName());
+		int nextSourceNamePathLength = nextSourceNameFullPath.length();
+
+		return new MovePlan(
+			parentPathLengthChange,
+			finalProjectedMaxNamePathLength,
+			nextSourceIdFullPath,
+			nextSourceNameFullPath,
+			nextSourceNamePathLength
+		);
 	}
 
 	private List<FileMetadata> fetchFiles(Long folderId, Long cursorId, int limit, FolderContentsSortField sortBy,
@@ -268,16 +285,22 @@ public class FolderService {
 	}
 
 	@DistributedLock(keys = """
-            @lockKeys.folderName(#req.parentFolderId(), #req.uploadFolderName())
-        """)
+		{
+		    @lockKeys.folderJob(#req.rootId()),
+		    @lockKeys.folderName(#req.parentFolderId(), #req.uploadFolderName())
+		}
+		""")
 	public Long createFolder(CreateFolderReqDto req) {
 		User user = userRepository.findById(req.userId()).orElseThrow(ErrorCode.USER_NOT_FOUND::baseException);
 
 		long parentFolderId = req.parentFolderId();
 		FolderMetadata parentFolder = folderMetadataJpaRepository.findById(parentFolderId)
-			.orElseThrow(()->ErrorCode.FOLDER_NOT_FOUND.baseException(StorageStringUtil.format("folder not found when creating folder. find folder id:{}",parentFolderId)));
+			.orElseThrow(() -> ErrorCode.FOLDER_NOT_FOUND.baseException(
+				StorageStringUtil.format("folder not found when creating folder. find folder id:{}", parentFolderId)));
 		validateFolder(req, parentFolder);
 		validateFolderOwner(parentFolder, req.userId());
+
+
 		FolderMetadata folderMetadata = createFolderMetadata(user, parentFolder, req);
 
 		// 저장 및 pk 전체 경로 업데이트
@@ -303,12 +326,22 @@ public class FolderService {
 		// 동일 이름 폴더 확인
 		validateDuplicatedFolderName(req.parentFolderId(), req.uploadFolderName());
 
+		// 최대 경로 길이 확인
+
+
+
 		// 경로 구분자 때문에 +1을 해줘야 한다.
 		int pathLength = parentFolder.getNamePathLength() + req.uploadFolderName().length() + 1;
 		if (pathLength >= maxPathLength) {
 			throw ErrorCode.EXCEED_MAX_PATH_LENGTH.baseException(
 				StorageStringUtil.format("Total Path is too long. path length: {}", pathLength));
 		}
+
+		validateParentsUtil.validateMaxNamePathLengthAndReserveForCreate(
+			parentFolder,
+			req.uploadFolderName().length(),
+			maxPathLength
+		);
 	}
 
 	/**
@@ -410,8 +443,8 @@ public class FolderService {
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
 
 		// 처리되지 않은 메세지가 없다면 리턴
-		if (!messageInfoJpaRepository.existsByIdAndStatusIn(id, List.of(MessageStatus.SENT,MessageStatus.PENDING))) {
-			log.info("[update folder size] early returned id: {}, folderId: {}, size: {}",id,folderId,size);
+		if (!messageInfoJpaRepository.existsByIdAndStatusIn(id, List.of(MessageStatus.SENT, MessageStatus.PENDING))) {
+			log.info("[update folder size] early returned id: {}, folderId: {}, size: {}", id, folderId, size);
 			return 1;
 		}
 
@@ -420,16 +453,19 @@ public class FolderService {
 		int cnt = 3;
 		while (result == 0 && cnt-- > 0) {
 			result = folderMetadataJpaRepository.updateFolderSizeWithVersion(size, folderMetadata.getId(),
-			folderMetadata.getVersion());
+				folderMetadata.getVersion());
 			folderMetadata = folderMetadataJpaRepository.findById(folderId)
 				.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
-			log.info("[update folder size] id: {}, folderId: {}, size: {}, update result: {}, version: {}",id,folderId,size,result,folderMetadata.getVersion());
+			log.info("[update folder size] id: {}, folderId: {}, size: {}, update result: {}, version: {}", id,
+				folderId, size, result, folderMetadata.getVersion());
 		}
-		log.info("[update folder size] id: {}, folderId: {}, size: {}, update result: {}",id,folderId,size,result);
+		log.info("[update folder size] id: {}, folderId: {}, size: {}, update result: {}", id, folderId, size, result);
 		if (result == 0) {
 			return 0;
 		}
-		log.info("[update folder size] id: {}, folderId: {}, size: {}, folderMetadata.id: {}, folderMetadata.rootId:{}, folderMetadata.size:{}",id,folderId,size,folderMetadata.getId(),folderMetadata.getRootId(), folderMetadata.getSize());
+		log.info(
+			"[update folder size] id: {}, folderId: {}, size: {}, folderMetadata.id: {}, folderMetadata.rootId:{}, folderMetadata.size:{}",
+			id, folderId, size, folderMetadata.getId(), folderMetadata.getRootId(), folderMetadata.getSize());
 
 		// MessageInfo 완료 처리
 		publisher.publishEvent(new MessageInfoEvent(id));
@@ -447,15 +483,17 @@ public class FolderService {
 	 * 대상 폴더의 락을 잡기 전에 발생하는 동시성 문제를 방지하는 용도이다.
 	 * 비용이 크지 않은 검증 과정들을 빠르게 처리 후, 해당 폴더의 제어권을 확보한다.
 	 */
-	public void getFolderJobLock(Long sourceFolderId) {
-		int lock = folderMetadataJpaRepository.getMovingLock(sourceFolderId);
-		if (lock == 0) {
-			throw ErrorCode.FAILED_TO_GET_FOLDER_LOCK.baseException(
-				StorageStringUtil.format("failed to get folder lock. folderId: {}", sourceFolderId));
-		}
-
+	public void getFolderJobLock(Long rootId, Long sourceFolderId, MovePlan movePlan) {
+		folderOperationStateService.insertActiveMove(
+			rootId,
+			sourceFolderId,
+			movePlan.nextSourceIdFullPath(),
+			movePlan.projectedMaxNamePathLength(),
+			sourceFolderId
+		);
 		try {
 			int insertResult = folderJobJpaRepository.insert(
+				rootId,                // rootId (PK)
 				sourceFolderId,        // folderId (PK)
 				sourceFolderId,        // currentParentId
 				null,                  // lastFolderId

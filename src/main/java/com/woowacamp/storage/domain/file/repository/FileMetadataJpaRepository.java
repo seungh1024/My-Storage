@@ -160,12 +160,12 @@ public interface FileMetadataJpaRepository extends JpaRepository<FileMetadata, L
 		@Param("duration") LocalDateTime timeLimit);
 
 	@Query(value = """
-        SELECT *
+        SELECT MAX(name_path_length)
                 FROM file_metadata
                 WHERE root_id = :id
-                AND name_full_path LIKE CONCAT(:prefix,'%')
-                ORDER BY name_path_length DESC
-                LIMIT 1;
+                AND is_deleted = false
+                AND upload_status != 'FAIL'
+                AND name_full_path LIKE CONCAT(:prefix, '%')
         """, nativeQuery = true)
-	Optional<FileMetadata> findDeepestFileByPrefix(@Param("id") Long id, @Param("prefix") String prefix);
+	Optional<Integer> findMaxFileNamePathLengthByPrefix(@Param("id") Long id, @Param("prefix") String prefix);
 }

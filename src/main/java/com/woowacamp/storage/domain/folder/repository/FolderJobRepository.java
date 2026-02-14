@@ -9,6 +9,7 @@ import org.springframework.stereotype.Repository;
 import com.woowacamp.storage.domain.folder.entity.FolderJob;
 import com.woowacamp.storage.domain.folder.event.FolderMoveEvent;
 import com.woowacamp.storage.domain.folder.utils.FolderJobStatus;
+import com.woowacamp.storage.domain.folderoperation.repository.FolderOperationStateJpaRepository;
 
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -23,6 +24,7 @@ public class FolderJobRepository {
 
 	private final FolderJobJpaRepository folderJobJpaRepository;
 	private final FolderMetadataJpaRepository folderMetadataJpaRepository;
+	private final FolderOperationStateJpaRepository folderOperationStateJpaRepository;
 	private final ApplicationEventPublisher publisher;
 
 	@Transactional
@@ -48,7 +50,7 @@ public class FolderJobRepository {
 
 	@Transactional
 	public int deleteJobsBatch(List<Long> jobIds) {
-		int deleted = folderJobJpaRepository.deleteByIdIn(jobIds);
+		int deleted = folderJobJpaRepository.deleteByFolderIdIn(jobIds);
 		log.debug("[FolderJobTransactionHelper] Deleted {} jobs", deleted);
 		return deleted;
 	}
@@ -93,24 +95,34 @@ public class FolderJobRepository {
 	 * Job 완료 처리
 	 */
 	@Transactional
-	public void markJobCompleted(Long jobId) {
-		FolderJob job = folderJobJpaRepository.findById(jobId)
-			.orElseThrow(() -> new IllegalStateException("FolderJob not found: " + jobId));
+	public void markJobCompleted(Long rootId, Long jobId) {
+		FolderJob job = folderJobJpaRepository.findByRootIdAndId(rootId, jobId)
+			.orElseThrow(() -> new IllegalStateException(
+				String.format("FolderJob not found. rootId=%d, folderId=%d", rootId, jobId)));
 
 		job.markCompleted();
 		folderJobJpaRepository.save(job);
 		folderMetadataJpaRepository.releaseMovingLock(jobId);
+		folderOperationStateJpaRepository.deleteByRootIdAndFolderId(rootId, jobId);
 
-		log.info("[FolderJobTransactionHelper] Job marked as COMPLETED. jobId={}", jobId);
+		log.info("[FolderJobTransactionHelper] Job marked as COMPLETED. rootId={}, jobId={}", rootId, jobId);
+	}
+
+	@Transactional
+	public void markJobCompleted(Long jobId) {
+		FolderJob job = folderJobJpaRepository.findById(jobId)
+			.orElseThrow(() -> new IllegalStateException("FolderJob not found: " + jobId));
+		markJobCompleted(job.getRootId(), job.getId());
 	}
 
 	/**
 	 * Job 실패 처리
 	 */
 	@Transactional
-	public boolean markJobFailed(Long jobId, int maxRetry) {
-		FolderJob job = folderJobJpaRepository.findById(jobId)
-			.orElseThrow(() -> new IllegalStateException("FolderJob not found: " + jobId));
+	public boolean markJobFailed(Long rootId, Long jobId, int maxRetry) {
+		FolderJob job = folderJobJpaRepository.findByRootIdAndId(rootId, jobId)
+			.orElseThrow(() -> new IllegalStateException(
+				String.format("FolderJob not found. rootId=%d, folderId=%d", rootId, jobId)));
 
 		job.incrementRetryCount();
 		if (job.getRetryCount() >= maxRetry) {
@@ -128,20 +140,34 @@ public class FolderJobRepository {
 		return false;
 	}
 
+	@Transactional
+	public boolean markJobFailed(Long jobId, int maxRetry) {
+		FolderJob job = folderJobJpaRepository.findById(jobId)
+			.orElseThrow(() -> new IllegalStateException("FolderJob not found: " + jobId));
+		return markJobFailed(job.getRootId(), job.getId(), maxRetry);
+	}
+
 	/**
 	 * Job 획득 시도 (CAS 방식)
 	 */
 	@Transactional
-	public boolean tryAcquireJob(Long jobId) {
+	public boolean tryAcquireJob(Long rootId, Long jobId) {
 		int updated = folderJobJpaRepository.updateStatusCAS(
-			jobId, FolderJobStatus.WAITING, FolderJobStatus.RUNNING);
+			rootId, jobId, FolderJobStatus.WAITING, FolderJobStatus.RUNNING);
 
 		if (updated > 0) {
-			log.info("[FolderJobTransactionHelper] Job acquired. jobId={}", jobId);
+			log.info("[FolderJobTransactionHelper] Job acquired. rootId={}, jobId={}", rootId, jobId);
 			return true;
 		}
 
-		log.warn("[FolderJobTransactionHelper] Failed to acquire job. jobId={}", jobId);
+		log.warn("[FolderJobTransactionHelper] Failed to acquire job. rootId={}, jobId={}", rootId, jobId);
 		return false;
+	}
+
+	@Transactional
+	public boolean tryAcquireJob(Long jobId) {
+		FolderJob job = folderJobJpaRepository.findById(jobId)
+			.orElseThrow(() -> new IllegalStateException("FolderJob not found: " + jobId));
+		return tryAcquireJob(job.getRootId(), job.getId());
 	}
 }
