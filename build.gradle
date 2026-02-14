@@ -61,11 +61,12 @@ dependencies {
 	// TSID
 	implementation 'com.github.f4b6a3:tsid-creator:5.2.6'
 
-	testImplementation 'org.testcontainers:testcontainers:1.19.4'
-	testImplementation 'org.testcontainers:junit-jupiter:1.19.4'
-	testImplementation 'org.testcontainers:mysql:1.19.4'
-	testImplementation 'org.testcontainers:mongodb:1.16.3'
-	testImplementation 'org.testcontainers:rabbitmq:1.19.4'
+	testImplementation platform('org.testcontainers:testcontainers-bom:1.20.4')
+	testImplementation 'org.testcontainers:testcontainers'
+	testImplementation 'org.testcontainers:junit-jupiter'
+	testImplementation 'org.testcontainers:mysql'
+	testImplementation 'org.testcontainers:mongodb'
+	testImplementation 'org.testcontainers:rabbitmq'
 	testCompileOnly 'org.projectlombok:lombok'
 	testAnnotationProcessor 'org.projectlombok:lombok'
 	testImplementation 'org.springframework.amqp:spring-rabbit-test'

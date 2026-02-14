@@ -75,14 +75,6 @@ jobs:
           done
           docker info
 
-      - name: Configure Testcontainers strategy
-        run: |
-          mkdir -p "$HOME"
-          cat > "$HOME/.testcontainers.properties" <<'EOF'
-          docker.client.strategy=org.testcontainers.dockerclient.UnixSocketClientProviderStrategy
-          testcontainers.reuse.enable=true
-          EOF
-
       - name: Create application-secret.yml
         env:
           APPLICATION_SECRET_YML_B64: ${{ secrets.APPLICATION_SECRET_YML_B64 }}
@@ -97,7 +89,6 @@ jobs:
       - name: Test + JaCoCo + Sonar analyze
         env:
           SPRING_PROFILES_ACTIVE: test,secret
-          DOCKER_HOST: unix:///var/run/docker.sock
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: ./gradlew test jacocoTestReport sonar --info
