@@ -8,6 +8,7 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
+import org.testcontainers.lifecycle.Startable;
 
 /**
  * 통합 테스트용 TestContainers 싱글톤 설정
@@ -21,6 +22,8 @@ import org.testcontainers.containers.wait.strategy.Wait;
  * - static 블록에서 컨테이너를 한 번만 시작
  */
 public abstract class ContainerBaseConfig {
+	private static final int START_MAX_ATTEMPTS = 3;
+	private static final long RETRY_BACKOFF_MILLIS = 2000L;
 
 	// MySQL Container: 싱글톤 인스턴스
 	private static final MySQLContainer<?> MY_SQL_CONTAINER;
@@ -38,33 +41,25 @@ public abstract class ContainerBaseConfig {
 			.withUsername("test")
 			.withPassword("test")
 			.withReuse(true)
+			.withStartupAttempts(3)
 			.waitingFor(Wait.forListeningPort().withStartupTimeout(Duration.ofMinutes(2)));
-		MY_SQL_CONTAINER.start();
+		startContainerWithRetry("mysql", MY_SQL_CONTAINER);
 
 		// Redis Container 초기화 및 시작
 		REDIS_CONTAINER = new GenericContainer<>("redis:7")
 			.withExposedPorts(6379)
 			.withReuse(true)
+			.withStartupAttempts(3)
 			.waitingFor(Wait.forListeningPort().withStartupTimeout(Duration.ofMinutes(2)));
-		REDIS_CONTAINER.start();
+		startContainerWithRetry("redis", REDIS_CONTAINER);
 
 		// RabbitMQ Container 초기화 및 시작
-		// RabbitMQ는 내부 초기화 시간이 필요하므로 충분한 대기 시간 제공
 		RABBIT_MQ_CONTAINER = new GenericContainer<>("rabbitmq:3.12-management")
 			.withExposedPorts(5672, 15672)
 			.withReuse(true)
-			.waitingFor(
-				Wait.forLogMessage(".*Server startup complete.*", 1)
-					.withStartupTimeout(Duration.ofMinutes(3))
-			);
-		
-		try {
-			RABBIT_MQ_CONTAINER.start();
-			// RabbitMQ 완전 준비 대기 (포트 리스닝 확인)
-			Thread.sleep(3000);
-		} catch (Exception e) {
-			throw new RuntimeException("Failed to start RabbitMQ container", e);
-		}
+			.withStartupAttempts(3)
+			.waitingFor(Wait.forListeningPort().withStartupTimeout(Duration.ofMinutes(3)));
+		startContainerWithRetry("rabbitmq", RABBIT_MQ_CONTAINER);
 
 		// JVM 종료 시 컨테이너 정리
 		Runtime.getRuntime().addShutdownHook(new Thread(() -> {
@@ -78,6 +73,46 @@ public abstract class ContainerBaseConfig {
 				MY_SQL_CONTAINER.stop();
 			}
 		}));
+	}
+
+	private static void startContainerWithRetry(String containerName, Startable container) {
+		RuntimeException lastException = null;
+		for (int attempt = 1; attempt <= START_MAX_ATTEMPTS; attempt++) {
+			try {
+				container.start();
+				return;
+			} catch (RuntimeException e) {
+				lastException = e;
+				System.err.printf(
+					"[ContainerBaseConfig] Failed to start %s (attempt %d/%d): %s%n",
+					containerName,
+					attempt,
+					START_MAX_ATTEMPTS,
+					e.getMessage()
+				);
+
+				if (attempt < START_MAX_ATTEMPTS) {
+					try {
+						container.stop();
+					} catch (Exception ignored) {
+					}
+					sleepSilently(RETRY_BACKOFF_MILLIS * attempt);
+				}
+			}
+		}
+		throw new RuntimeException(
+			"Failed to start " + containerName + " container after " + START_MAX_ATTEMPTS + " attempts",
+			lastException
+		);
+	}
+
+	private static void sleepSilently(long millis) {
+		try {
+			Thread.sleep(millis);
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			throw new IllegalStateException("Interrupted while waiting for container retry", e);
+		}
 	}
 
 	@DynamicPropertySource
