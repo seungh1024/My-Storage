@@ -89,7 +89,9 @@ class FolderMoveProcessorIntegrationTest extends IntegrationTestBase {
 	}
 
 	private FolderJob createFolderJob(Long folderId, FolderJobStatus status) {
+		FolderMetadata folder = folderMetadataJpaRepository.findById(folderId).orElseThrow();
 		FolderJob job = FolderJob.builder()
+			.rootId(folder.getRootId())
 			.id(folderId)
 			.currentParentId(folderId)
 			.lastFolderId(null)

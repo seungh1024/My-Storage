@@ -54,12 +54,12 @@ class FolderBatchUpdateHelperTest {
 
 			// when
 			batchUpdateHelper.batchUpdateFoldersAndSaveProgress(
-				emptyList, 1L, 1L, null, null, stack);
+				emptyList, 1L, 10L, 1L, null, null, stack);
 
 			// then
 			verify(jdbcTemplate, never()).batchUpdate(anyString(), anyList(), anyInt(), any());
 			verify(folderJobJpaRepository, times(1)).updateProgress(
-				eq(1L), eq(1L), isNull(), isNull(), anyString());
+				eq(1L), eq(10L), eq(1L), isNull(), isNull(), anyString());
 		}
 
 		@Test
@@ -71,11 +71,12 @@ class FolderBatchUpdateHelperTest {
 
 			// when
 			batchUpdateHelper.batchUpdateFoldersAndSaveProgress(
-				null, 1L, 1L, null, null, stack);
+				null, 1L, 10L, 1L, null, null, stack);
 
 			// then
 			verify(jdbcTemplate, never()).batchUpdate(anyString(), anyList(), anyInt(), any());
-			verify(folderJobJpaRepository, times(1)).updateProgress(anyLong(), anyLong(), any(), any(), anyString());
+			verify(folderJobJpaRepository, times(1)).updateProgress(
+				anyLong(), anyLong(), anyLong(), any(), any(), anyString());
 		}
 
 		@Test
@@ -95,7 +96,7 @@ class FolderBatchUpdateHelperTest {
 
 			// when
 			batchUpdateHelper.batchUpdateFoldersAndSaveProgress(
-				folders, 10L, 1L, 2L, null, stack);
+				folders, 1L, 10L, 1L, 2L, null, stack);
 
 			// then
 			verify(jdbcTemplate, times(1)).batchUpdate(
@@ -107,7 +108,7 @@ class FolderBatchUpdateHelperTest {
 			assertThat(executedSql).contains("name_full_path");
 
 			verify(folderJobJpaRepository, times(1)).updateProgress(
-				eq(10L), eq(1L), eq(2L), isNull(), eq("[1]"));
+				eq(1L), eq(10L), eq(1L), eq(2L), isNull(), eq("[1]"));
 		}
 
 		@Test
@@ -126,11 +127,12 @@ class FolderBatchUpdateHelperTest {
 
 			// when
 			batchUpdateHelper.batchUpdateFoldersAndSaveProgress(
-				folders, 10L, 1L, 5L, null, stack);
+				folders, 1L, 10L, 1L, 5L, null, stack);
 
 			// then
 			verify(jdbcTemplate, times(1)).batchUpdate(anyString(), eq(folders), eq(5), any());
-			verify(folderJobJpaRepository, times(1)).updateProgress(anyLong(), anyLong(), anyLong(), any(), anyString());
+			verify(folderJobJpaRepository, times(1)).updateProgress(
+				anyLong(), anyLong(), anyLong(), anyLong(), any(), anyString());
 		}
 
 		private FolderMetadata createFolder(Long id, String idPath, String namePath, int pathLength) {
@@ -156,12 +158,12 @@ class FolderBatchUpdateHelperTest {
 
 			// when
 			batchUpdateHelper.batchUpdateFilesAndSaveProgress(
-				emptyList, 1L, 1L, null, null, stack);
+				emptyList, 1L, 10L, 1L, null, null, stack);
 
 			// then
 			verify(jdbcTemplate, never()).batchUpdate(anyString(), anyList(), anyInt(), any());
 			verify(folderJobJpaRepository, times(1)).updateProgress(
-				anyLong(), anyLong(), any(), any(), anyString());
+				anyLong(), anyLong(), anyLong(), any(), any(), anyString());
 		}
 
 		@Test
@@ -179,7 +181,7 @@ class FolderBatchUpdateHelperTest {
 
 			// when
 			batchUpdateHelper.batchUpdateFilesAndSaveProgress(
-				files, 10L, 1L, null, 2L, stack);
+				files, 1L, 10L, 1L, null, 2L, stack);
 
 			// then
 			verify(jdbcTemplate, times(1)).batchUpdate(
@@ -189,7 +191,7 @@ class FolderBatchUpdateHelperTest {
 			assertThat(executedSql).contains("UPDATE file_metadata");
 
 			verify(folderJobJpaRepository, times(1)).updateProgress(
-				eq(10L), eq(1L), isNull(), eq(2L), eq("[]"));
+				eq(1L), eq(10L), eq(1L), isNull(), eq(2L), eq("[]"));
 		}
 
 		private FileMetadata createFile(Long id, String idPath, String namePath, int pathLength) {
@@ -215,11 +217,11 @@ class FolderBatchUpdateHelperTest {
 			stack.push(5L);
 
 			// when
-			batchUpdateHelper.saveProgressOnly(10L, 5L, 3L, null, stack);
+			batchUpdateHelper.saveProgressOnly(1L, 10L, 5L, 3L, null, stack);
 
 			// then
 			verify(folderJobJpaRepository, times(1)).updateProgress(
-				eq(10L), eq(5L), eq(3L), isNull(), eq("[1,5]"));
+				eq(1L), eq(10L), eq(5L), eq(3L), isNull(), eq("[1,5]"));
 			verify(jdbcTemplate, never()).batchUpdate(anyString(), anyList(), anyInt(), any());
 		}
 	}

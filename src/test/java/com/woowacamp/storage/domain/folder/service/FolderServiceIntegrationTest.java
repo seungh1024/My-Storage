@@ -18,6 +18,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 
 import com.woowacamp.storage.config.IntegrationTestBase;
+import com.woowacamp.storage.domain.folder.dto.MovePlan;
 import com.woowacamp.storage.domain.folder.dto.request.FolderMoveDto;
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
@@ -53,12 +54,22 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 
 	/**
 	 * ✅ “상위 폴더가 이동중” 상태를 DB에서 만든다.
-	 * - folder_metadata.is_moving = true (getMovingLock)
+	 * - folder_operation_state ACTIVE MOVE row 생성
 	 * - folder_job row 생성
 	 *
 	 */
 	private void markMovingInDb(long folderId) {
-		folderService.getFolderJobLock(folderId);
+		FolderMetadata folder = folderMetadataJpaRepository.findById(folderId)
+			.orElseThrow();
+		Long rootId = folder.getRootId() == null ? folder.getId() : folder.getRootId();
+		MovePlan movePlan = new MovePlan(
+			0,
+			folder.getNamePathLength(),
+			folder.getIdFullPath(),
+			folder.getNameFullPath(),
+			folder.getNamePathLength()
+		);
+		folderService.getFolderJobLock(rootId, folderId, movePlan);
 	}
 
 	@FunctionalInterface
@@ -87,7 +98,7 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 	class FolderMoveTest {
 
 		@Test
-		@DisplayName("source folder가 없는 경우 FAILED_TO_GET_FOLDER_LOCK 예외를 던진다.")
+		@DisplayName("source folder가 없는 경우 FOLDER_NOT_FOUND 예외를 던진다.")
 		void source_id_not_exist_test() {
 			long sourceId = folderTreeSetUp.getLongestFolder().getId();
 			folderMetadataJpaRepository.delete(folderTreeSetUp.getLongestFolder());
@@ -101,7 +112,7 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 			CustomException ex = assertThrows(CustomException.class,
 				() -> folderService.moveFolder(sourceId, dto));
 
-			assertEquals(ErrorCode.FAILED_TO_GET_FOLDER_LOCK.getMessage(), ex.getMessage());
+			assertEquals(ErrorCode.FOLDER_NOT_FOUND.getMessage(), ex.getMessage());
 		}
 
 		@Test
@@ -228,13 +239,13 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 		}
 
 		// =========================================================
-		// ✅ DB 기반 상위 이동중(is_moving) 탐지 테스트로 변경
+		// ✅ DB 기반 상위 ACTIVE MOVE 상태 탐지 테스트
 		// =========================================================
 
 		@Test
-		@DisplayName("source 폴더의 상위 폴더가 DB에서 이동 중이면(PARENT_LOCKED) 하위 폴더 이동이 불가능하다")
+		@DisplayName("source 폴더의 상위 폴더가 DB에서 ACTIVE MOVE 상태면(PARENT_LOCKED) 하위 폴더 이동이 불가능하다")
 		void source_folder_parent_moving_conflict_db_is_moving_test() {
-			// child(하위)를 이동시키려는데, parent(상위)가 moving 상태면 PARENT_LOCKED
+			// child(하위)를 이동시키려는데, parent(상위)가 ACTIVE MOVE 상태면 PARENT_LOCKED
 			FolderMetadata child = folderTreeSetUp.getSubSubFolder();
 			long childId = child.getId();
 
@@ -243,7 +254,7 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 				.orElseThrow();
 			long parentId = parent.getId();
 
-			// ✅ Redis 락 대신 DB에서 moving 상태 생성
+			// ✅ DB에서 ACTIVE MOVE 상태 생성
 			markMovingInDb(parentId);
 
 			FolderMetadata targetFolder = folderTreeSetUp.getSubFolders().get(2);
@@ -258,9 +269,9 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 		}
 
 		@Test
-		@DisplayName("target 폴더의 상위 폴더가 DB에서 이동 중이면(PARENT_LOCKED) 이동이 불가능하다")
+		@DisplayName("target 폴더의 상위 폴더가 DB에서 ACTIVE MOVE 상태면(PARENT_LOCKED) 이동이 불가능하다")
 		void target_folder_parent_moving_conflict_db_is_moving_test() {
-			// source를 target으로 이동시키려는데, target의 parent가 moving이면 PARENT_LOCKED
+			// source를 target으로 이동시키려는데, target의 parent가 ACTIVE MOVE 상태면 PARENT_LOCKED
 			FolderMetadata targetChild = folderTreeSetUp.getSubSubFolder();
 			long targetChildId = targetChild.getId();
 
@@ -269,7 +280,7 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 				.orElseThrow();
 			long targetParentId = targetParent.getId();
 
-			// ✅ target의 상위(부모)를 moving으로 만든다
+			// ✅ target의 상위(부모)를 ACTIVE MOVE 상태로 만든다
 			markMovingInDb(targetParentId);
 
 			FolderMetadata sourceFolder = folderTreeSetUp.getSubFolders().get(2);
@@ -284,7 +295,7 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 		}
 
 		@Test
-		@DisplayName("이미 DB에서 이동 중으로 마킹된(source itself) 폴더는 다시 이동할 수 없다(FOLDER_LOCK_CONFLICT 또는 FOLDER_JOB_CONFLICT)")
+		@DisplayName("이미 ACTIVE MOVE 상태(source itself)인 폴더는 다시 이동할 수 없다(FOLDER_JOB_CONFLICT)")
 		void source_already_moving_conflict_test() {
 			FolderMetadata sourceFolder = folderTreeSetUp.getSubFolders().get(1);
 			long sourceId = sourceFolder.getId();
@@ -300,14 +311,9 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 			CustomException ex = assertThrows(CustomException.class,
 				() -> folderService.moveFolder(sourceId, dto));
 
-			// 구현에 따라 lock 단계에서 막히면 FOLDER_LOCK_CONFLICT,
-			// job insert unique에 막히면 FOLDER_JOB_CONFLICT가 나올 수 있음
+			// source(rootId, folderId)에 ACTIVE MOVE row가 이미 있으므로 FOLDER_JOB_CONFLICT
 			String msg = ex.getMessage();
-			assertTrue(
-				msg.equals(ErrorCode.FAILED_TO_GET_FOLDER_LOCK.getMessage())
-					|| msg.equals(ErrorCode.FOLDER_JOB_CONFLICT.getMessage()),
-				"unexpected message: " + msg
-			);
+			assertEquals(ErrorCode.FOLDER_JOB_CONFLICT.getMessage(), msg);
 		}
 
 		@Test
@@ -356,125 +362,8 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 	class FolderMoveFailureTest {
 
 		@Test
-		@DisplayName("source 폴더의 상위 폴더가 DB에서 이동 중이면(PARENT_LOCKED) 이동이 불가능하다")
-		void source_folder_parent_moving_conflict_db_is_moving_test() {
-			FolderMetadata child = folderTreeSetUp.getSubSubFolder();
-			long childId = child.getId();
-
-			FolderMetadata parent = folderMetadataJpaRepository
-				.findById(child.getParentFolderId())
-				.orElseThrow();
-			long parentId = parent.getId();
-
-			// ✅ Redis 락 대신 DB에서 moving 상태 생성
-			markMovingInDb(parentId);
-
-			FolderMetadata targetFolder = folderTreeSetUp.getSubFolders().get(2);
-			long targetId = targetFolder.getId();
-
-			FolderMoveDto dto = moveDto(userId, targetId, targetFolder.getRootId(), defaultFolderName);
-
-			CustomException ex = assertThrows(CustomException.class,
-				() -> folderService.moveFolder(childId, dto));
-
-			assertEquals(ErrorCode.PARENT_LOCKED.getMessage(), ex.getMessage());
-		}
-
-		@Test
-		@DisplayName("target 폴더의 상위 폴더가 DB에서 이동 중이면(PARENT_LOCKED) 이동이 불가능하다")
-		void target_folder_parent_moving_conflict_db_is_moving_test() {
-			FolderMetadata targetChild = folderTreeSetUp.getSubSubFolder();
-			long targetChildId = targetChild.getId();
-
-			FolderMetadata targetParent = folderMetadataJpaRepository
-				.findById(targetChild.getParentFolderId())
-				.orElseThrow();
-			long targetParentId = targetParent.getId();
-
-			// ✅ target의 상위(부모)를 moving으로 만든다
-			markMovingInDb(targetParentId);
-
-			FolderMetadata sourceFolder = folderTreeSetUp.getSubFolders().get(2);
-			long sourceId = sourceFolder.getId();
-
-			FolderMoveDto dto = moveDto(userId, targetChildId, sourceFolder.getRootId(), defaultFolderName);
-
-			CustomException ex = assertThrows(CustomException.class,
-				() -> folderService.moveFolder(sourceId, dto));
-
-			assertEquals(ErrorCode.PARENT_LOCKED.getMessage(), ex.getMessage());
-		}
-
-		@Test
-		@DisplayName("이미 DB에서 이동 중으로 마킹된(source itself) 폴더는 다시 이동할 수 없다(FOLDER_LOCK_CONFLICT 또는 FOLDER_JOB_CONFLICT)")
-		void source_already_moving_conflict_test() {
-			FolderMetadata sourceFolder = folderTreeSetUp.getSubFolders().get(1);
-			long sourceId = sourceFolder.getId();
-
-			FolderMetadata targetFolder = folderTreeSetUp.getSubFolders().get(2);
-			long targetId = targetFolder.getId();
-
-			// source 자체를 moving으로 만들어둠
-			markMovingInDb(sourceId);
-
-			FolderMoveDto dto = moveDto(userId, targetId, sourceFolder.getRootId(), defaultFolderName);
-
-			CustomException ex = assertThrows(CustomException.class,
-				() -> folderService.moveFolder(sourceId, dto));
-
-			// 구현에 따라 lock 단계에서 막히면 FOLDER_LOCK_CONFLICT,
-			// job insert unique에 막히면 FOLDER_JOB_CONFLICT가 나올 수 있음
-			String msg = ex.getMessage();
-			assertTrue(
-				msg.equals(ErrorCode.FAILED_TO_GET_FOLDER_LOCK.getMessage())
-					|| msg.equals(ErrorCode.FOLDER_JOB_CONFLICT.getMessage()),
-				"unexpected message: " + msg
-			);
-		}
-
-		@Test
-		@DisplayName("폴더 이름 길이가 최대치를 초과하면 폴더 이동에 실패한다.")
-		void folder_move_maximum_depth_test() {
-			FolderMetadata sourceFolder = folderTreeSetUp.getSubFolders().get(1);
-			long sourceId = sourceFolder.getId();
-
-			FolderMetadata targetFolder = folderTreeSetUp.getLongestFolder();
-			long targetId = targetFolder.getId();
-
-			FolderMoveDto dto = moveDto(userId, targetId, targetFolder.getRootId(), sourceFolder.getUploadFolderName());
-
-			CustomException ex = assertThrows(CustomException.class,
-				() -> folderService.moveFolder(sourceId, dto));
-
-			assertEquals(ErrorCode.EXCEED_MAX_PATH_LENGTH.getMessage(), ex.getMessage());
-		}
-
-		@Test
-		@DisplayName("target 폴더의 부모 폴더가 아닌 상위 폴더로 이동할 수 있다.")
-		void target_folder_move_success_test() {
-			FolderMetadata childFolder = folderTreeSetUp.getSubSubFolder();
-			long childId = childFolder.getId();
-
-			FolderMetadata parentFolder = folderMetadataJpaRepository
-				.findById(childFolder.getParentFolderId())
-				.orElseThrow();
-
-			FolderMetadata targetFolder = folderMetadataJpaRepository
-				.findById(parentFolder.getParentFolderId())
-				.orElseThrow();
-
-			long targetId = targetFolder.getId();
-
-			FolderMoveDto dto = moveDto(userId, targetId, childFolder.getRootId(), defaultFolderName);
-			folderService.moveFolder(childId, dto);
-
-			FolderMetadata moved = folderMetadataJpaRepository.findById(childId).orElseThrow();
-			assertEquals(targetId, moved.getParentFolderId());
-		}
-
-		@Test
-		@DisplayName("검증 실패 시 is_moving 해제 및 folder_job 삭제가 수행된다")
-		void validation_failure_releases_moving_lock_and_deletes_job() {
+		@DisplayName("검증 단계에서 실패하면(source 미이동) is_moving=false 이고 folder_job이 생성되지 않는다")
+		void validation_failure_before_job_creation_keeps_source_stable() {
 			FolderMetadata sourceFolder = folderTreeSetUp.getSubFolders().get(1);
 			long sourceId = sourceFolder.getId();
 

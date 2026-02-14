@@ -54,8 +54,9 @@ class FolderMoveProcessorUnitTest {
 	private FolderBatchUpdateHelper batchUpdateHelper;
 
 	// Helper methods
-	private FolderJob createJob(Long folderId, FolderJobStatus status) {
+	private FolderJob createJob(Long rootId, Long folderId, FolderJobStatus status) {
 		return FolderJob.builder()
+			.rootId(rootId)
 			.id(folderId)
 			.currentParentId(folderId)
 			.lastFolderId(null)
@@ -97,17 +98,18 @@ class FolderMoveProcessorUnitTest {
 		void processMove_FailToAcquireJob_DoesNotProcess() {
 			// given
 			Long folderId = 1L;
-			FolderJob job = createJob(folderId, FolderJobStatus.WAITING);
+			Long rootId = 10L;
+			FolderJob job = createJob(rootId, folderId, FolderJobStatus.WAITING);
 
 			given(folderJobJpaRepository.findById(folderId)).willReturn(Optional.of(job));
-			given(folderJobRepository.tryAcquireJob(folderId)).willReturn(false);
+			given(folderJobRepository.tryAcquireJob(rootId, folderId)).willReturn(false);
 
 			// when
 			folderMoveProcessor.processMove(folderId);
 
 			// then
-			verify(folderJobRepository, never()).markJobCompleted(any());
-			verify(folderJobRepository, never()).markJobFailed(anyLong(), anyInt());
+			verify(folderJobRepository, never()).markJobCompleted(anyLong(), anyLong());
+			verify(folderJobRepository, never()).markJobFailed(anyLong(), anyLong(), anyInt());
 		}
 
 		@Test
@@ -115,14 +117,15 @@ class FolderMoveProcessorUnitTest {
 		void processMove_NoChildren_CompletesImmediately() {
 			// given
 			Long folderId = 1L;
-			FolderJob job = createJob(folderId, FolderJobStatus.WAITING);
+			Long rootId = 10L;
+			FolderJob job = createJob(rootId, folderId, FolderJobStatus.WAITING);
 			FolderMetadata root = createFolder(folderId, null, "/1/", "/root/");
 			ReflectionTestUtils.setField(folderMoveProcessor, "pageSize", 100);
 			ReflectionTestUtils.setField(folderMoveProcessor, "batchLimit", 500);
 			ReflectionTestUtils.setField(folderMoveProcessor, "maxRetry", 3);
 
 			given(folderJobJpaRepository.findById(folderId)).willReturn(Optional.of(job));
-			given(folderJobRepository.tryAcquireJob(folderId)).willReturn(true);
+			given(folderJobRepository.tryAcquireJob(rootId, folderId)).willReturn(true);
 			given(folderMetadataJpaRepository.findById(folderId)).willReturn(Optional.of(root));
 			given(folderMetadataRepository.findByParentFolderIdWithLastId(eq(folderId), isNull(), anyInt()))
 				.willReturn(List.of());
@@ -133,8 +136,8 @@ class FolderMoveProcessorUnitTest {
 			folderMoveProcessor.processMove(folderId);
 
 			// then
-			verify(folderJobRepository, times(1)).markJobCompleted(folderId);
-			verify(folderJobRepository, never()).markJobFailed(anyLong(), anyInt());
+			verify(folderJobRepository, times(1)).markJobCompleted(rootId, folderId);
+			verify(folderJobRepository, never()).markJobFailed(anyLong(), anyLong(), anyInt());
 		}
 	}
 
@@ -155,7 +158,8 @@ class FolderMoveProcessorUnitTest {
 		void processMove_WithChildren_CallsBatchUpdate() {
 			// given
 			Long folderId = 1L;
-			FolderJob job = createJob(folderId, FolderJobStatus.WAITING);
+			Long rootId = 10L;
+			FolderJob job = createJob(rootId, folderId, FolderJobStatus.WAITING);
 
 			FolderMetadata root = createFolder(folderId, null, "/1/", "/root/");
 			FolderMetadata child1 = createFolder(2L, folderId, "/1/2/", "/root/child1/");
@@ -167,7 +171,7 @@ class FolderMoveProcessorUnitTest {
 			ReflectionTestUtils.setField(folderMoveProcessor, "maxRetry", 3);
 
 			given(folderJobJpaRepository.findById(folderId)).willReturn(Optional.of(job));
-			given(folderJobRepository.tryAcquireJob(folderId)).willReturn(true);
+			given(folderJobRepository.tryAcquireJob(rootId, folderId)).willReturn(true);
 
 			// ✅ parent 조회: 1, 2, 3 모두 필요 (자식들이 스택에 push되면서 parent로 조회됨)
 			given(folderMetadataJpaRepository.findById(1L)).willReturn(Optional.of(root));
@@ -205,7 +209,7 @@ class FolderMoveProcessorUnitTest {
 				flushedSnapshots.add(list.stream().map(FolderMetadata::getId).toList());
 				return null;
 			}).given(batchUpdateHelper).batchUpdateFoldersAndSaveProgress(
-				anyList(), anyLong(), anyLong(), any(), any(), any(Stack.class)
+				anyList(), anyLong(), anyLong(), anyLong(), any(), any(), any(Stack.class)
 			);
 
 			// when
@@ -216,8 +220,8 @@ class FolderMoveProcessorUnitTest {
 				.as("batchUpdateHelper에 전달된 폴더 목록")
 				.anySatisfy(ids -> assertThat(ids).containsExactly(2L, 3L));
 
-			then(folderJobRepository).should(times(1)).markJobCompleted(folderId);
-			then(folderJobRepository).should(never()).markJobFailed(anyLong(), anyInt());
+			then(folderJobRepository).should(times(1)).markJobCompleted(rootId, folderId);
+			then(folderJobRepository).should(never()).markJobFailed(anyLong(), anyLong(), anyInt());
 		}
 
 		@Test
@@ -225,11 +229,12 @@ class FolderMoveProcessorUnitTest {
 		void processMove_BatchUpdateFails_MarksFailed() {
 			// given
 			Long folderId = 1L;
-			FolderJob job = createJob(folderId, FolderJobStatus.WAITING);
+			Long rootId = 10L;
+			FolderJob job = createJob(rootId, folderId, FolderJobStatus.WAITING);
 			FolderMetadata root = createFolder(folderId, null, "/1/", "/root/");
 
 			given(folderJobJpaRepository.findById(folderId)).willReturn(Optional.of(job));
-			given(folderJobRepository.tryAcquireJob(folderId)).willReturn(true);
+			given(folderJobRepository.tryAcquireJob(rootId, folderId)).willReturn(true);
 			given(folderMetadataJpaRepository.findById(folderId)).willReturn(Optional.of(root));
 			given(folderMetadataRepository.findByParentFolderIdWithLastId(anyLong(), any(), anyInt()))
 				.willThrow(new RuntimeException("DB Connection Error"));
@@ -240,7 +245,7 @@ class FolderMoveProcessorUnitTest {
 				.isInstanceOf(CustomException.class)
 				.hasMessageContaining("메시지 처리에 실패했습니다.");
 
-			verify(folderJobRepository, times(1)).markJobFailed(folderId, 3);
+			verify(folderJobRepository, times(1)).markJobFailed(rootId, folderId, 3);
 		}
 	}
 }

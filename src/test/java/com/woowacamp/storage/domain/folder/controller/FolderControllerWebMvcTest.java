@@ -39,7 +39,7 @@ class FolderControllerWebMvcTest {
 	@Test
 	@DisplayName("POST /api/v1/folders -> 201 Created")
 	void createFolder_returnsCreated() throws Exception {
-		CreateFolderReqDto request = new CreateFolderReqDto(1L, 2L, "new-folder", 1L);
+		CreateFolderReqDto request = new CreateFolderReqDto(1L, 1L, 2L, "new-folder", 1L);
 		given(folderService.createFolder(request)).willReturn(10L);
 
 		mockMvc.perform(post("/api/v1/folders")

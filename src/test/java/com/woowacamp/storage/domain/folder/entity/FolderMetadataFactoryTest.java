@@ -32,7 +32,7 @@ class FolderMetadataFactoryTest {
 	void createFolderMetadata_buildsFromParent() {
 		User user = User.builder().id(1L).rootFolderId(100L).userName("u").build();
 		FolderMetadata parent = parentFolder();
-		CreateFolderReqDto req = new CreateFolderReqDto(1L, 10L, "child", 2L);
+		CreateFolderReqDto req = new CreateFolderReqDto(1L, 100L, 10L, "child", 2L);
 
 		FolderMetadata metadata = FolderMetadataFactory.createFolderMetadata(user, parent, req);
 

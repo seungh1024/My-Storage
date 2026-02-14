@@ -43,14 +43,15 @@ class FolderJobRepositoryTest extends IntegrationTestBase {
 	 */
 	private void createJobWithUpdatedAt(Long folderId, FolderJobStatus status, LocalDateTime updatedAt) {
 		jdbcTemplate.update(
-			"INSERT INTO folder_job (folder_id, current_parent_id, last_folder_id, last_file_id, parent_stack, updated_at, status, retry_count) " +
-				"VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-			folderId, folderId, null, null, "[]", updatedAt, status.name(), 0
+			"INSERT INTO folder_job (root_id, folder_id, current_parent_id, last_folder_id, last_file_id, parent_stack, updated_at, status, retry_count) " +
+				"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+			1L, folderId, folderId, null, null, "[]", updatedAt, status.name(), 0
 		);
 	}
 
 	private FolderJob createJob(Long folderId, FolderJobStatus status) {
 		FolderJob job = FolderJob.builder()
+			.rootId(1L)
 			.id(folderId)
 			.currentParentId(folderId)
 			.lastFolderId(null)
