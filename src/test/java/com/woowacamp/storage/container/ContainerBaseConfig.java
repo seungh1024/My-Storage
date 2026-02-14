@@ -40,19 +40,19 @@ public abstract class ContainerBaseConfig {
 			.withUsername("test")
 			.withPassword("test")
 			.withReuse(true)
-			.withStartupAttempts(1)
+			.withStartupAttempts(3)
 			.waitingFor(Wait.forListeningPort().withStartupTimeout(Duration.ofMinutes(2))));
 
 		REDIS_CONTAINER = startWithRetry("redis", () -> new GenericContainer<>("redis:7")
 			.withExposedPorts(6379)
 			.withReuse(true)
-			.withStartupAttempts(1)
+			.withStartupAttempts(3)
 			.waitingFor(Wait.forListeningPort().withStartupTimeout(Duration.ofMinutes(2))));
 
 		RABBIT_MQ_CONTAINER = startWithRetry("rabbitmq", () -> new GenericContainer<>("rabbitmq:3.12-management")
 			.withExposedPorts(5672, 15672)
 			.withReuse(true)
-			.withStartupAttempts(1)
+			.withStartupAttempts(3)
 			.waitingFor(Wait.forListeningPort().withStartupTimeout(Duration.ofMinutes(3))));
 
 		// JVM 종료 시 컨테이너 정리
