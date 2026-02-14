@@ -16,7 +16,7 @@ spring:
     show-sql: ${SPRING_JPA_SHOW_SQL:false}
     hibernate:
       dialect: org.hibernate.dialect.MySQL8Dialect
-      ddl-auto: ${SPRING_DDL_AUTO:none}
+      ddl-auto: ${SPRING_DDL_AUTO:update}
       properties:
         hibernate:
           format_sql: true

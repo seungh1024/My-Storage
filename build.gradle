@@ -58,6 +58,9 @@ dependencies {
 	implementation platform('software.amazon.awssdk:bom:2.20.56')
 	implementation 'software.amazon.awssdk:s3' // 필요한 모듈만 추가
 
+	// TSID
+	implementation 'com.github.f4b6a3:tsid-creator:5.2.6'
+
 	testImplementation 'org.testcontainers:testcontainers:1.19.4'
 	testImplementation 'org.testcontainers:junit-jupiter:1.19.4'
 	testImplementation 'org.testcontainers:mysql:1.19.4'
