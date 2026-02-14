@@ -62,6 +62,27 @@ jobs:
           pull_with_retry redis:7
           pull_with_retry rabbitmq:3.12-management
 
+      - name: Ensure Docker daemon is ready
+        run: |
+          set -euo pipefail
+          for i in {1..10}; do
+            if docker info > /dev/null 2>&1; then
+              echo "Docker daemon is ready"
+              break
+            fi
+            echo "Waiting for Docker daemon... ($i/10)"
+            sleep 3
+          done
+          docker info
+
+      - name: Configure Testcontainers strategy
+        run: |
+          mkdir -p "$HOME"
+          cat > "$HOME/.testcontainers.properties" <<'EOF'
+          docker.client.strategy=org.testcontainers.dockerclient.UnixSocketClientProviderStrategy
+          testcontainers.reuse.enable=true
+          EOF
+
       - name: Create application-secret.yml
         env:
           APPLICATION_SECRET_YML_B64: ${{ secrets.APPLICATION_SECRET_YML_B64 }}
@@ -76,7 +97,7 @@ jobs:
       - name: Test + JaCoCo + Sonar analyze
         env:
           SPRING_PROFILES_ACTIVE: test,secret
-          TESTCONTAINERS_REUSE_ENABLE: true
+          DOCKER_HOST: unix:///var/run/docker.sock
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: ./gradlew test jacocoTestReport sonar --info
