@@ -76,6 +76,9 @@ jobs:
       - name: Test + JaCoCo + Sonar analyze
         env:
           SPRING_PROFILES_ACTIVE: test,secret
+          TESTCONTAINERS_REUSE_ENABLE: true
+          TESTCONTAINERS_RYUK_DISABLED: true
+          TESTCONTAINERS_CHECKS_DISABLE: true
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: ./gradlew test jacocoTestReport sonar --info
