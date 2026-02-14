@@ -1,6 +1,7 @@
 package com.woowacamp.storage.container;
 
 import java.time.Duration;
+import java.util.function.Supplier;
 
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -8,7 +9,6 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
-import org.testcontainers.lifecycle.Startable;
 
 /**
  * 통합 테스트용 TestContainers 싱글톤 설정
@@ -35,31 +35,25 @@ public abstract class ContainerBaseConfig {
 	private static final GenericContainer<?> RABBIT_MQ_CONTAINER;
 
 	static {
-		// MySQL Container 초기화 및 시작
-		MY_SQL_CONTAINER = new MySQLContainer<>("mysql:8.0.33")
+		MY_SQL_CONTAINER = startWithRetry("mysql", () -> new MySQLContainer<>("mysql:8.0.33")
 			.withDatabaseName("test")
 			.withUsername("test")
 			.withPassword("test")
 			.withReuse(true)
-			.withStartupAttempts(3)
-			.waitingFor(Wait.forListeningPort().withStartupTimeout(Duration.ofMinutes(2)));
-		startContainerWithRetry("mysql", MY_SQL_CONTAINER);
+			.withStartupAttempts(1)
+			.waitingFor(Wait.forListeningPort().withStartupTimeout(Duration.ofMinutes(2))));
 
-		// Redis Container 초기화 및 시작
-		REDIS_CONTAINER = new GenericContainer<>("redis:7")
+		REDIS_CONTAINER = startWithRetry("redis", () -> new GenericContainer<>("redis:7")
 			.withExposedPorts(6379)
 			.withReuse(true)
-			.withStartupAttempts(3)
-			.waitingFor(Wait.forListeningPort().withStartupTimeout(Duration.ofMinutes(2)));
-		startContainerWithRetry("redis", REDIS_CONTAINER);
+			.withStartupAttempts(1)
+			.waitingFor(Wait.forListeningPort().withStartupTimeout(Duration.ofMinutes(2))));
 
-		// RabbitMQ Container 초기화 및 시작
-		RABBIT_MQ_CONTAINER = new GenericContainer<>("rabbitmq:3.12-management")
+		RABBIT_MQ_CONTAINER = startWithRetry("rabbitmq", () -> new GenericContainer<>("rabbitmq:3.12-management")
 			.withExposedPorts(5672, 15672)
 			.withReuse(true)
-			.withStartupAttempts(3)
-			.waitingFor(Wait.forListeningPort().withStartupTimeout(Duration.ofMinutes(3)));
-		startContainerWithRetry("rabbitmq", RABBIT_MQ_CONTAINER);
+			.withStartupAttempts(1)
+			.waitingFor(Wait.forListeningPort().withStartupTimeout(Duration.ofMinutes(3))));
 
 		// JVM 종료 시 컨테이너 정리
 		Runtime.getRuntime().addShutdownHook(new Thread(() -> {
@@ -75,12 +69,14 @@ public abstract class ContainerBaseConfig {
 		}));
 	}
 
-	private static void startContainerWithRetry(String containerName, Startable container) {
+	private static <T extends GenericContainer<?>> T startWithRetry(String containerName, Supplier<T> containerSupplier) {
 		RuntimeException lastException = null;
 		for (int attempt = 1; attempt <= START_MAX_ATTEMPTS; attempt++) {
+			T container = null;
 			try {
+				container = containerSupplier.get();
 				container.start();
-				return;
+				return container;
 			} catch (RuntimeException e) {
 				lastException = e;
 				System.err.printf(
@@ -90,12 +86,16 @@ public abstract class ContainerBaseConfig {
 					START_MAX_ATTEMPTS,
 					e.getMessage()
 				);
+				e.printStackTrace(System.err);
 
-				if (attempt < START_MAX_ATTEMPTS) {
+				if (container != null) {
 					try {
 						container.stop();
 					} catch (Exception ignored) {
 					}
+				}
+
+				if (attempt < START_MAX_ATTEMPTS) {
 					sleepSilently(RETRY_BACKOFF_MILLIS * attempt);
 				}
 			}
