@@ -94,7 +94,9 @@ jobs:
           SPRING_PROFILES_ACTIVE: test,secret
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: ./gradlew test jacocoTestReport sonar --info
+        run: |
+          echo "Using DOCKER_API_VERSION=${DOCKER_API_VERSION:-unset}"
+          ./gradlew test jacocoTestReport sonar --info
 
       - name: Upload test reports on failure
         if: failure()

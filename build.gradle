@@ -81,6 +81,8 @@ checkstyle {
 
 tasks.named('test') {
 	useJUnitPlatform()
+	// GitHub Actions Docker daemon 최소 API(>=1.44)와 docker client 기본값(1.32) 불일치 방지
+	environment "DOCKER_API_VERSION", System.getenv("DOCKER_API_VERSION") ?: "1.44"
 	finalizedBy 'jacocoTestReport'
 }
 
