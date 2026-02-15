@@ -74,6 +74,9 @@ jobs:
             sleep 3
           done
           docker info
+          SERVER_API_VERSION=$(docker version --format '{{.Server.APIVersion}}')
+          echo "Detected Docker Server API version: ${SERVER_API_VERSION}"
+          echo "DOCKER_API_VERSION=${SERVER_API_VERSION}" >> "$GITHUB_ENV"
 
       - name: Create application-secret.yml
         env:
