@@ -74,9 +74,14 @@ jobs:
             sleep 3
           done
           docker info
-          SERVER_API_VERSION=$(docker version --format '{{.Server.APIVersion}}')
-          echo "Detected Docker Server API version: ${SERVER_API_VERSION}"
-          echo "DOCKER_API_VERSION=${SERVER_API_VERSION}" >> "$GITHUB_ENV"
+          docker version
+
+      - name: Normalize Testcontainers settings
+        run: |
+          set -euo pipefail
+          # 러너 전역 설정 파일이 있으면 전략이 비정상 고정될 수 있으므로 제거
+          rm -f ~/.testcontainers.properties
+          echo "Removed ~/.testcontainers.properties (if existed)"
 
       - name: Create application-secret.yml
         env:
@@ -95,8 +100,15 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "Using DOCKER_API_VERSION=${DOCKER_API_VERSION:-unset}"
-          ./gradlew test jacocoTestReport sonar --info
+          set -euo pipefail
+          export DOCKER_HOST=unix:///var/run/docker.sock
+          export DOCKER_API_VERSION="$(docker version --format '{{.Server.APIVersion}}')"
+          export TESTCONTAINERS_DOCKER_CLIENT_STRATEGY=org.testcontainers.dockerclient.EnvironmentAndSystemPropertyClientProviderStrategy
+          echo "Using DOCKER_HOST=${DOCKER_HOST}"
+          echo "Using DOCKER_API_VERSION=${DOCKER_API_VERSION}"
+          ./gradlew --no-daemon test jacocoTestReport sonar --info \
+            -Ddocker.api.version="${DOCKER_API_VERSION}" \
+            -Dorg.testcontainers.dockerclient.strategy=org.testcontainers.dockerclient.EnvironmentAndSystemPropertyClientProviderStrategy
 
       - name: Upload test reports on failure
         if: failure()
