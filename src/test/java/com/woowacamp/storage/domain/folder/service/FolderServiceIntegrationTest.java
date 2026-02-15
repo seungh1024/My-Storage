@@ -18,7 +18,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 
 import com.woowacamp.storage.config.IntegrationTestBase;
-import com.woowacamp.storage.domain.folder.dto.MovePlan;
+import com.woowacamp.storage.domain.folder.dto.command.MovePlan;
 import com.woowacamp.storage.domain.folder.dto.request.FolderMoveDto;
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
@@ -573,9 +573,9 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 			var result = folderService.getFolderContents(
 				folderId,
 				0L,  // cursorId
-				com.woowacamp.storage.domain.folder.dto.CursorType.FOLDER,
+				com.woowacamp.storage.domain.folder.dto.type.CursorType.FOLDER,
 				limit,
-				com.woowacamp.storage.domain.folder.dto.FolderContentsSortField.CREATED_AT,
+				com.woowacamp.storage.domain.folder.dto.type.FolderContentsSortField.CREATED_AT,
 				org.springframework.data.domain.Sort.Direction.DESC,
 				java.time.LocalDateTime.now(),
 				null,
@@ -605,9 +605,9 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 			var result = folderService.getFolderContents(
 				folderId,
 				0L,
-				com.woowacamp.storage.domain.folder.dto.CursorType.FOLDER,
+				com.woowacamp.storage.domain.folder.dto.type.CursorType.FOLDER,
 				limit,
-				com.woowacamp.storage.domain.folder.dto.FolderContentsSortField.CREATED_AT,
+				com.woowacamp.storage.domain.folder.dto.type.FolderContentsSortField.CREATED_AT,
 				org.springframework.data.domain.Sort.Direction.DESC,
 				java.time.LocalDateTime.now(),
 				null,
@@ -631,9 +631,9 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 			var result = folderService.getFolderContents(
 				folderId,
 				0L,
-				com.woowacamp.storage.domain.folder.dto.CursorType.FOLDER,
+				com.woowacamp.storage.domain.folder.dto.type.CursorType.FOLDER,
 				10,
-				com.woowacamp.storage.domain.folder.dto.FolderContentsSortField.CREATED_AT,
+				com.woowacamp.storage.domain.folder.dto.type.FolderContentsSortField.CREATED_AT,
 				org.springframework.data.domain.Sort.Direction.DESC,
 				java.time.LocalDateTime.now(),
 				null,

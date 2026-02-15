@@ -22,14 +22,14 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class FolderOperationStateService {
 	private static final String UPDATE_ACTIVE_MOVE_PROJECTED_MAX_NAME_PATH_LENGTH_SQL = """
-		UPDATE folder_operation_state
-		SET projected_max_name_path_length = ?, updated_at = CURRENT_TIMESTAMP
-		WHERE root_id = ?
-		  AND folder_id = ?
-		  AND operation_type = ?
-		  AND operation_state = ?
-		  AND projected_max_name_path_length < ?
-		""";
+        UPDATE folder_operation_state
+        SET projected_max_name_path_length = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE root_id = ?
+          AND folder_id = ?
+          AND operation_type = ?
+          AND operation_state = ?
+          AND projected_max_name_path_length < ?
+        """;
 
 	private final FolderOperationStateJpaRepository folderOperationStateJpaRepository;
 	private final JdbcTemplate jdbcTemplate;
@@ -41,7 +41,7 @@ public class FolderOperationStateService {
 			folderOperationStateJpaRepository.insert(rootId, folderId, FolderOperationType.MOVE.name(),
 				FolderOperationStatus.ACTIVE.name(), rootIdFullPath, projectedMaxNamePathLength, jobId);
 		} catch (DataIntegrityViolationException e) {
-			String specificMessage = e.getMostSpecificCause() == null ? "" : e.getMostSpecificCause().getMessage();
+			String specificMessage = e.getMostSpecificCause() == null ? null : e.getMostSpecificCause().getMessage();
 			if (specificMessage == null || !specificMessage.contains("Duplicate entry")) {
 				throw e;
 			}

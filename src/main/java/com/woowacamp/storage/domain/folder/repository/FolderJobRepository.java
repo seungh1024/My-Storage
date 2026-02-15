@@ -10,6 +10,7 @@ import com.woowacamp.storage.domain.folder.entity.FolderJob;
 import com.woowacamp.storage.domain.folder.event.FolderMoveEvent;
 import com.woowacamp.storage.domain.folder.utils.FolderJobStatus;
 import com.woowacamp.storage.domain.folderoperation.repository.FolderOperationStateJpaRepository;
+import com.woowacamp.storage.global.error.ErrorCode;
 
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -21,6 +22,8 @@ import lombok.extern.slf4j.Slf4j;
 public class FolderJobRepository {
 	private static final String LOG_JOB_TERMINATED =
 		"[FolderJobTransactionHelper] Job terminated (max retries exceeded). jobId={}";
+	private static final String FOLDER_JOB_NOT_FOUND_BY_ID = "FolderJob not found: %d";
+	private static final String FOLDER_JOB_NOT_FOUND_BY_ROOT_AND_ID = "FolderJob not found. rootId=%d, folderId=%d";
 
 	private final FolderJobJpaRepository folderJobJpaRepository;
 	private final FolderMetadataJpaRepository folderMetadataJpaRepository;
@@ -96,9 +99,7 @@ public class FolderJobRepository {
 	 */
 	@Transactional
 	public void markJobCompleted(Long rootId, Long jobId) {
-		FolderJob job = folderJobJpaRepository.findByRootIdAndId(rootId, jobId)
-			.orElseThrow(() -> new IllegalStateException(
-				String.format("FolderJob not found. rootId=%d, folderId=%d", rootId, jobId)));
+		FolderJob job = getJobByRootAndId(rootId, jobId);
 
 		job.markCompleted();
 		folderJobJpaRepository.save(job);
@@ -110,8 +111,7 @@ public class FolderJobRepository {
 
 	@Transactional
 	public void markJobCompleted(Long jobId) {
-		FolderJob job = folderJobJpaRepository.findById(jobId)
-			.orElseThrow(() -> new IllegalStateException("FolderJob not found: " + jobId));
+		FolderJob job = getJobById(jobId);
 		markJobCompleted(job.getRootId(), job.getId());
 	}
 
@@ -120,9 +120,7 @@ public class FolderJobRepository {
 	 */
 	@Transactional
 	public boolean markJobFailed(Long rootId, Long jobId, int maxRetry) {
-		FolderJob job = folderJobJpaRepository.findByRootIdAndId(rootId, jobId)
-			.orElseThrow(() -> new IllegalStateException(
-				String.format("FolderJob not found. rootId=%d, folderId=%d", rootId, jobId)));
+		FolderJob job = getJobByRootAndId(rootId, jobId);
 
 		job.incrementRetryCount();
 		if (job.getRetryCount() >= maxRetry) {
@@ -142,8 +140,7 @@ public class FolderJobRepository {
 
 	@Transactional
 	public boolean markJobFailed(Long jobId, int maxRetry) {
-		FolderJob job = folderJobJpaRepository.findById(jobId)
-			.orElseThrow(() -> new IllegalStateException("FolderJob not found: " + jobId));
+		FolderJob job = getJobById(jobId);
 		return markJobFailed(job.getRootId(), job.getId(), maxRetry);
 	}
 
@@ -166,8 +163,18 @@ public class FolderJobRepository {
 
 	@Transactional
 	public boolean tryAcquireJob(Long jobId) {
-		FolderJob job = folderJobJpaRepository.findById(jobId)
-			.orElseThrow(() -> new IllegalStateException("FolderJob not found: " + jobId));
+		FolderJob job = getJobById(jobId);
 		return tryAcquireJob(job.getRootId(), job.getId());
+	}
+
+	private FolderJob getJobById(Long jobId) {
+		return folderJobJpaRepository.findById(jobId)
+			.orElseThrow(() -> ErrorCode.FOLDER_JOB_NOT_FOUND.baseException(FOLDER_JOB_NOT_FOUND_BY_ID, jobId));
+	}
+
+	private FolderJob getJobByRootAndId(Long rootId, Long jobId) {
+		return folderJobJpaRepository.findByRootIdAndId(rootId, jobId)
+			.orElseThrow(() -> ErrorCode.FOLDER_JOB_NOT_FOUND.baseException(
+				FOLDER_JOB_NOT_FOUND_BY_ROOT_AND_ID, rootId, jobId));
 	}
 }

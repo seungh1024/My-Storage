@@ -12,7 +12,7 @@ import com.querydsl.jpa.impl.JPAQuery;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import com.woowacamp.storage.domain.file.entity.FileMetadata;
 import com.woowacamp.storage.domain.file.entity.QFileMetadata;
-import com.woowacamp.storage.domain.folder.dto.FolderContentsSortField;
+import com.woowacamp.storage.domain.folder.dto.type.FolderContentsSortField;
 import com.woowacamp.storage.global.constant.PermissionType;
 import com.woowacamp.storage.global.constant.UploadStatus;
 

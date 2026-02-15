@@ -175,10 +175,14 @@ public class RabbitMqConfig {
 	}
 
 	private Long extractOutboxId(org.springframework.amqp.rabbit.connection.CorrelationData correlationData) {
-		if (correlationData == null || correlationData.getId() == null) {
+		if (correlationData == null) {
 			return null;
 		}
-		return Long.parseLong(correlationData.getId());
+		String correlationId = correlationData.getId();
+		if (correlationId.isBlank()) {
+			return null;
+		}
+		return Long.parseLong(correlationId);
 	}
 
 	private Long extractOutboxId(org.springframework.amqp.core.ReturnedMessage returned) {

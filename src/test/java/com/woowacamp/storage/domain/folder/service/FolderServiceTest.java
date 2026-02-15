@@ -22,19 +22,19 @@ import org.springframework.test.util.ReflectionTestUtils;
 import com.woowacamp.storage.domain.file.entity.FileMetadata;
 import com.woowacamp.storage.domain.file.repository.FileMetadataJpaRepository;
 import com.woowacamp.storage.domain.file.repository.FileMetadataRepository;
-import com.woowacamp.storage.domain.folder.dto.CursorType;
-import com.woowacamp.storage.domain.folder.dto.FolderContentsDto;
-import com.woowacamp.storage.domain.folder.dto.FolderContentsSortField;
-import com.woowacamp.storage.domain.folder.dto.MovePlan;
+import com.woowacamp.storage.domain.folder.dto.type.CursorType;
+import com.woowacamp.storage.domain.folder.dto.response.FolderContentsDto;
+import com.woowacamp.storage.domain.folder.dto.type.FolderContentsSortField;
+import com.woowacamp.storage.domain.folder.dto.command.MovePlan;
 import com.woowacamp.storage.domain.folder.dto.request.CreateFolderReqDto;
 import com.woowacamp.storage.domain.folder.dto.request.FolderMoveDto;
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
 import com.woowacamp.storage.domain.folder.event.FolderMoveEvent;
 import com.woowacamp.storage.domain.folder.event.FolderSizeEvent;
+import com.woowacamp.storage.domain.folder.dto.command.FolderJobInsertCommand;
 import com.woowacamp.storage.domain.folder.repository.FolderJobJpaRepository;
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataRepository;
-import com.woowacamp.storage.domain.folder.utils.FolderJobStatus;
 import com.woowacamp.storage.domain.folderoperation.service.FolderOperationStateService;
 import com.woowacamp.storage.domain.message.event.MessageInfoEvent;
 import com.woowacamp.storage.domain.message.repository.MessageInfoJpaRepository;
@@ -309,18 +309,10 @@ class FolderServiceTest {
 		@Test
 		@DisplayName("성공: operation state insert + job insert=1이면 통과")
 		void success_lock_and_insert() {
-			given(folderJobJpaRepository.insert(
-				eq(1L),            // rootId
-				eq(10L),           // folderId
-				eq(10L),           // currentParentId
-				isNull(),          // lastFolderId
-				isNull(),          // lastFileId
-				eq("[]"),          // parentStack
-				eq(FolderJobStatus.WAITING.name()),
-				eq(0)
-			)).willReturn(1);
+			given(folderJobJpaRepository.insert(any(FolderJobInsertCommand.class))).willReturn(1);
+			MovePlan plan = movePlan(10L);
 
-			assertDoesNotThrow(() -> folderService.getFolderJobLock(1L, 10L, movePlan(10L)));
+			assertDoesNotThrow(() -> folderService.getFolderJobLock(1L, 10L, plan));
 		}
 
 		@Test
@@ -329,29 +321,29 @@ class FolderServiceTest {
 			willThrow(ErrorCode.FOLDER_JOB_CONFLICT.baseException())
 				.given(folderOperationStateService)
 				.insertActiveMove(anyLong(), anyLong(), anyString(), anyInt(), anyLong());
+			MovePlan plan = movePlan(10L);
 
-			assertThrows(CustomException.class, () -> folderService.getFolderJobLock(1L, 10L, movePlan(10L)));
+			assertThrows(CustomException.class, () -> folderService.getFolderJobLock(1L, 10L, plan));
 			then(folderJobJpaRepository).shouldHaveNoInteractions();
 		}
 
 		@Test
 		@DisplayName("실패: insert 결과가 1이 아니면 CustomException")
 		void fail_insert_not_1() {
-			given(folderJobJpaRepository.insert(
-				eq(1L), eq(10L), eq(10L), isNull(), isNull(), eq("[]"), eq(FolderJobStatus.WAITING.name()), eq(0)
-			)).willReturn(0);
+			given(folderJobJpaRepository.insert(any(FolderJobInsertCommand.class))).willReturn(0);
+			MovePlan plan = movePlan(10L);
 
-			assertThrows(CustomException.class, () -> folderService.getFolderJobLock(1L, 10L, movePlan(10L)));
+			assertThrows(CustomException.class, () -> folderService.getFolderJobLock(1L, 10L, plan));
 		}
 
 		@Test
 		@DisplayName("실패: insert에서 DataIntegrityViolationException이면 CustomException")
 		void fail_insert_duplicate() {
-			given(folderJobJpaRepository.insert(
-				eq(1L), eq(10L), eq(10L), isNull(), isNull(), eq("[]"), eq(FolderJobStatus.WAITING.name()), eq(0)
-			)).willThrow(new DataIntegrityViolationException("dup"));
+			given(folderJobJpaRepository.insert(any(FolderJobInsertCommand.class)))
+				.willThrow(new DataIntegrityViolationException("dup"));
+			MovePlan plan = movePlan(10L);
 
-			assertThrows(CustomException.class, () -> folderService.getFolderJobLock(1L, 10L, movePlan(10L)));
+			assertThrows(CustomException.class, () -> folderService.getFolderJobLock(1L, 10L, plan));
 		}
 	}
 
@@ -363,10 +355,7 @@ class FolderServiceTest {
 	class MoveFolderTests {
 
 		private void stubJobLockSuccess(long sourceId) {
-			given(folderJobJpaRepository.insert(
-				anyLong(), eq(sourceId), eq(sourceId), isNull(), isNull(), eq("[]"),
-				eq(FolderJobStatus.WAITING.name()), eq(0)
-			)).willReturn(1);
+			given(folderJobJpaRepository.insert(any(FolderJobInsertCommand.class))).willReturn(1);
 		}
 
 		@Test
@@ -488,13 +477,10 @@ class FolderServiceTest {
 				0L, CommonConstant.UNAVAILABLE_TIME
 			);
 
-			given(folderMetadataJpaRepository.findByIdNotDeleted(sourceId)).willReturn(Optional.of(source));
-			given(folderMetadataJpaRepository.findByIdNotDeleted(targetId)).willReturn(Optional.of(target));
-			given(folderMetadataJpaRepository.findByIdNotDeleted(parentId)).willReturn(Optional.of(parent));
-			given(folderJobJpaRepository.insert(
-				anyLong(), eq(10L), eq(10L), isNull(), isNull(), eq("[]"),
-				eq(FolderJobStatus.WAITING.name()), eq(0)
-			)).willReturn(0);
+				given(folderMetadataJpaRepository.findByIdNotDeleted(sourceId)).willReturn(Optional.of(source));
+				given(folderMetadataJpaRepository.findByIdNotDeleted(targetId)).willReturn(Optional.of(target));
+				given(folderMetadataJpaRepository.findByIdNotDeleted(parentId)).willReturn(Optional.of(parent));
+				given(folderJobJpaRepository.insert(any(FolderJobInsertCommand.class))).willReturn(0);
 
 			FolderMoveDto dto = moveDto(userId, targetId, 1L, "x");
 			assertThrows(CustomException.class, () -> folderService.moveFolder(10L, dto));
@@ -524,13 +510,11 @@ class FolderServiceTest {
 				0L, CommonConstant.UNAVAILABLE_TIME
 			);
 
-			given(folderMetadataJpaRepository.findByIdNotDeleted(sourceId)).willReturn(Optional.of(source));
-			given(folderMetadataJpaRepository.findByIdNotDeleted(targetId)).willReturn(Optional.of(target));
-			given(folderMetadataJpaRepository.findByIdNotDeleted(parentId)).willReturn(Optional.of(parent));
-			given(folderJobJpaRepository.insert(
-				anyLong(), eq(10L), eq(10L), isNull(), isNull(), eq("[]"),
-				eq(FolderJobStatus.WAITING.name()), eq(0)
-			)).willThrow(new DataIntegrityViolationException("dup"));
+				given(folderMetadataJpaRepository.findByIdNotDeleted(sourceId)).willReturn(Optional.of(source));
+				given(folderMetadataJpaRepository.findByIdNotDeleted(targetId)).willReturn(Optional.of(target));
+				given(folderMetadataJpaRepository.findByIdNotDeleted(parentId)).willReturn(Optional.of(parent));
+				given(folderJobJpaRepository.insert(any(FolderJobInsertCommand.class)))
+					.willThrow(new DataIntegrityViolationException("dup"));
 
 			FolderMoveDto dto = moveDto(userId, targetId, 1L, "x");
 			assertThrows(CustomException.class, () -> folderService.moveFolder(10L, dto));
@@ -890,10 +874,7 @@ class FolderServiceTest {
 			long parentId = 20L;
 			long userId = 100L;
 
-			given(folderJobJpaRepository.insert(
-				anyLong(), eq(sourceId), eq(sourceId), isNull(), isNull(), eq("[]"),
-				eq(FolderJobStatus.WAITING.name()), eq(0)
-			)).willReturn(1);
+				given(folderJobJpaRepository.insert(any(FolderJobInsertCommand.class))).willReturn(1);
 
 			FolderMetadata source = folder(
 				sourceId, 1L, userId, parentId,
@@ -925,12 +906,9 @@ class FolderServiceTest {
 			inOrder.verify(folderMetadataJpaRepository).findByIdNotDeleted(parentId);
 			inOrder.verify(folderOperationStateService).insertActiveMove(
 				anyLong(), eq(sourceId), anyString(), anyInt(), eq(sourceId));
-			inOrder.verify(folderJobJpaRepository).insert(
-				anyLong(), eq(sourceId), eq(sourceId), isNull(), isNull(), eq("[]"),
-				eq(FolderJobStatus.WAITING.name()), eq(0)
-			);
+				inOrder.verify(folderJobJpaRepository).insert(any(FolderJobInsertCommand.class));
+			}
 		}
-	}
 
 	// =========================================================
 	// createFolder

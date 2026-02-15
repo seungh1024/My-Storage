@@ -11,6 +11,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.woowacamp.storage.domain.folder.dto.command.FolderJobInsertCommand;
 import com.woowacamp.storage.domain.folder.entity.FolderJob;
 import com.woowacamp.storage.domain.folder.entity.FolderJobId;
 import com.woowacamp.storage.domain.folder.utils.FolderJobStatus;
@@ -19,9 +20,9 @@ import com.woowacamp.storage.domain.folder.utils.FolderJobStatus;
 public interface FolderJobJpaRepository extends JpaRepository<FolderJob, FolderJobId> {
 
 	@Query("""
-		SELECT fj FROM FolderJob fj
-		WHERE fj.id = :folderId
-	""")
+        SELECT fj FROM FolderJob fj
+        WHERE fj.id = :folderId
+    """)
 	Optional<FolderJob> findByFolderId(@Param("folderId") Long folderId);
 
 	Optional<FolderJob> findByRootIdAndId(Long rootId, Long id);
@@ -35,17 +36,11 @@ public interface FolderJobJpaRepository extends JpaRepository<FolderJob, FolderJ
 	@Query(value = """
             INSERT INTO folder_job (root_id, folder_id, current_parent_id, last_folder_id,
                                     last_file_id, parent_stack, updated_at, status, retry_count)
-            VALUES (:rootId, :folderId, :currentParentId, :lastFolderId, :lastFileId,
-                    :parentStack, CURRENT_TIMESTAMP, :status, :retryCount)
+            VALUES (:#{#command.rootId}, :#{#command.folderId}, :#{#command.currentParentId},
+                    :#{#command.lastFolderId}, :#{#command.lastFileId},
+                    :#{#command.parentStack}, CURRENT_TIMESTAMP, :#{#command.status}, :#{#command.retryCount})
         """, nativeQuery = true)
-	int insert(@Param("rootId") Long rootId,
-		@Param("folderId") Long folderId,
-		@Param("currentParentId") Long currentParentId,
-		@Param("lastFolderId") Long lastFolderId,
-		@Param("lastFileId") Long lastFileId,
-		@Param("parentStack") String parentStack,
-		@Param("status") String status,
-		@Param("retryCount") int retryCount);
+	int insert(@Param("command") FolderJobInsertCommand command);
 
 	@Transactional
 	@Modifying

@@ -15,9 +15,9 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.woowacamp.storage.domain.folder.dto.FolderContentsDto;
-import com.woowacamp.storage.domain.folder.dto.FolderCreateResponseDto;
-import com.woowacamp.storage.domain.folder.dto.GetFolderContentsRequestParams;
+import com.woowacamp.storage.domain.folder.dto.response.FolderContentsDto;
+import com.woowacamp.storage.domain.folder.dto.response.FolderCreateResponseDto;
+import com.woowacamp.storage.domain.folder.dto.request.GetFolderContentsRequestParams;
 import com.woowacamp.storage.domain.folder.dto.request.CreateFolderReqDto;
 import com.woowacamp.storage.domain.folder.dto.request.FolderMoveDto;
 import com.woowacamp.storage.domain.folder.service.FolderService;

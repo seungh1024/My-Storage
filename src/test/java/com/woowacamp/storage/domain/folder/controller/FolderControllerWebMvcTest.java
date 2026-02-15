@@ -13,7 +13,7 @@ import org.springframework.context.annotation.Import;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.woowacamp.storage.config.JpaTestConfig;
-import com.woowacamp.storage.domain.folder.dto.FolderContentsDto;
+import com.woowacamp.storage.domain.folder.dto.response.FolderContentsDto;
 import com.woowacamp.storage.domain.folder.dto.request.CreateFolderReqDto;
 import com.woowacamp.storage.domain.folder.dto.request.FolderMoveDto;
 import com.woowacamp.storage.domain.folder.service.FolderService;

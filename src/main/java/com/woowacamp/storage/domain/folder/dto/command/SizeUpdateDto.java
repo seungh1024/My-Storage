@@ -1,4 +1,4 @@
-package com.woowacamp.storage.domain.folder.dto;
+package com.woowacamp.storage.domain.folder.dto.command;
 
 import java.util.List;
 

@@ -18,23 +18,23 @@ import com.woowacamp.storage.domain.folderoperation.repository.projection.Active
 public interface FolderOperationStateJpaRepository extends JpaRepository<FolderOperationState, FolderOperationStateId> {
 
 	@Query("""
-			SELECT fos.folderId
-			FROM FolderOperationState fos
-			WHERE fos.rootId = :rootId
-			  AND fos.folderId IN :folderIds
-		""")
+            SELECT fos.folderId
+            FROM FolderOperationState fos
+            WHERE fos.rootId = :rootId
+              AND fos.folderId IN :folderIds
+        """)
 	List<Long> findFolderIdsByRootIdAndFolderIds(@Param("rootId") Long rootId,
 		@Param("folderIds") List<Long> folderIds);
 
 	@Query("""
-			SELECT fos.folderId AS folderId,
-			       fos.projectedMaxNamePathLength AS projectedMaxNamePathLength
-			FROM FolderOperationState fos
-			WHERE fos.rootId = :rootId
-			  AND fos.folderId IN :folderIds
-			  AND fos.operationType = :operationType
-			  AND fos.operationState = :operationState
-		""")
+            SELECT fos.folderId AS folderId,
+                   fos.projectedMaxNamePathLength AS projectedMaxNamePathLength
+            FROM FolderOperationState fos
+            WHERE fos.rootId = :rootId
+              AND fos.folderId IN :folderIds
+              AND fos.operationType = :operationType
+              AND fos.operationState = :operationState
+        """)
 	List<ActiveMoveReservationProjection> findActiveMoveReservationsByRootIdAndFolderIdsAndTypeAndState(
 		@Param("rootId") Long rootId,
 		@Param("folderIds") List<Long> folderIds,
@@ -42,13 +42,13 @@ public interface FolderOperationStateJpaRepository extends JpaRepository<FolderO
 		@Param("operationState") FolderOperationStatus operationState);
 
 	@Query("""
-			SELECT MAX(fos.projectedMaxNamePathLength)
-			FROM FolderOperationState fos
-			WHERE fos.rootId = :rootId
-			  AND fos.operationType = :operationType
-			  AND fos.operationState = :operationState
-			  AND fos.rootIdFullPath LIKE CONCAT(:rootIdFullPathPrefix, '%')
-		""")
+            SELECT MAX(fos.projectedMaxNamePathLength)
+            FROM FolderOperationState fos
+            WHERE fos.rootId = :rootId
+              AND fos.operationType = :operationType
+              AND fos.operationState = :operationState
+              AND fos.rootIdFullPath LIKE CONCAT(:rootIdFullPathPrefix, '%')
+        """)
 	Optional<Integer> findMaxProjectedNamePathLengthInActiveMoveSubtreeByPrefix(@Param("rootId") Long rootId,
 		@Param("rootIdFullPathPrefix") String rootIdFullPathPrefix,
 		@Param("operationType") FolderOperationType operationType,
@@ -57,23 +57,23 @@ public interface FolderOperationStateJpaRepository extends JpaRepository<FolderO
 	@Transactional
 	@Modifying
 	@Query("""
-			DELETE FROM FolderOperationState fos
-			WHERE fos.rootId = :rootId AND fos.folderId = :folderId
-		""")
+            DELETE FROM FolderOperationState fos
+            WHERE fos.rootId = :rootId AND fos.folderId = :folderId
+        """)
 	int deleteByRootIdAndFolderId(@Param("rootId") Long rootId, @Param("folderId") Long folderId);
 
 	@Transactional
 	@Modifying
 	@Query(value = """
-			INSERT INTO folder_operation_state (
-				root_id, folder_id, operation_type, operation_state, root_id_full_path,
-				projected_max_name_path_length, job_id, created_at, updated_at
-			)
-			VALUES (
-				:rootId, :folderId, :operationType, :operationState, :rootIdFullPath,
-				:projectedMaxNamePathLength, :jobId, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-			)
-		""", nativeQuery = true)
+            INSERT INTO folder_operation_state (
+                root_id, folder_id, operation_type, operation_state, root_id_full_path,
+                projected_max_name_path_length, job_id, created_at, updated_at
+            )
+            VALUES (
+                :rootId, :folderId, :operationType, :operationState, :rootIdFullPath,
+                :projectedMaxNamePathLength, :jobId, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+            )
+        """, nativeQuery = true)
 	int insert(@Param("rootId") Long rootId, @Param("folderId") Long folderId,
 		@Param("operationType") String operationType, @Param("operationState") String operationState,
 		@Param("rootIdFullPath") String rootIdFullPath,

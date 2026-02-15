@@ -1,9 +1,11 @@
-package com.woowacamp.storage.domain.folder.dto;
+package com.woowacamp.storage.domain.folder.dto.request;
 
 import java.time.LocalDateTime;
 
 import org.springframework.data.domain.Sort;
 
+import com.woowacamp.storage.domain.folder.dto.type.CursorType;
+import com.woowacamp.storage.domain.folder.dto.type.FolderContentsSortField;
 import com.woowacamp.storage.global.annotation.CheckField;
 import com.woowacamp.storage.global.aop.type.FieldType;
 import com.woowacamp.storage.global.constant.CommonConstant;

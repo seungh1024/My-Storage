@@ -1,4 +1,4 @@
-package com.woowacamp.storage.domain.folder.dto;
+package com.woowacamp.storage.domain.folder.dto.command;
 
 /**
  * 폴더 이동 검증 결과와 이동 루트 반영에 필요한 계산값 묶음.

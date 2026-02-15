@@ -43,6 +43,7 @@ public enum ErrorCode {
 	FOLDER_LOCK_CONFLICT(HttpStatus.CONFLICT, "상위 작업으로, 폴더락 획득에 실패했습니다."),
 	FAILED_TO_GET_FOLDER_LOCK(HttpStatus.BAD_REQUEST, "폴더락 획득에 실패했습니다."),
 	EXCEED_MAX_PATH_LENGTH(HttpStatus.BAD_REQUEST, "전체 경로가 제한을 넘었습니다. 250자 이내로 생성해 주세요."),
+	FOLDER_JOB_NOT_FOUND(HttpStatus.NOT_FOUND, "폴더 작업을 찾을 수 없습니다."),
 	FOLDER_JOB_CREATE_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "폴더 작업 생성에 실패했습니다."),
 	FOLDER_JOB_CONFLICT(HttpStatus.CONFLICT, "폴더 작업이 이미 존재합니다."),
 	// 500,

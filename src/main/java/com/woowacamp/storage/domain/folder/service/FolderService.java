@@ -18,15 +18,16 @@ import org.springframework.transaction.annotation.Transactional;
 import com.woowacamp.storage.domain.file.entity.FileMetadata;
 import com.woowacamp.storage.domain.file.repository.FileMetadataJpaRepository;
 import com.woowacamp.storage.domain.file.repository.FileMetadataRepository;
-import com.woowacamp.storage.domain.folder.dto.CursorType;
-import com.woowacamp.storage.domain.folder.dto.FolderContentsDto;
-import com.woowacamp.storage.domain.folder.dto.FolderContentsSortField;
-import com.woowacamp.storage.domain.folder.dto.MovePlan;
+import com.woowacamp.storage.domain.folder.dto.type.CursorType;
+import com.woowacamp.storage.domain.folder.dto.response.FolderContentsDto;
+import com.woowacamp.storage.domain.folder.dto.type.FolderContentsSortField;
+import com.woowacamp.storage.domain.folder.dto.command.MovePlan;
 import com.woowacamp.storage.domain.folder.dto.request.CreateFolderReqDto;
 import com.woowacamp.storage.domain.folder.dto.request.FolderMoveDto;
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
 import com.woowacamp.storage.domain.folder.event.FolderMoveEvent;
 import com.woowacamp.storage.domain.folder.event.FolderSizeEvent;
+import com.woowacamp.storage.domain.folder.dto.command.FolderJobInsertCommand;
 import com.woowacamp.storage.domain.folder.repository.FolderJobJpaRepository;
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataRepository;
@@ -117,11 +118,11 @@ public class FolderService {
 	 *
 	 */
 	@DistributedLock(keys = """
-		{
-		    @lockKeys.folderJob(#dto.rootId()),
-		       @lockKeys.folderName(#dto.targetFolderId(), #dto.folderName())
-		}
-		""")
+        {
+            @lockKeys.folderJob(#dto.rootId()),
+               @lockKeys.folderName(#dto.targetFolderId(), #dto.folderName())
+        }
+        """)
 	public void moveFolder(Long sourceFolderId, FolderMoveDto dto) {
 		FolderMetadata sourceFolder = folderMetadataJpaRepository.findByIdNotDeleted(sourceFolderId)
 			.orElseThrow(() -> ErrorCode.FOLDER_NOT_FOUND.baseException(
@@ -285,11 +286,11 @@ public class FolderService {
 	}
 
 	@DistributedLock(keys = """
-		{
-		    @lockKeys.folderJob(#req.rootId()),
-		    @lockKeys.folderName(#req.parentFolderId(), #req.uploadFolderName())
-		}
-		""")
+        {
+            @lockKeys.folderJob(#req.rootId()),
+            @lockKeys.folderName(#req.parentFolderId(), #req.uploadFolderName())
+        }
+        """)
 	public Long createFolder(CreateFolderReqDto req) {
 		User user = userRepository.findById(req.userId()).orElseThrow(ErrorCode.USER_NOT_FOUND::baseException);
 
@@ -492,16 +493,17 @@ public class FolderService {
 			sourceFolderId
 		);
 		try {
-			int insertResult = folderJobJpaRepository.insert(
-				rootId,                // rootId (PK)
-				sourceFolderId,        // folderId (PK)
-				sourceFolderId,        // currentParentId
-				null,                  // lastFolderId
-				null,                  // lastFileId
-				"[]",                  // parentStack
+			FolderJobInsertCommand command = new FolderJobInsertCommand(
+				rootId,
+				sourceFolderId,
+				sourceFolderId,
+				null,
+				null,
+				"[]",
 				FolderJobStatus.WAITING.name(),
 				0
 			);
+			int insertResult = folderJobJpaRepository.insert(command);
 
 			if (insertResult != 1) {
 				throw ErrorCode.FOLDER_JOB_CREATE_FAILED.baseException(

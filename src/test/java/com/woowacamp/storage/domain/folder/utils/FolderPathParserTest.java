@@ -139,38 +139,10 @@ class FolderPathParserTest {
 	@DisplayName("비정상 경로('//' 포함) 차단")
 	class InvalidInputs_DoubleSlash {
 
-		@Test
-		@DisplayName("/1///2/3/ 는 '//' 포함으로 Optional.empty")
-		void triple_slash_returns_empty_optional() {
-			// Given
-			String path = "/1///2/3/";
-
-			// When
-			Optional<List<String>> resultOpt = FolderPathParser.parsing(path);
-
-			// Then
-			assertTrue(resultOpt.isEmpty());
-		}
-
-		@Test
-		@DisplayName("// 로 시작하는 경로는 Optional.empty")
-		void starts_with_double_slash_returns_empty_optional() {
-			// Given
-			String path = "//1/2/3/";
-
-			// When
-			Optional<List<String>> resultOpt = FolderPathParser.parsing(path);
-
-			// Then
-			assertTrue(resultOpt.isEmpty());
-		}
-
-		@Test
-		@DisplayName("/1/2/3// 는 Optional.empty (끝에 // 포함)")
-		void ends_with_double_slash_returns_empty_optional() {
-			// Given
-			String path = "/1/2/3//";
-
+		@ParameterizedTest
+		@ValueSource(strings = {"/1///2/3/", "//1/2/3/", "/1/2/3//"})
+		@DisplayName("'//' 포함 경로는 Optional.empty")
+		void double_slash_path_returns_empty_optional(String path) {
 			// When
 			Optional<List<String>> resultOpt = FolderPathParser.parsing(path);
 
