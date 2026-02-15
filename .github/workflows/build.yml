@@ -40,28 +40,6 @@ jobs:
           key: ${{ runner.os }}-sonar
           restore-keys: ${{ runner.os }}-sonar
 
-      - name: Pre-pull test container images
-        run: |
-          set -euo pipefail
-          pull_with_retry() {
-            image="$1"
-            max_attempts=3
-            for attempt in $(seq 1 "$max_attempts"); do
-              if docker pull "$image"; then
-                return 0
-              fi
-              if [ "$attempt" -lt "$max_attempts" ]; then
-                sleep $((attempt * 3))
-              fi
-            done
-            echo "Failed to pull image: $image"
-            exit 1
-          }
-
-          pull_with_retry mysql:8.0.33
-          pull_with_retry redis:7
-          pull_with_retry rabbitmq:3.12-management
-
       - name: Ensure Docker daemon is ready
         run: |
           set -euo pipefail
@@ -101,14 +79,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          export DOCKER_HOST=unix:///var/run/docker.sock
           export DOCKER_API_VERSION="$(docker version --format '{{.Server.APIVersion}}')"
-          export TESTCONTAINERS_DOCKER_CLIENT_STRATEGY=org.testcontainers.dockerclient.EnvironmentAndSystemPropertyClientProviderStrategy
-          echo "Using DOCKER_HOST=${DOCKER_HOST}"
           echo "Using DOCKER_API_VERSION=${DOCKER_API_VERSION}"
           ./gradlew --no-daemon test jacocoTestReport sonar --info \
-            -Ddocker.api.version="${DOCKER_API_VERSION}" \
-            -Dorg.testcontainers.dockerclient.strategy=org.testcontainers.dockerclient.EnvironmentAndSystemPropertyClientProviderStrategy
+            -Dapi.version="${DOCKER_API_VERSION}"
 
       - name: Upload test reports on failure
         if: failure()
