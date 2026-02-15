@@ -10,6 +10,10 @@ plugins {
 group = 'com.woowacamp'
 version = '0.0.1-SNAPSHOT'
 
+ext {
+	set('testcontainers.version', '1.20.4')
+}
+
 java {
 	toolchain {
 		languageVersion = JavaLanguageVersion.of(17)
@@ -65,7 +69,6 @@ dependencies {
 	testImplementation 'org.testcontainers:testcontainers'
 	testImplementation 'org.testcontainers:junit-jupiter'
 	testImplementation 'org.testcontainers:mysql'
-	testImplementation 'org.testcontainers:mongodb'
 	testImplementation 'org.testcontainers:rabbitmq'
 	testCompileOnly 'org.projectlombok:lombok'
 	testAnnotationProcessor 'org.projectlombok:lombok'
@@ -81,8 +84,11 @@ checkstyle {
 
 tasks.named('test') {
 	useJUnitPlatform()
-	// GitHub Actions Docker daemon 최소 API(>=1.44)와 docker client 기본값(1.32) 불일치 방지
-	environment "DOCKER_API_VERSION", System.getenv("DOCKER_API_VERSION") ?: "1.44"
+	def dockerApiVersion = System.getenv("DOCKER_API_VERSION")
+	if (dockerApiVersion) {
+		environment "DOCKER_API_VERSION", dockerApiVersion
+		systemProperty "docker.api.version", dockerApiVersion
+	}
 	finalizedBy 'jacocoTestReport'
 }
 
