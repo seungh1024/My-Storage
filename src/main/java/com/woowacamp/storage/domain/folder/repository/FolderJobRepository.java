@@ -1,5 +1,6 @@
 package com.woowacamp.storage.domain.folder.repository;
 
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -29,6 +30,7 @@ public class FolderJobRepository {
 	private final FolderMetadataJpaRepository folderMetadataJpaRepository;
 	private final FolderOperationStateJpaRepository folderOperationStateJpaRepository;
 	private final ApplicationEventPublisher publisher;
+	private final Clock appClock;
 
 	@Transactional
 	public List<FolderJob> findStuckJobsWithCursor(List<FolderJobStatus> statuses,
@@ -150,7 +152,7 @@ public class FolderJobRepository {
 	@Transactional
 	public boolean tryAcquireJob(Long rootId, Long jobId) {
 		int updated = folderJobJpaRepository.updateStatusCAS(
-			rootId, jobId, FolderJobStatus.WAITING, FolderJobStatus.RUNNING);
+			rootId, jobId, FolderJobStatus.WAITING, FolderJobStatus.RUNNING, LocalDateTime.now(appClock));
 
 		if (updated > 0) {
 			log.info("[FolderJobTransactionHelper] Job acquired. rootId={}, jobId={}", rootId, jobId);

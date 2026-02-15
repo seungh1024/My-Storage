@@ -22,5 +22,5 @@ services:
     mem_limit: 1G
     cpus: 2.0
     volumes:
-      - ./logs/app.log:/app/logs/app.log
+      - ./logs:/app/logs
       - ./config:/app/config

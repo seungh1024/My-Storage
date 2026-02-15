@@ -1,5 +1,7 @@
 package com.woowacamp.storage.domain.folder.dto.command;
 
+import java.time.LocalDateTime;
+
 public record FolderJobInsertCommand(
 	Long rootId,
 	Long folderId,
@@ -7,6 +9,7 @@ public record FolderJobInsertCommand(
 	Long lastFolderId,
 	Long lastFileId,
 	String parentStack,
+	LocalDateTime updatedAt,
 	String status,
 	int retryCount
 ) {

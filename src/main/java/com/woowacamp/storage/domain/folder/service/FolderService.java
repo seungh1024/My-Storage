@@ -1,5 +1,6 @@
 package com.woowacamp.storage.domain.folder.service;
 
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -72,6 +73,7 @@ public class FolderService {
 	private final MessageInfoJpaRepository messageInfoJpaRepository;
 
 	private final FolderOperationStateService folderOperationStateService;
+	private final Clock appClock;
 
 	@Value("${constant.batchSize}")
 	private int pageSize;
@@ -500,6 +502,7 @@ public class FolderService {
 				null,
 				null,
 				"[]",
+				LocalDateTime.now(appClock),
 				FolderJobStatus.WAITING.name(),
 				0
 			);

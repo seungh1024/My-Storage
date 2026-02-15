@@ -1,9 +1,12 @@
 package com.woowacamp.storage.domain.folder.service;
 
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.Executor;
+import java.time.ZoneOffset;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -72,6 +75,7 @@ class FolderServiceTest {
 	@Mock private ValidateParentsUtil validateParentsUtil;
 	@Mock private org.springframework.context.ApplicationEventPublisher publisher;
 	@Mock private MessageInfoJpaRepository messageInfoJpaRepository;
+	@Mock private Clock appClock;
 
 	@BeforeEach
 	void setUp() {
@@ -86,6 +90,8 @@ class FolderServiceTest {
 		org.mockito.Mockito.lenient()
 			.when(folderOperationStateService.findMaxActiveMoveProjectedNamePathLengthByPrefix(anyLong(), anyString()))
 			.thenReturn(Optional.empty());
+		org.mockito.Mockito.lenient().when(appClock.getZone()).thenReturn(ZoneOffset.UTC);
+		org.mockito.Mockito.lenient().when(appClock.instant()).thenReturn(Instant.parse("2026-02-15T00:00:00Z"));
 	}
 
 	// ====== DTO helpers ======

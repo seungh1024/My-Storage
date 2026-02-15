@@ -1,6 +1,8 @@
 package com.woowacamp.storage.domain.folder.helper;
 
 import java.sql.PreparedStatement;
+import java.time.Clock;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Stack;
 
@@ -28,6 +30,7 @@ public class FolderBatchUpdateHelper {
 
 	private final JdbcTemplate jdbcTemplate;
 	private final FolderJobJpaRepository folderJobJpaRepository;
+	private final Clock appClock;
 
 	/**
 	 * 폴더 배치 업데이트 + 진행 상황 저장
@@ -62,8 +65,9 @@ public class FolderBatchUpdateHelper {
 
 		// 2. 진행 상황 저장
 		String stackJson = StackSerializationUtil.serialize(parentStack);
+		LocalDateTime now = LocalDateTime.now(appClock);
 		folderJobJpaRepository.updateProgress(
-			rootId, jobId, currentParentId, lastFolderId, lastFileId, stackJson);
+			rootId, jobId, currentParentId, lastFolderId, lastFileId, stackJson, now);
 
 		log.debug("[FolderBatchUpdateHelper] Progress saved. jobId={}, currentParentId={}, " +
 				"lastFolderId={}, lastFileId={}, stackSize={}",
@@ -103,8 +107,9 @@ public class FolderBatchUpdateHelper {
 
 		// 2. 진행 상황 저장
 		String stackJson = StackSerializationUtil.serialize(parentStack);
+		LocalDateTime now = LocalDateTime.now(appClock);
 		folderJobJpaRepository.updateProgress(
-			rootId, jobId, currentParentId, lastFolderId, lastFileId, stackJson);
+			rootId, jobId, currentParentId, lastFolderId, lastFileId, stackJson, now);
 
 		log.debug("[FolderBatchUpdateHelper] Progress saved. jobId={}, currentParentId={}, " +
 				"lastFolderId={}, lastFileId={}",
@@ -119,8 +124,9 @@ public class FolderBatchUpdateHelper {
 	public void saveProgressOnly(Long rootId, Long jobId, Long currentParentId, Long lastFolderId,
 		Long lastFileId, Stack<Long> parentStack) {
 		String stackJson = StackSerializationUtil.serialize(parentStack);
+		LocalDateTime now = LocalDateTime.now(appClock);
 		folderJobJpaRepository.updateProgress(
-			rootId, jobId, currentParentId, lastFolderId, lastFileId, stackJson);
+			rootId, jobId, currentParentId, lastFolderId, lastFileId, stackJson, now);
 
 		log.debug("[FolderBatchUpdateHelper] Progress only saved. jobId={}, currentParentId={}, " +
 				"lastFolderId={}, lastFileId={}",

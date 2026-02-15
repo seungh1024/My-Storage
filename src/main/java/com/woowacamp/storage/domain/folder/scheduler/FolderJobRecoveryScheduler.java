@@ -1,5 +1,6 @@
 package com.woowacamp.storage.domain.folder.scheduler;
 
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -25,6 +26,7 @@ import lombok.extern.slf4j.Slf4j;
 public class FolderJobRecoveryScheduler {
 
 	private final FolderJobRepository folderJobRepository;
+	private final Clock appClock;
 
 	@Value("${constant.batchSize:1000}")
 	private int pageSize;
@@ -43,7 +45,7 @@ public class FolderJobRecoveryScheduler {
 	public void recoverStuckJobs() {
 		log.info("[FolderJobRecoveryScheduler] Starting recovery check...");
 
-		LocalDateTime thresholdTime = LocalDateTime.now().minusMinutes(STUCK_THRESHOLD_MINUTES);
+		LocalDateTime thresholdTime = LocalDateTime.now(appClock).minusMinutes(STUCK_THRESHOLD_MINUTES);
 		List<FolderJobStatus> retryableStatuses = List.of(FolderJobStatus.RUNNING, FolderJobStatus.FAILED);
 
 		// QueryExecuteTemplate으로 페이징 처리
@@ -77,7 +79,7 @@ public class FolderJobRecoveryScheduler {
 	public void cleanupCompletedJobs() {
 		log.info("[FolderJobRecoveryScheduler] Starting cleanup...");
 
-		LocalDateTime thresholdTime = LocalDateTime.now().minusDays(CLEANUP_THRESHOLD_DAYS);
+		LocalDateTime thresholdTime = LocalDateTime.now(appClock).minusDays(CLEANUP_THRESHOLD_DAYS);
 		int totalDeleted = 0;
 
 		// QueryExecuteTemplate으로 페이징 처리

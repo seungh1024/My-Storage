@@ -24,47 +24,59 @@ public record GetFolderContentsRequestParams(@NotNull @Positive @CheckField(valu
 
 	// 기본 생성자 정의
 	public GetFolderContentsRequestParams {
-		if (limit == null) {
-			limit = DEFAULT_SIZE;
-		}
-		if (sortBy == null) {
-			sortBy = FolderContentsSortField.CREATED_AT;
-		}
-		if (sortDirection == null) {
-			sortDirection = Sort.Direction.DESC;
-		}
-
-		if (cursorId == null) {
-			cursorId = sortDirection.isAscending() ? Long.MAX_VALUE : 1L;
-		}
-
-		if (cursorType == null) {
-			cursorType = CursorType.FOLDER;
-		}
+		limit = resolveLimit(limit);
+		sortBy = resolveSortBy(sortBy);
+		sortDirection = resolveSortDirection(sortDirection);
+		cursorId = resolveCursorId(cursorId, sortDirection);
+		cursorType = resolveCursorType(cursorType);
 
 		if (isFirstPage(localDateTime, size)) {
-			switch (sortBy) {
-				case CREATED_AT:
-					if (sortDirection.isAscending()) {
-						localDateTime = CommonConstant.UNAVAILABLE_TIME;
-					} else {
-						localDateTime = LocalDateTime.now().plusYears(1000);
-					}
-					break;
-				case DATA_SIZE:
-					if (sortDirection.isAscending()) {
-						size = Long.MAX_VALUE;
-					} else {
-						size = 0L;
-					}
-					break;
-				default:
-					throw new IllegalArgumentException("Unsupported sortBy option: " + sortBy);
-			}
+			localDateTime = resolveFirstPageLocalDateTime(localDateTime, sortBy, sortDirection);
+			size = resolveFirstPageSize(size, sortBy, sortDirection);
 		}
 	}
 
-	private boolean isFirstPage(LocalDateTime localDateTime, Long size) {
+	private static int resolveLimit(Integer limit) {
+		return limit == null ? DEFAULT_SIZE : limit;
+	}
+
+	private static FolderContentsSortField resolveSortBy(FolderContentsSortField sortBy) {
+		return sortBy == null ? FolderContentsSortField.CREATED_AT : sortBy;
+	}
+
+	private static Sort.Direction resolveSortDirection(Sort.Direction sortDirection) {
+		return sortDirection == null ? Sort.Direction.DESC : sortDirection;
+	}
+
+	private static Long resolveCursorId(Long cursorId, Sort.Direction sortDirection) {
+		if (cursorId != null) {
+			return cursorId;
+		}
+		return sortDirection.isAscending() ? Long.MAX_VALUE : 1L;
+	}
+
+	private static CursorType resolveCursorType(CursorType cursorType) {
+		return cursorType == null ? CursorType.FOLDER : cursorType;
+	}
+
+	private static LocalDateTime resolveFirstPageLocalDateTime(LocalDateTime localDateTime,
+		FolderContentsSortField sortBy, Sort.Direction sortDirection) {
+		return switch (sortBy) {
+			case CREATED_AT -> sortDirection.isAscending()
+				? CommonConstant.UNAVAILABLE_TIME
+				: LocalDateTime.now().plusYears(1000);
+			case DATA_SIZE -> localDateTime;
+		};
+	}
+
+	private static Long resolveFirstPageSize(Long size, FolderContentsSortField sortBy, Sort.Direction sortDirection) {
+		return switch (sortBy) {
+			case CREATED_AT -> size;
+			case DATA_SIZE -> sortDirection.isAscending() ? Long.MAX_VALUE : 0L;
+		};
+	}
+
+	private static boolean isFirstPage(LocalDateTime localDateTime, Long size) {
 		return localDateTime == null || size == null;
 	}
 }
