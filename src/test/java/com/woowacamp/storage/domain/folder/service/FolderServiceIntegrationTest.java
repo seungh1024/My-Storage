@@ -359,7 +359,7 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 		}
 
 		@Test
-		@DisplayName("이미 ACTIVE MOVE 상태(source itself)인 폴더는 다시 이동할 수 없다(FOLDER_JOB_CONFLICT)")
+		@DisplayName("이미 ACTIVE MOVE 상태(source itself)인 폴더는 다시 이동할 수 없다(PARENT_LOCKED)")
 		void source_already_moving_conflict_test() {
 			FolderMetadata sourceFolder = folderTreeSetUp.getSubFolders().get(1);
 			long sourceId = sourceFolder.getId();
@@ -375,9 +375,9 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 			CustomException ex = assertThrows(CustomException.class,
 				() -> folderService.moveFolder(sourceId, dto));
 
-			// source(rootId, folderId)에 ACTIVE MOVE row가 이미 있으므로 FOLDER_JOB_CONFLICT
+			// source(rootId, folderId)에 ACTIVE MOVE row가 이미 있으므로 상위/하위 작업 충돌로 차단
 			String msg = ex.getMessage();
-			assertEquals(ErrorCode.FOLDER_JOB_CONFLICT.getMessage(), msg);
+			assertEquals(ErrorCode.PARENT_LOCKED.getMessage(), msg);
 		}
 
 		@Test

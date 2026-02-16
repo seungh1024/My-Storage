@@ -8,6 +8,8 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.woowacamp.storage.domain.folderoperation.entity.FolderOperationState;
+import com.woowacamp.storage.domain.folderoperation.entity.FolderOperationStateId;
 import com.woowacamp.storage.domain.folderoperation.entity.FolderOperationStatus;
 import com.woowacamp.storage.domain.folderoperation.entity.FolderOperationType;
 import com.woowacamp.storage.domain.folderoperation.repository.FolderOperationStateJpaRepository;
@@ -45,6 +47,16 @@ public class FolderOperationStateService {
 	}
 
 	@Transactional(readOnly = true)
+	public List<Long> findActiveMoveFolderIdsByRootIdAndPrefix(Long rootId, String rootIdFullPathPrefix) {
+		return folderOperationStateJpaRepository.findFolderIdsInActiveMoveSubtreeByPrefix(
+			rootId,
+			rootIdFullPathPrefix,
+			FolderOperationType.MOVE,
+			FolderOperationStatus.ACTIVE
+		);
+	}
+
+	@Transactional(readOnly = true)
 	public List<Long> findOperationFolderIdsByRootIdAndFolderIds(Long rootId, List<Long> folderIds) {
 		if (folderIds == null || folderIds.isEmpty()) {
 			return List.of();
@@ -66,6 +78,29 @@ public class FolderOperationStateService {
 		);
 	}
 
+	@Transactional(readOnly = true)
+	public Optional<ActiveMoveReservationProjection> findSingleActiveMoveOperationByRootIdAndFolderIds(Long rootId,
+		List<Long> folderIds) {
+		List<ActiveMoveReservationProjection> activeMoves = findActiveMoveOperationFoldersByRootIdAndFolderIds(rootId,
+			folderIds);
+		if (activeMoves.isEmpty()) {
+			return Optional.empty();
+		}
+		if (activeMoves.size() > 1) {
+			List<Long> duplicatedMoveFolderIds = activeMoves.stream()
+				.map(ActiveMoveReservationProjection::getFolderId)
+				.toList();
+			throw ErrorCode.FOLDER_PATH_ERROR.baseException(
+				StorageStringUtil.format(
+					"Expected single active move in parent path. rootId={}, parentFolderIds={}, activeMoveFolderIds={}",
+					rootId,
+					folderIds,
+					duplicatedMoveFolderIds
+				));
+		}
+		return Optional.of(activeMoves.get(0));
+	}
+
 	@Transactional
 	public void batchUpdateActiveMoveProjectedMaxNamePathLengthIfLessThan(Long rootId,
 		Map<Long, Integer> projectedMaxNamePathLengthByFolderId) {
@@ -75,6 +110,29 @@ public class FolderOperationStateService {
 
 		folderOperationStateRepository.batchUpdateActiveMoveProjectedMaxNamePathLengthIfLessThan(
 			rootId, projectedMaxNamePathLengthByFolderId);
+	}
+
+	@Transactional
+	public void updateActiveMoveProjectedMaxNamePathLengthIfLessThan(Long rootId, Long folderId,
+		int projectedMaxNamePathLength) {
+		FolderOperationStateId folderOperationStateId = new FolderOperationStateId(rootId, folderId);
+		Optional<FolderOperationState> stateOptional = folderOperationStateJpaRepository.findById(folderOperationStateId);
+		if (stateOptional.isEmpty()) {
+			return;
+		}
+
+		FolderOperationState state = stateOptional.get();
+		if (state.getOperationType() != FolderOperationType.MOVE ||
+			state.getOperationState() != FolderOperationStatus.ACTIVE) {
+			return;
+		}
+
+		if (state.getProjectedMaxNamePathLength() >= projectedMaxNamePathLength) {
+			return;
+		}
+
+		state.updateProjectedMaxNamePathLength(projectedMaxNamePathLength);
+		folderOperationStateJpaRepository.save(state);
 	}
 
 	@Transactional

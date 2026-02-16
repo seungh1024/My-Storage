@@ -87,6 +87,20 @@ class FolderServiceTest {
 		org.mockito.Mockito.lenient()
 			.when(folderOperationStateService.findMaxActiveMoveProjectedNamePathLengthByPrefix(anyLong(), anyString()))
 			.thenReturn(Optional.empty());
+		org.mockito.Mockito.lenient()
+			.when(folderOperationStateService.findActiveMoveFolderIdsByRootIdAndPrefix(anyLong(), anyString()))
+			.thenReturn(List.of());
+		org.mockito.Mockito.lenient()
+			.when(validateParentsUtil.validateAndResolveForCreate(any(FolderMetadata.class), anyInt(), anyInt()))
+			.thenAnswer(inv -> {
+				FolderMetadata parent = inv.getArgument(0);
+				return new ValidateParentsUtil.CreatePathValidationResult(
+					parent.getIdFullPath(),
+					parent.getNameFullPath(),
+					null,
+					null
+				);
+			});
 		org.mockito.Mockito.lenient().when(appClock.getZone()).thenReturn(ZoneOffset.UTC);
 		org.mockito.Mockito.lenient().when(appClock.instant()).thenReturn(Instant.parse("2026-02-15T00:00:00Z"));
 	}
@@ -742,6 +756,46 @@ class FolderServiceTest {
 		}
 
 		@Test
+		@DisplayName("실패: source 하위에 ACTIVE move가 있으면 이동을 차단한다")
+		void fail_when_active_move_exists_in_source_subtree() {
+			long sourceId = 10L;
+			long targetId = 30L;
+			long parentId = 20L;
+			long rootId = 1L;
+			long userId = 100L;
+
+			FolderMetadata source = folder(
+				sourceId, rootId, userId, parentId,
+				"src", "/p/src/", "/20/10/", 7,
+				0L, CommonConstant.UNAVAILABLE_TIME
+			);
+			FolderMetadata target = folder(
+				targetId, rootId, userId, 5L,
+				"t", "/t/", "/5/30/", 3,
+				0L, CommonConstant.UNAVAILABLE_TIME
+			);
+			FolderMetadata parent = folder(
+				parentId, rootId, userId, 1L,
+				"p", "/p/", "/1/20/", 3,
+				0L, CommonConstant.UNAVAILABLE_TIME
+			);
+
+			given(folderMetadataJpaRepository.findByIdNotDeleted(sourceId)).willReturn(Optional.of(source));
+			given(folderMetadataJpaRepository.findByIdNotDeleted(targetId)).willReturn(Optional.of(target));
+			given(folderMetadataJpaRepository.findByIdNotDeleted(parentId)).willReturn(Optional.of(parent));
+			given(folderMetadataJpaRepository.existsByParentFolderIdAndUploadFolderName(targetId, "src"))
+				.willReturn(false);
+			given(folderOperationStateService.findActiveMoveFolderIdsByRootIdAndPrefix(rootId, source.getIdFullPath()))
+				.willReturn(List.of(999L));
+
+			assertThrows(CustomException.class, () -> folderService.moveFolder(sourceId, moveDto(userId, targetId, rootId, "x")));
+
+			then(folderOperationStateService).should(never()).insertActiveMove(anyLong(), anyLong(), anyString(), anyInt(), anyLong());
+			then(folderMetadataJpaRepository).should(never()).save(any());
+			then(publisher).shouldHaveNoInteractions();
+		}
+
+		@Test
 		@DisplayName("실패: path too long이면 CustomException, save/publish 없이 종료")
 		void fail_path_too_long() {
 			ReflectionTestUtils.setField(folderService, "maxPathLength", 5);
@@ -778,7 +832,8 @@ class FolderServiceTest {
 			FolderMoveDto dto = moveDto(userId, targetId, rootId, "x");
 			assertThrows(CustomException.class, () -> folderService.moveFolder(sourceId, dto));
 
-			then(validateParentsUtil).shouldHaveNoInteractions();
+			then(validateParentsUtil).should(times(1))
+				.validateParentsFolderLock(anyLong(), anyList(), anyList());
 			then(folderMetadataJpaRepository).should(never()).save(any());
 			then(publisher).shouldHaveNoInteractions();
 		}
@@ -791,8 +846,6 @@ class FolderServiceTest {
 			long parentId = 20L;
 			long rootId = 1L;
 			long userId = 100L;
-
-			stubJobLockSuccess();
 
 			FolderMetadata source = folder(
 				sourceId, rootId, userId, parentId,
@@ -978,7 +1031,7 @@ class FolderServiceTest {
 			Long id = folderService.createFolder(req);
 			assertEquals(999L, id);
 			then(validateParentsUtil).should()
-				.validateMaxNamePathLengthAndReserveForCreate(parent, "new".length(), 250);
+				.validateAndResolveForCreate(parent, "new".length(), 250);
 
 			ArgumentCaptor<FolderMetadata> saveCaptor = ArgumentCaptor.forClass(FolderMetadata.class);
 			then(folderMetadataJpaRepository).should(times(2)).save(saveCaptor.capture());
@@ -1097,10 +1150,14 @@ class FolderServiceTest {
 
 			given(folderMetadataJpaRepository.existsByParentFolderIdAndUploadFolderName(parentId, "veryLongName"))
 				.willReturn(false);
+			willThrow(ErrorCode.EXCEED_MAX_PATH_LENGTH.baseException())
+				.given(validateParentsUtil)
+				.validateAndResolveForCreate(any(FolderMetadata.class), anyInt(), anyInt());
 
 			assertThrows(CustomException.class, () -> folderService.createFolder(req));
 			then(folderMetadataJpaRepository).should(never()).save(any());
-			then(validateParentsUtil).shouldHaveNoInteractions();
+			then(validateParentsUtil).should()
+				.validateAndResolveForCreate(parent, "veryLongName".length(), 10);
 		}
 
 		@Test
@@ -1121,7 +1178,7 @@ class FolderServiceTest {
 				.willReturn(false);
 			willThrow(ErrorCode.EXCEED_MAX_PATH_LENGTH.baseException())
 				.given(validateParentsUtil)
-				.validateMaxNamePathLengthAndReserveForCreate(parent, "ok".length(), 250);
+				.validateAndResolveForCreate(parent, "ok".length(), 250);
 
 			assertThrows(CustomException.class, () -> folderService.createFolder(req));
 

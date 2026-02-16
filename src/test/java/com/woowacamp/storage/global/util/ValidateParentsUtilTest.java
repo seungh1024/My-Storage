@@ -1,6 +1,7 @@
 package com.woowacamp.storage.global.util;
 
 import java.util.List;
+import java.util.Optional;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -8,6 +9,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
+import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
 import com.woowacamp.storage.domain.folderoperation.repository.projection.ActiveMoveReservationProjection;
 import com.woowacamp.storage.domain.folderoperation.service.FolderOperationStateService;
 import com.woowacamp.storage.global.error.CustomException;
@@ -19,31 +21,33 @@ import static org.mockito.BDDMockito.*;
 class ValidateParentsUtilTest {
 
 	private final FolderOperationStateService folderOperationStateService = mock(FolderOperationStateService.class);
-	private final ValidateParentsUtil validateParentsUtil = new ValidateParentsUtil(folderOperationStateService);
+	private final FolderMetadataJpaRepository folderMetadataJpaRepository = mock(FolderMetadataJpaRepository.class);
+	private final ValidateParentsUtil validateParentsUtil = new ValidateParentsUtil(folderOperationStateService,
+		folderMetadataJpaRepository);
 
 	@Test
 	@DisplayName("이동 검증 성공: 상위 경로에 ACTIVE operation이 없으면 통과한다")
 	void validateParentsFolderLock_success_whenNoActiveOperation() {
-		FolderMetadata sourceFolder = folder(10L, 1L, "/1/2/10/");
-		FolderMetadata targetFolder = folder(20L, 1L, "/1/3/20/");
+		List<Long> sourceParentIds = List.of(1L, 2L, 10L);
+		List<Long> targetParentIds = List.of(1L, 3L, 20L);
 
 		given(folderOperationStateService.findOperationFolderIdsByRootIdAndFolderIds(
 			eq(1L), anyList())).willReturn(List.of());
 
-		assertDoesNotThrow(() -> validateParentsUtil.validateParentsFolderLock(sourceFolder, targetFolder));
+		assertDoesNotThrow(() -> validateParentsUtil.validateParentsFolderLock(1L, sourceParentIds, targetParentIds));
 	}
 
 	@Test
 	@DisplayName("이동 검증 실패: 상위 경로에 ACTIVE operation이 있으면 PARENT_LOCKED 예외")
 	void validateParentsFolderLock_fail_whenActiveOperationExists() {
-		FolderMetadata sourceFolder = folder(10L, 1L, "/1/2/10/");
-		FolderMetadata targetFolder = folder(20L, 1L, "/1/3/20/");
+		List<Long> sourceParentIds = List.of(1L, 2L, 10L);
+		List<Long> targetParentIds = List.of(1L, 3L, 20L);
 
 		given(folderOperationStateService.findOperationFolderIdsByRootIdAndFolderIds(
 			eq(1L), anyList())).willReturn(List.of(1L, 2L));
 
 		assertThrows(CustomException.class,
-			() -> validateParentsUtil.validateParentsFolderLock(sourceFolder, targetFolder));
+			() -> validateParentsUtil.validateParentsFolderLock(1L, sourceParentIds, targetParentIds));
 	}
 
 	@Test
@@ -67,48 +71,59 @@ class ValidateParentsUtilTest {
 	}
 
 	@Test
-	@DisplayName("create 검증 성공: ACTIVE MOVE 상태가 없으면 예약 길이 갱신 없이 통과한다")
-	void validateMaxNamePathLengthAndReserveForCreate_success_whenNoActiveMove() {
+	@DisplayName("create 검증 성공: ACTIVE MOVE 상태가 없으면 부모 경로를 그대로 반환한다")
+	void validateAndResolveForCreate_success_whenNoActiveMove() {
 		FolderMetadata parentFolder = folderWithNamePathLength(30L, 1L, "/1/30/", 10);
 
-		given(folderOperationStateService.findActiveMoveOperationFoldersByRootIdAndFolderIds(
-			eq(1L), anyList())).willReturn(List.of());
+		given(folderOperationStateService.findSingleActiveMoveOperationByRootIdAndFolderIds(
+			eq(1L), anyList())).willReturn(Optional.empty());
 
-		assertDoesNotThrow(
-			() -> validateParentsUtil.validateMaxNamePathLengthAndReserveForCreate(parentFolder, 3, 250));
+		ValidateParentsUtil.CreatePathValidationResult result = assertDoesNotThrow(
+			() -> validateParentsUtil.validateAndResolveForCreate(parentFolder, 3, 250));
+		assertEquals("/1/30/", result.projectedParentIdFullPath());
+		assertEquals("/name/path/", result.projectedParentNameFullPath());
+		assertFalse(result.hasReservation());
 		then(folderOperationStateService).should(never())
-			.batchUpdateActiveMoveProjectedMaxNamePathLengthIfLessThan(anyLong(), anyMap());
+			.updateActiveMoveProjectedMaxNamePathLengthIfLessThan(anyLong(), anyLong(), anyInt());
 	}
 
 	@Test
-	@DisplayName("create 검증 성공: 새 경로가 더 길면 ACTIVE MOVE 예약 최대 길이를 갱신한다")
-	void validateMaxNamePathLengthAndReserveForCreate_success_whenNeedReservationUpdate() {
-		FolderMetadata parentFolder = folderWithNamePathLength(30L, 1L, "/1/30/", 10);
-		ActiveMoveReservationProjection state = activeMoveState(30L, 8);
+	@DisplayName("create 검증 성공: 상위 ACTIVE MOVE가 있으면 이동 후 예상 경로와 예약 정보를 반환한다")
+	void validateAndResolveForCreate_success_whenNeedReservationUpdate() {
+		FolderMetadata parentFolder = folderWithNamePathLength(30L, 1L, "/1/30/", "/r/src/", 10);
+		ActiveMoveReservationProjection state = activeMoveState(30L, 8, "/1/40/30/");
 
-		given(folderOperationStateService.findActiveMoveOperationFoldersByRootIdAndFolderIds(
-			eq(1L), anyList())).willReturn(List.of(state));
+		given(folderOperationStateService.findSingleActiveMoveOperationByRootIdAndFolderIds(
+			eq(1L), anyList())).willReturn(Optional.of(state));
+		given(folderMetadataJpaRepository.findByIdNotDeleted(30L)).willReturn(Optional.of(
+			folderWithNamePathLength(30L, 1L, "/1/40/30/", "/r/dst/src/", 11)
+		));
 
-		assertDoesNotThrow(
-			() -> validateParentsUtil.validateMaxNamePathLengthAndReserveForCreate(parentFolder, 10, 250));
-		then(folderOperationStateService).should()
-			.batchUpdateActiveMoveProjectedMaxNamePathLengthIfLessThan(eq(1L),
-				argThat(updateMap -> updateMap.size() == 1 && updateMap.get(30L) == 21));
+		ValidateParentsUtil.CreatePathValidationResult result = assertDoesNotThrow(
+			() -> validateParentsUtil.validateAndResolveForCreate(parentFolder, 10, 250));
+		assertEquals("/1/40/30/", result.projectedParentIdFullPath());
+		assertEquals("/r/dst/src/", result.projectedParentNameFullPath());
+		assertTrue(result.hasReservation());
+		assertEquals(30L, result.reservationFolderId());
+		assertEquals(22, result.reservationProjectedMaxNamePathLength());
 	}
 
 	@Test
 	@DisplayName("create 검증 실패: ACTIVE MOVE 예약 최대 길이가 제한 이상이면 예외를 던진다")
-	void validateMaxNamePathLengthAndReserveForCreate_fail_whenProjectedLengthExceeded() {
-		FolderMetadata parentFolder = folderWithNamePathLength(30L, 1L, "/1/30/", 10);
-		ActiveMoveReservationProjection state = activeMoveState(30L, 250);
+	void validateAndResolveForCreate_fail_whenProjectedLengthExceeded() {
+		FolderMetadata parentFolder = folderWithNamePathLength(30L, 1L, "/1/30/", "/r/src/", 10);
+		ActiveMoveReservationProjection state = activeMoveState(30L, 251, "/1/40/30/");
 
-		given(folderOperationStateService.findActiveMoveOperationFoldersByRootIdAndFolderIds(
-			eq(1L), anyList())).willReturn(List.of(state));
+		given(folderOperationStateService.findSingleActiveMoveOperationByRootIdAndFolderIds(
+			eq(1L), anyList())).willReturn(Optional.of(state));
+		given(folderMetadataJpaRepository.findByIdNotDeleted(30L)).willReturn(Optional.of(
+			folderWithNamePathLength(30L, 1L, "/1/40/30/", "/r/dst/src/", 11)
+		));
 
 		assertThrows(CustomException.class,
-			() -> validateParentsUtil.validateMaxNamePathLengthAndReserveForCreate(parentFolder, 1, 250));
+			() -> validateParentsUtil.validateAndResolveForCreate(parentFolder, 1, 250));
 		then(folderOperationStateService).should(never())
-			.batchUpdateActiveMoveProjectedMaxNamePathLengthIfLessThan(anyLong(), anyMap());
+			.updateActiveMoveProjectedMaxNamePathLengthIfLessThan(anyLong(), anyLong(), anyInt());
 	}
 
 	private FolderMetadata folder(Long id, Long rootId, String idFullPath) {
@@ -120,15 +135,22 @@ class ValidateParentsUtilTest {
 	}
 
 	private FolderMetadata folderWithNamePathLength(Long id, Long rootId, String idFullPath, int namePathLength) {
+		return folderWithNamePathLength(id, rootId, idFullPath, "/name/path/", namePathLength);
+	}
+
+	private FolderMetadata folderWithNamePathLength(Long id, Long rootId, String idFullPath, String nameFullPath,
+		int namePathLength) {
 		return FolderMetadata.builder()
 			.id(id)
 			.rootId(rootId)
 			.idFullPath(idFullPath)
+			.nameFullPath(nameFullPath)
 			.namePathLength(namePathLength)
 			.build();
 	}
 
-	private ActiveMoveReservationProjection activeMoveState(Long folderId, int projectedMaxNamePathLength) {
+	private ActiveMoveReservationProjection activeMoveState(Long folderId, int projectedMaxNamePathLength,
+		String rootIdFullPath) {
 		return new ActiveMoveReservationProjection() {
 			@Override
 			public Long getFolderId() {
@@ -138,6 +160,11 @@ class ValidateParentsUtilTest {
 			@Override
 			public Integer getProjectedMaxNamePathLength() {
 				return projectedMaxNamePathLength;
+			}
+
+			@Override
+			public String getRootIdFullPath() {
+				return rootIdFullPath;
 			}
 		};
 	}

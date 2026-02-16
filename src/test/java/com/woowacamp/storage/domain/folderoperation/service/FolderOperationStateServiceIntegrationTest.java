@@ -148,6 +148,42 @@ class FolderOperationStateServiceIntegrationTest extends IntegrationTestBase {
 			assertThat(result.get(0).getFolderId()).isEqualTo(30L);
 			assertThat(result.get(0).getProjectedMaxNamePathLength()).isEqualTo(150);
 		}
+
+		@Test
+		@DisplayName("prefix 하위 ACTIVE MOVE folderId만 조회한다")
+		void findActiveMoveFolderIdsByRootIdAndPrefix_success() {
+			saveState(1L, 70L, FolderOperationType.MOVE, FolderOperationStatus.ACTIVE, "/1/70/", 120, 700L);
+			saveState(1L, 71L, FolderOperationType.MOVE, FolderOperationStatus.ACTIVE, "/1/70/71/", 130, 701L);
+			saveState(1L, 72L, FolderOperationType.MOVE, FolderOperationStatus.DONE, "/1/70/72/", 140, 702L);
+			saveState(1L, 73L, FolderOperationType.DELETE, FolderOperationStatus.ACTIVE, "/1/70/73/", 150, 703L);
+			saveState(1L, 80L, FolderOperationType.MOVE, FolderOperationStatus.ACTIVE, "/1/80/", 160, 704L);
+
+			List<Long> result = folderOperationStateService.findActiveMoveFolderIdsByRootIdAndPrefix(1L, "/1/70/");
+
+			assertThat(result).containsExactlyInAnyOrder(70L, 71L);
+		}
+
+		@Test
+		@DisplayName("단건 조회: 결과가 1건이면 해당 ACTIVE MOVE를 반환한다")
+		void findSingleActiveMoveOperationByRootIdAndFolderIds_single() {
+			saveState(1L, 90L, FolderOperationType.MOVE, FolderOperationStatus.ACTIVE, "/1/90/", 120, 900L);
+
+			Optional<ActiveMoveReservationProjection> result =
+				folderOperationStateService.findSingleActiveMoveOperationByRootIdAndFolderIds(1L, List.of(90L, 91L));
+
+			assertThat(result).isPresent();
+			assertThat(result.get().getFolderId()).isEqualTo(90L);
+		}
+
+		@Test
+		@DisplayName("단건 조회: 결과가 2건 이상이면 예외를 던진다")
+		void findSingleActiveMoveOperationByRootIdAndFolderIds_fail_whenMultipleRows() {
+			saveState(1L, 91L, FolderOperationType.MOVE, FolderOperationStatus.ACTIVE, "/1/91/", 120, 901L);
+			saveState(1L, 92L, FolderOperationType.MOVE, FolderOperationStatus.ACTIVE, "/1/92/", 121, 902L);
+
+			assertThrows(CustomException.class,
+				() -> folderOperationStateService.findSingleActiveMoveOperationByRootIdAndFolderIds(1L, List.of(91L, 92L)));
+		}
 	}
 
 	@Nested

@@ -1,13 +1,12 @@
 package com.woowacamp.storage.global.util;
 
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Stream;
 
 import org.springframework.stereotype.Component;
 
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
+import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
 import com.woowacamp.storage.domain.folder.utils.FolderPathParser;
 import com.woowacamp.storage.domain.folderoperation.repository.projection.ActiveMoveReservationProjection;
 import com.woowacamp.storage.domain.folderoperation.service.FolderOperationStateService;
@@ -21,18 +20,17 @@ public class ValidateParentsUtil {
 	private static final String PATH_PARSE_FAILED = "Failed to parsing path, id full path: {}";
 
 	private final FolderOperationStateService folderOperationStateService;
+	private final FolderMetadataJpaRepository folderMetadataJpaRepository;
 
-	/**
-	 * 상위에 이미 작업 중인 폴더 유무를 확인하는 메서드. 존재하면 에러 발생.
-	 * 전달받은 폴더 기준으로 전체 경로에 대해 검증한다.
-	 * @param sourceFolder
-	 * @param targetFolder
-	 */
-	public void validateParentsFolderLock(FolderMetadata sourceFolder, FolderMetadata targetFolder) {
-		Long rootId = resolveRootId(sourceFolder);
-		List<Long> sourceParentIds = parseParentIds(sourceFolder);
-		List<Long> targetParentIds = parseParentIds(targetFolder);
-		validateParentsFolderLock(rootId, sourceParentIds, targetParentIds);
+	public record CreatePathValidationResult(
+		String projectedParentIdFullPath,
+		String projectedParentNameFullPath,
+		Long reservationFolderId,
+		Integer reservationProjectedMaxNamePathLength
+	) {
+		public boolean hasReservation() {
+			return reservationFolderId != null && reservationProjectedMaxNamePathLength != null;
+		}
 	}
 
 	public void validateParentsFolderLock(Long rootId, List<Long> sourceParentIds, List<Long> targetParentIds) {
@@ -71,64 +69,127 @@ public class ValidateParentsUtil {
 	}
 
 	/**
-	 * create 시 parent 상위 경로의 ACTIVE MOVE 상태를 기준으로 path length를 검증하고
-	 * 필요한 경우 예약 최대 길이(projectedMaxNamePathLength)를 갱신한다.
+	 * create 시점 기준 상위 ACTIVE MOVE를 고려해
+	 * 1) 최종 parent 경로 계산
+	 * 2) 경로 길이 검증
+	 * 3) projectedMaxNamePathLength 갱신 후보 계산
+	 * 을 한 번에 수행한다.
 	 */
-	public void validateMaxNamePathLengthAndReserveForCreate(FolderMetadata parentFolder, int folderNameLength,
+	public CreatePathValidationResult validateAndResolveForCreate(FolderMetadata parentFolder, int folderNameLength,
 		int maxPathLength) {
-		int createdPathLength = parentFolder.getNamePathLength() + folderNameLength + 1;
-		if (createdPathLength >= maxPathLength) {
+		List<Long> parentPathIdsInOrder = parsePathIdsInOrder(parentFolder.getIdFullPath());
+		List<Long> parentIds = parentPathIdsInOrder.stream().distinct().toList();
+		Long rootId = resolveRootId(parentFolder);
+		ActiveMoveReservationProjection activeMoveState = folderOperationStateService.findSingleActiveMoveOperationByRootIdAndFolderIds(
+				rootId,
+				parentIds
+			)
+			.orElse(null);
+		if (activeMoveState == null) {
+			int createdPathLength = parentFolder.getNamePathLength() + folderNameLength + 1;
+			validateCreatedPathLength(createdPathLength, maxPathLength);
+			return new CreatePathValidationResult(
+				parentFolder.getIdFullPath(),
+				parentFolder.getNameFullPath(),
+				null,
+				null
+			);
+		}
+
+		FolderMetadata movingRootFolder = folderMetadataJpaRepository.findByIdNotDeleted(activeMoveState.getFolderId())
+			.orElseThrow(() -> ErrorCode.FOLDER_NOT_FOUND.baseException(
+				StorageStringUtil.format("Moving root folder metadata not found. folderId={}", activeMoveState.getFolderId())));
+
+		List<String> parentPathNamesInOrder = parsePath(parentFolder.getNameFullPath());
+		if (parentPathNamesInOrder.size() != parentPathIdsInOrder.size()) {
+			throw ErrorCode.FOLDER_PATH_ERROR.baseException(
+				StorageStringUtil.format(
+					"Path token mismatch. parentFolderId={}, idPathTokenSize={}, namePathTokenSize={}",
+					parentFolder.getId(),
+					parentPathIdsInOrder.size(),
+					parentPathNamesInOrder.size()
+				));
+		}
+
+		// 서브 트리의 루트 기준으로 하위 Id 및 Folder name 경로 생성 -> 이동 전 상위 경로를 제거하는 작업
+		int movingRootIndex = findPathIndexOrThrow(parentPathIdsInOrder, activeMoveState.getFolderId());
+		String suffixIdPath = buildSuffixPathByTokens(parentPathIdsInOrder, movingRootIndex);
+		String suffixNamePath = buildSuffixPathByTokens(parentPathNamesInOrder, movingRootIndex);
+
+		// 이동 후 경로 생성
+		String projectedParentIdFullPath = activeMoveState.getRootIdFullPath() + suffixIdPath;
+		String projectedParentNameFullPath = movingRootFolder.getNameFullPath() + suffixNamePath;
+		int createdPathLengthAfterMove = projectedParentNameFullPath.length() + folderNameLength + 1;
+		int nextProjectedMaxNamePathLength = Math.max(
+			activeMoveState.getProjectedMaxNamePathLength(),
+			createdPathLengthAfterMove
+		);
+		validateCreatedPathLengthForMove(activeMoveState.getFolderId(), nextProjectedMaxNamePathLength,
+			createdPathLengthAfterMove, maxPathLength);
+
+		Long reservationFolderId = null;
+		Integer reservationProjectedMaxNamePathLength = null;
+		if (nextProjectedMaxNamePathLength > activeMoveState.getProjectedMaxNamePathLength()) {
+			reservationFolderId = activeMoveState.getFolderId();
+			reservationProjectedMaxNamePathLength = nextProjectedMaxNamePathLength;
+		}
+
+		return new CreatePathValidationResult(
+			projectedParentIdFullPath,
+			projectedParentNameFullPath,
+			reservationFolderId,
+			reservationProjectedMaxNamePathLength
+		);
+	}
+
+	private int findPathIndexOrThrow(List<Long> parentPathIdsInOrder, Long movingRootFolderId) {
+		int movingRootIndex = parentPathIdsInOrder.indexOf(movingRootFolderId);
+		if (movingRootIndex < 0) {
+			throw ErrorCode.FOLDER_PATH_ERROR.baseException(
+				StorageStringUtil.format("Moving root not found in parent path. movingRootFolderId={}", movingRootFolderId));
+		}
+		return movingRootIndex;
+	}
+
+	private void validateCreatedPathLength(int createdPathLength, int maxPathLength) {
+		if (createdPathLength > maxPathLength) {
 			throw ErrorCode.EXCEED_MAX_PATH_LENGTH.baseException(
 				StorageStringUtil.format("Total Path is too long. path length: {}", createdPathLength));
 		}
+	}
 
-		List<Long> parentIds = parseParentIds(parentFolder);
-		Long rootId = resolveRootId(parentFolder);
-		List<ActiveMoveReservationProjection> activeMoveStates = folderOperationStateService.findActiveMoveOperationFoldersByRootIdAndFolderIds(
-			rootId, parentIds);
-		Map<Long, Integer> projectedMaxNamePathLengthByFolderId = new HashMap<>();
-
-		for (ActiveMoveReservationProjection activeMoveState : activeMoveStates) {
-			int nextProjectedMaxNamePathLength = Math.max(
-				activeMoveState.getProjectedMaxNamePathLength(),
-				createdPathLength
-			);
-
-			if (nextProjectedMaxNamePathLength >= maxPathLength) {
-				throw ErrorCode.EXCEED_MAX_PATH_LENGTH.baseException(
-					StorageStringUtil.format(
-						"Total Path is too long. movingFolderId={}, projectedMaxNamePathLength={}, createdPathLength={}",
-						activeMoveState.getFolderId(),
-						nextProjectedMaxNamePathLength,
-						createdPathLength
-					));
-			}
-
-			if (nextProjectedMaxNamePathLength > activeMoveState.getProjectedMaxNamePathLength()) {
-				projectedMaxNamePathLengthByFolderId.merge(
-					activeMoveState.getFolderId(),
+	private void validateCreatedPathLengthForMove(Long movingFolderId, int nextProjectedMaxNamePathLength,
+		int createdPathLengthAfterMove, int maxPathLength) {
+		if (nextProjectedMaxNamePathLength > maxPathLength) {
+			throw ErrorCode.EXCEED_MAX_PATH_LENGTH.baseException(
+				StorageStringUtil.format(
+					"Total Path is too long. movingFolderId={}, projectedMaxNamePathLength={}, createdPathLengthAfterMove={}",
+					movingFolderId,
 					nextProjectedMaxNamePathLength,
-					Integer::max
-				);
-			}
-		}
-
-		if (!projectedMaxNamePathLengthByFolderId.isEmpty()) {
-			folderOperationStateService.batchUpdateActiveMoveProjectedMaxNamePathLengthIfLessThan(
-				rootId,
-				projectedMaxNamePathLengthByFolderId
-			);
+					createdPathLengthAfterMove
+				));
 		}
 	}
 
-	private List<Long> parseParentIds(FolderMetadata folderMetadata) {
-		return FolderPathParser.parsing(folderMetadata.getIdFullPath())
-			.orElseThrow(() -> ErrorCode.FOLDER_PATH_ERROR.baseException(
-				StorageStringUtil.format(PATH_PARSE_FAILED, folderMetadata.getIdFullPath())))
+	private List<Long> parsePathIdsInOrder(String idFullPath) {
+		return parsePath(idFullPath)
 			.stream()
-			.distinct()
 			.map(Long::parseLong)
 			.toList();
+	}
+
+	private List<String> parsePath(String fullPath) {
+		return FolderPathParser.parsing(fullPath)
+			.orElseThrow(() -> ErrorCode.FOLDER_PATH_ERROR.baseException(
+				StorageStringUtil.format(PATH_PARSE_FAILED, fullPath)));
+	}
+
+	private String buildSuffixPathByTokens(List<?> tokens, int fromExclusive) {
+		StringBuilder suffixPath = new StringBuilder();
+		for (int i = fromExclusive + 1; i < tokens.size(); i++) {
+			suffixPath.append(tokens.get(i)).append('/');
+		}
+		return suffixPath.toString();
 	}
 
 	private Long resolveRootId(FolderMetadata folder) {

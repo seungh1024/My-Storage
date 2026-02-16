@@ -165,6 +165,72 @@ class FolderOperationStateServiceTest {
 			assertThat(result.get(0).getFolderId()).isEqualTo(10L);
 			assertThat(result.get(0).getProjectedMaxNamePathLength()).isEqualTo(140);
 		}
+
+		@Test
+		@DisplayName("findActiveMoveFolderIdsByRootIdAndPrefix: MOVE+ACTIVE + prefix 조건으로 조회")
+		void findActiveMoveFolderIdsByRootIdAndPrefix_success() {
+			given(folderOperationStateJpaRepository.findFolderIdsInActiveMoveSubtreeByPrefix(
+				eq(1L),
+				eq("/1/10/"),
+				eq(FolderOperationType.MOVE),
+				eq(FolderOperationStatus.ACTIVE)
+			)).willReturn(List.of(10L, 11L));
+
+			List<Long> result = folderOperationStateService.findActiveMoveFolderIdsByRootIdAndPrefix(1L, "/1/10/");
+
+			assertThat(result).containsExactly(10L, 11L);
+		}
+
+		@Test
+		@DisplayName("findSingleActiveMoveOperationByRootIdAndFolderIds: 결과가 없으면 empty")
+		void findSingleActiveMoveOperationByRootIdAndFolderIds_empty() {
+			given(folderOperationStateJpaRepository.findActiveMoveReservationsByRootIdAndFolderIdsAndTypeAndState(
+				eq(1L),
+				eq(List.of(10L, 20L)),
+				eq(FolderOperationType.MOVE),
+				eq(FolderOperationStatus.ACTIVE)
+			)).willReturn(List.of());
+
+			Optional<ActiveMoveReservationProjection> result =
+				folderOperationStateService.findSingleActiveMoveOperationByRootIdAndFolderIds(1L, List.of(10L, 20L));
+
+			assertThat(result).isEmpty();
+		}
+
+		@Test
+		@DisplayName("findSingleActiveMoveOperationByRootIdAndFolderIds: 결과가 1건이면 반환")
+		void findSingleActiveMoveOperationByRootIdAndFolderIds_single() {
+			ActiveMoveReservationProjection projection = projection(10L, 140);
+			given(folderOperationStateJpaRepository.findActiveMoveReservationsByRootIdAndFolderIdsAndTypeAndState(
+				eq(1L),
+				eq(List.of(10L, 20L)),
+				eq(FolderOperationType.MOVE),
+				eq(FolderOperationStatus.ACTIVE)
+			)).willReturn(List.of(projection));
+
+			Optional<ActiveMoveReservationProjection> result =
+				folderOperationStateService.findSingleActiveMoveOperationByRootIdAndFolderIds(1L, List.of(10L, 20L));
+
+			assertThat(result).isPresent();
+			assertThat(result.get().getFolderId()).isEqualTo(10L);
+		}
+
+		@Test
+		@DisplayName("findSingleActiveMoveOperationByRootIdAndFolderIds: 결과가 2건 이상이면 예외")
+		void findSingleActiveMoveOperationByRootIdAndFolderIds_fail_whenMultipleRows() {
+			ActiveMoveReservationProjection first = projection(10L, 140);
+			ActiveMoveReservationProjection second = projection(20L, 150);
+			given(folderOperationStateJpaRepository.findActiveMoveReservationsByRootIdAndFolderIdsAndTypeAndState(
+				eq(1L),
+				eq(List.of(10L, 20L)),
+				eq(FolderOperationType.MOVE),
+				eq(FolderOperationStatus.ACTIVE)
+			)).willReturn(List.of(first, second));
+
+			assertThrows(CustomException.class,
+				() -> folderOperationStateService.findSingleActiveMoveOperationByRootIdAndFolderIds(1L,
+					List.of(10L, 20L)));
+		}
 	}
 
 	@Nested
@@ -216,6 +282,11 @@ class FolderOperationStateServiceTest {
 			@Override
 			public Integer getProjectedMaxNamePathLength() {
 				return projectedMaxNamePathLength;
+			}
+
+			@Override
+			public String getRootIdFullPath() {
+				return "/1/" + folderId + "/";
 			}
 		};
 	}

@@ -89,6 +89,10 @@ public class FolderOperationState {
 		this.jobId = jobId;
 	}
 
+	public void updateProjectedMaxNamePathLength(int projectedMaxNamePathLength) {
+		this.projectedMaxNamePathLength = projectedMaxNamePathLength;
+	}
+
 	public void updateState(FolderOperationStatus operationState) {
 		this.operationState = operationState;
 	}

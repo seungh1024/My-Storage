@@ -143,12 +143,13 @@ public class FolderService {
 
 		validateInvalidMove(targetFolder, sourceFolder);
 
-		MovePlan movePlan = buildMovePlanAndValidate(sourceFolder, targetFolder, sourceParentFolder);
-		getFolderJobLock(sourceRootId, sourceFolderId, movePlan);
-
 		List<Long> sourceParentIds = parsePathIds(sourceParentFolder.getIdFullPath());
 		List<Long> targetParentIds = parsePathIds(targetFolder.getIdFullPath());
+		// source, target의 상위 작업이 존재하는지 검증
 		validateParentsUtil.validateParentsFolderLock(sourceRootId, sourceParentIds, targetParentIds);
+		// source의 하위 검증
+		MovePlan movePlan = buildMovePlanAndValidate(sourceFolder, targetFolder, sourceParentFolder);
+		getFolderJobLock(sourceRootId, sourceFolderId, movePlan);
 
 		sourceFolder.updateParentFolderId(targetFolder.getId());
 		sourceFolder.updateMoveRootPath(
@@ -215,6 +216,18 @@ public class FolderService {
 
 	private MovePlan buildMovePlanAndValidate(FolderMetadata sourceFolder, FolderMetadata targetFolder, FolderMetadata sourceParentFolder) {
 		Long sourceRootId = sourceFolder.getRootId() == null ? sourceFolder.getId() : sourceFolder.getRootId();
+		List<Long> activeMoveFolderIdsInSourceSubtree = folderOperationStateService.findActiveMoveFolderIdsByRootIdAndPrefix(
+			sourceRootId,
+			sourceFolder.getIdFullPath()
+		);
+		if (!activeMoveFolderIdsInSourceSubtree.isEmpty()) {
+			throw ErrorCode.PARENT_LOCKED.baseException(
+				StorageStringUtil.format("Active move exists in source subtree. rootId={}, sourceFolderId={}, activeMoveFolderIds={}",
+					sourceRootId,
+					sourceFolder.getId(),
+					activeMoveFolderIdsInSourceSubtree));
+		}
+
 		int sourceParentPathLength = sourceParentFolder.getNamePathLength();
 		int targetParentPathLength = targetFolder.getNamePathLength();
 		int longestFolderLength = folderMetadataJpaRepository.findMaxFolderNamePathLengthByPrefix(sourceRootId,
@@ -225,20 +238,13 @@ public class FolderService {
 
 		int currentMaxNamePathLength = Math.max(longestFileLength, longestFolderLength); // source folder 하위의 가장 긴 경로 길이
 		int parentPathLengthChange = targetParentPathLength - sourceParentPathLength; // 부모 경로 길이 변화량
-		int projectedMaxNamePathLength = currentMaxNamePathLength + parentPathLengthChange; // 기존 폴더의 최대 경로 길이
-		int projectedActiveMoveMaxNamePathLength = folderOperationStateService.findMaxActiveMoveProjectedNamePathLengthByPrefix(
-				sourceRootId,
-				sourceFolder.getIdFullPath())
-			.map(maxProjectedNamePathLength -> maxProjectedNamePathLength + parentPathLengthChange)
-			.orElse(Integer.MIN_VALUE); // 활성 이동 상태의 최대 경로 길이
-		int finalProjectedMaxNamePathLength = Math.max(projectedMaxNamePathLength, projectedActiveMoveMaxNamePathLength);
+		int finalProjectedMaxNamePathLength = currentMaxNamePathLength + parentPathLengthChange;
 
-		if (finalProjectedMaxNamePathLength >= maxPathLength) {
+		if (finalProjectedMaxNamePathLength > maxPathLength) {
 			throw ErrorCode.EXCEED_MAX_PATH_LENGTH.baseException(
 				StorageStringUtil.format(
-					"Total Path is too long. currentProjectedMax={}, activeMoveProjectedMax={}, parentPathLengthChange={}, finalProjectedMax={}",
+					"Total Path is too long. currentProjectedMax={}, parentPathLengthChange={}, finalProjectedMax={}",
 					currentMaxNamePathLength,
-					projectedActiveMoveMaxNamePathLength,
 					parentPathLengthChange,
 					finalProjectedMaxNamePathLength
 				));
@@ -295,16 +301,26 @@ public class FolderService {
 		FolderMetadata parentFolder = folderMetadataJpaRepository.findById(parentFolderId)
 			.orElseThrow(() -> ErrorCode.FOLDER_NOT_FOUND.baseException(
 				StorageStringUtil.format("folder not found when creating folder. find folder id:{}", parentFolderId)));
-		validateFolder(req, parentFolder);
-		validateFolderOwner(parentFolder, req.userId());
 
+		ValidateParentsUtil.CreatePathValidationResult createPathValidationResult = validateFolder(req, parentFolder);
+		validateFolderOwner(parentFolder, req.userId());
 
 		FolderMetadata folderMetadata = createFolderMetadata(user, parentFolder, req);
 
 		// 저장 및 pk 전체 경로 업데이트
 		FolderMetadata newFolder = folderMetadataJpaRepository.save(folderMetadata);
-		newFolder.updateIdFullPath(parentFolder.getIdFullPath());
+		newFolder.updateIdFullPath(createPathValidationResult.projectedParentIdFullPath());
+		newFolder.updateNameFullPath(createPathValidationResult.projectedParentNameFullPath());
+		newFolder.updateNamePathLength(newFolder.getNameFullPath().length());
 		folderMetadataJpaRepository.save(newFolder);
+		if (createPathValidationResult.hasReservation()) {
+			Long rootId = parentFolder.getRootId() == null ? parentFolder.getId() : parentFolder.getRootId();
+			folderOperationStateService.updateActiveMoveProjectedMaxNamePathLengthIfLessThan(
+				rootId,
+				createPathValidationResult.reservationFolderId(),
+				createPathValidationResult.reservationProjectedMaxNamePathLength()
+			);
+		}
 
 		return newFolder.getId();
 	}
@@ -314,7 +330,8 @@ public class FolderService {
 	 * 같은 depth(부모 폴더가 같음)에 동일한 이름의 폴더가 있는지 확인
 	 * 최대 경로 길이 250 이내인지 확인
 	 */
-	private void validateFolder(CreateFolderReqDto req, FolderMetadata parentFolder) {
+	private ValidateParentsUtil.CreatePathValidationResult validateFolder(CreateFolderReqDto req,
+		FolderMetadata parentFolder) {
 		// 금칙어 확인
 		if (Arrays.stream(CommonConstant.FILE_NAME_BLACK_LIST)
 			.anyMatch(character -> req.uploadFolderName().indexOf(character) != -1)) {
@@ -324,18 +341,7 @@ public class FolderService {
 		// 동일 이름 폴더 확인
 		validateDuplicatedFolderName(req.parentFolderId(), req.uploadFolderName());
 
-		// 최대 경로 길이 확인
-
-
-
-		// 경로 구분자 때문에 +1을 해줘야 한다.
-		int pathLength = parentFolder.getNamePathLength() + req.uploadFolderName().length() + 1;
-		if (pathLength >= maxPathLength) {
-			throw ErrorCode.EXCEED_MAX_PATH_LENGTH.baseException(
-				StorageStringUtil.format("Total Path is too long. path length: {}", pathLength));
-		}
-
-		validateParentsUtil.validateMaxNamePathLengthAndReserveForCreate(
+		return validateParentsUtil.validateAndResolveForCreate(
 			parentFolder,
 			req.uploadFolderName().length(),
 			maxPathLength

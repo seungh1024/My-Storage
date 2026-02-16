@@ -1,7 +1,9 @@
 package com.woowacamp.storage.domain.folderoperation.repository.projection;
 
 public interface ActiveMoveReservationProjection {
-	Long getFolderId();
+    Long getFolderId();
 
-	Integer getProjectedMaxNamePathLength();
+    Integer getProjectedMaxNamePathLength();
+
+    String getRootIdFullPath();
 }

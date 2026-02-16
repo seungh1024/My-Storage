@@ -312,12 +312,54 @@
 - `FolderSizeAdjustmentService`와 `FolderMetadataRepository.batchUpdateSizeDeltas`를 추가해 용량 델타 계산/반영 경로를 통합했다.
 - 폴더 이동 동시성 통합 테스트를 강화해 랜덤 이동 + 트리 정합성(prefix/고아 여부) + 루트 용량 불변 검증을 한 테스트로 통합했다.
 
-### 테스트/리팩터링 반영
-- `FolderServiceTest`, `FolderServiceIntegrationTest`, `FolderMoveProcessorIntegrationTest`, `FileServiceTest`에서 `is_moving` 전제 검증을 제거하고 현재 정책에 맞게 수정했다.
-- `FolderSizeAdjustmentService` 단위/통합 테스트, `FolderMetadataRepository` 배치 업데이트 테스트를 추가했다.
-- Sonar 지적(중복 테스트/상수화/문자열 탭 문자/람다 단일 호출 등) 대응 리팩터링을 진행했다.
+### 검증 반영
+- `moveFolder` 충돌 정책 변경(상/하위 차단)에 맞춰 단위 테스트 기대를 수정했다.
+- 경로 길이 경계(`250` 허용)와 검증 순서 변경에 맞춘 실패 케이스를 재정렬했다.
 
 ### 현재 남은 작업
 - 랜덤 동시 이동 통합 테스트의 실행 안정성(재시도 횟수/태스크 수) 튜닝 및 CI 실행시간 균형점 확정.
 - 이동/업로드/파일 이동 경로의 용량 반영 일관성에 대한 최종 회귀 테스트 정리.
 - 문서/주석에서 `is_moving` 전제를 참조하는 문구 정리 및 제거.
+
+### 추가 반영 (2026-02-16, path-based 보강)
+- `move vs move` 정책을 하향 이동 허용(길이 비교)에서 상/하위 전면 차단으로 단순화했다.
+  - 상위 충돌: `source/target` 조상 경로의 operation state 존재 시 차단.
+  - 하위 충돌: `source` 서브트리 내부에 ACTIVE move가 있으면 차단.
+- `moveFolder` 검증 순서를 정리해 상위 충돌 검증을 `getFolderJobLock` 이전에 수행하도록 변경했다.
+- `createFolder` 경로 검증/계산을 `validateAndResolveForCreate` 단일 메서드로 통합했다.
+  - moving 조상 조회는 "단건 조회 + 다건이면 예외" 정책으로 고정했다.
+  - projected parent path 계산은 `id_full_path` 기준 루트 ID 인덱스 절단 방식으로 정리했다.
+  - `name_full_path` 길이 비교는 `> maxPathLength` 기준으로 통일했다(250 허용).
+- create 성공 시 moving 조상의 projected max 값을 갱신해, 이동 중 생성이 이후 DFS 업데이트에서 길이 초과를 유발하지 않도록 보강했다.
+- `moveFolder` 검증 순서 변경에 따라 관련 실패 테스트 케이스를 정책 기준으로 갱신했다.
+
+## Progress Update (2026-02-16)
+
+### Completed
+- Applied `folder_operation_state`-based collision control to both `moveFolder` and `createFolder`.
+- Included `root_id` in `folder_job` handling and aligned completion cleanup with `(root_id, folder_id)`.
+- Removed `is_moving`-based collision decisions and unified conflict checks on `folder_operation_state`.
+- Switched parent-size propagation (folder/file move and file create paths) from async event fan-out to in-transaction batch updates.
+- Added `FolderSizeAdjustmentService` and `FolderMetadataRepository.batchUpdateSizeDeltas` to unify size-delta calculation and persistence.
+- Strengthened move concurrency integration tests with randomized moves plus integrity checks (prefix/orphan detection) and root-size invariants.
+
+### Validation Alignment
+- Updated unit-test expectations for the new move collision policy (block both ancestor and descendant move conflicts).
+- Re-aligned failure tests for path-length boundary behavior (`250` allowed) and the updated validation order.
+
+### Remaining Work
+- Tune randomized concurrent move integration tests (retry count/task count) to balance stability and CI runtime.
+- Finalize regression coverage for size-propagation consistency across move/upload/file-move paths.
+- Clean up docs/comments that still reference old `is_moving` assumptions.
+
+### Additional Changes (2026-02-16, Path-Based Policy Hardening)
+- Simplified `move vs move` from conditional descendant allowance to strict ancestor/descendant blocking:
+  - Ancestor conflict: block when any operation state exists on `source/target` ancestor paths.
+  - Descendant conflict: block when any ACTIVE move exists in the `source` subtree.
+- Reordered `moveFolder` flow so ancestor conflict validation runs before `getFolderJobLock`.
+- Unified create path validation/calculation into `validateAndResolveForCreate`:
+  - Enforced single moving-ancestor lookup (`single row or error`).
+  - Calculated projected parent path by trimming/rebuilding suffix from `id_full_path` token index of moving root.
+  - Standardized path-length boundary check to `> maxPathLength` (`250` is valid).
+- On successful create under a moving ancestor, updated projected max length to prevent downstream DFS path overflow.
+- Updated related failing tests to match the new validation order and conflict policy.
