@@ -61,22 +61,4 @@ public interface FolderOperationStateJpaRepository extends JpaRepository<FolderO
             WHERE fos.rootId = :rootId AND fos.folderId = :folderId
         """)
 	int deleteByRootIdAndFolderId(@Param("rootId") Long rootId, @Param("folderId") Long folderId);
-
-	@Transactional
-	@Modifying
-	@Query(value = """
-            INSERT INTO folder_operation_state (
-                root_id, folder_id, operation_type, operation_state, root_id_full_path,
-                projected_max_name_path_length, job_id, created_at, updated_at
-            )
-            VALUES (
-                :rootId, :folderId, :operationType, :operationState, :rootIdFullPath,
-                :projectedMaxNamePathLength, :jobId, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-            )
-        """, nativeQuery = true)
-	int insert(@Param("rootId") Long rootId, @Param("folderId") Long folderId,
-		@Param("operationType") String operationType, @Param("operationState") String operationState,
-		@Param("rootIdFullPath") String rootIdFullPath,
-		@Param("projectedMaxNamePathLength") int projectedMaxNamePathLength,
-		@Param("jobId") Long jobId);
 }

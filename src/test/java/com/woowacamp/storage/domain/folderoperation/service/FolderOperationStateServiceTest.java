@@ -8,17 +8,16 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
-import org.mockito.Captor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.dao.DuplicateKeyException;
 
 import com.woowacamp.storage.domain.folderoperation.entity.FolderOperationStatus;
 import com.woowacamp.storage.domain.folderoperation.entity.FolderOperationType;
 import com.woowacamp.storage.domain.folderoperation.repository.FolderOperationStateJpaRepository;
+import com.woowacamp.storage.domain.folderoperation.repository.FolderOperationStateRepository;
 import com.woowacamp.storage.domain.folderoperation.repository.projection.ActiveMoveReservationProjection;
 import com.woowacamp.storage.global.error.CustomException;
 import com.woowacamp.storage.global.error.ErrorCode;
@@ -35,13 +34,10 @@ class FolderOperationStateServiceTest {
 	private FolderOperationStateJpaRepository folderOperationStateJpaRepository;
 
 	@Mock
-	private JdbcTemplate jdbcTemplate;
+	private FolderOperationStateRepository folderOperationStateRepository;
 
 	@InjectMocks
 	private FolderOperationStateService folderOperationStateService;
-
-	@Captor
-	private ArgumentCaptor<String> sqlCaptor;
 
 	@Nested
 	@DisplayName("insertActiveMove")
@@ -50,11 +46,9 @@ class FolderOperationStateServiceTest {
 		@DisplayName("성공: ACTIVE MOVE 상태를 insert 한다")
 		void insertActiveMove_success() {
 			// given
-			given(folderOperationStateJpaRepository.insert(
+			given(folderOperationStateRepository.insertActiveMove(
 				eq(1L),
 				eq(10L),
-				eq(FolderOperationType.MOVE.name()),
-				eq(FolderOperationStatus.ACTIVE.name()),
 				eq("/1/10/"),
 				eq(120),
 				eq(10L)
@@ -69,10 +63,9 @@ class FolderOperationStateServiceTest {
 		@DisplayName("실패: 중복 키면 FOLDER_JOB_CONFLICT 예외")
 		void insertActiveMove_fail_whenDuplicateKey() {
 			// given
-			willThrow(new DataIntegrityViolationException("duplicate",
-				new RuntimeException("Duplicate entry '1-10' for key 'folder_operation_state.PRIMARY'")))
-				.given(folderOperationStateJpaRepository)
-				.insert(anyLong(), anyLong(), anyString(), anyString(), anyString(), anyInt(), anyLong());
+			willThrow(new DuplicateKeyException("Duplicate entry"))
+				.given(folderOperationStateRepository)
+				.insertActiveMove(anyLong(), anyLong(), anyString(), anyInt(), anyLong());
 
 			// when
 			CustomException ex = assertThrows(CustomException.class,
@@ -88,8 +81,8 @@ class FolderOperationStateServiceTest {
 			// given
 			willThrow(new DataIntegrityViolationException("constraint violation",
 				new RuntimeException("Data too long for column 'root_id_full_path'")))
-				.given(folderOperationStateJpaRepository)
-				.insert(anyLong(), anyLong(), anyString(), anyString(), anyString(), anyInt(), anyLong());
+				.given(folderOperationStateRepository)
+				.insertActiveMove(anyLong(), anyLong(), anyString(), anyInt(), anyLong());
 
 			// when & then
 			assertThrows(DataIntegrityViolationException.class,
@@ -182,7 +175,7 @@ class FolderOperationStateServiceTest {
 		void batchUpdate_skipWhenEmpty() {
 			folderOperationStateService.batchUpdateActiveMoveProjectedMaxNamePathLengthIfLessThan(1L, null);
 			folderOperationStateService.batchUpdateActiveMoveProjectedMaxNamePathLengthIfLessThan(1L, Map.of());
-			then(jdbcTemplate).shouldHaveNoInteractions();
+			then(folderOperationStateRepository).shouldHaveNoInteractions();
 		}
 
 		@Test
@@ -190,15 +183,13 @@ class FolderOperationStateServiceTest {
 		void batchUpdate_success() {
 			// given
 			Map<Long, Integer> updates = Map.of(10L, 130, 20L, 140);
-			given(jdbcTemplate.batchUpdate(anyString(), anyList(), anyInt(), any())).willReturn(new int[][]{{1, 1}});
 
 			// when
 			folderOperationStateService.batchUpdateActiveMoveProjectedMaxNamePathLengthIfLessThan(1L, updates);
 
 			// then
-			then(jdbcTemplate).should(times(1)).batchUpdate(sqlCaptor.capture(), anyList(), eq(2), any());
-			assertThat(sqlCaptor.getValue()).contains("UPDATE folder_operation_state");
-			assertThat(sqlCaptor.getValue()).contains("projected_max_name_path_length < ?");
+			then(folderOperationStateRepository).should(times(1))
+				.batchUpdateActiveMoveProjectedMaxNamePathLengthIfLessThan(1L, updates);
 		}
 	}
 
