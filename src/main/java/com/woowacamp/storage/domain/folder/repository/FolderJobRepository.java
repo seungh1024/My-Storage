@@ -27,7 +27,6 @@ public class FolderJobRepository {
 	private static final String FOLDER_JOB_NOT_FOUND_BY_ROOT_AND_ID = "FolderJob not found. rootId=%d, folderId=%d";
 
 	private final FolderJobJpaRepository folderJobJpaRepository;
-	private final FolderMetadataJpaRepository folderMetadataJpaRepository;
 	private final FolderOperationStateJpaRepository folderOperationStateJpaRepository;
 	private final ApplicationEventPublisher publisher;
 	private final Clock appClock;
@@ -71,7 +70,6 @@ public class FolderJobRepository {
 		if (job.getRetryCount() >= maxRetry) {
 			job.markTerminated();
 			folderJobJpaRepository.save(job);
-			folderMetadataJpaRepository.releaseMovingLock(job.getId());
 			log.error(LOG_JOB_TERMINATED, job.getId());
 			return;
 		}
@@ -81,7 +79,6 @@ public class FolderJobRepository {
 			if (job.getRetryCount() >= maxRetry) {
 				job.markTerminated();
 				folderJobJpaRepository.save(job);
-				folderMetadataJpaRepository.releaseMovingLock(job.getId());
 				log.error(LOG_JOB_TERMINATED, job.getId());
 				return;
 			}
@@ -105,7 +102,6 @@ public class FolderJobRepository {
 
 		job.markCompleted();
 		folderJobJpaRepository.save(job);
-		folderMetadataJpaRepository.releaseMovingLock(jobId);
 		folderOperationStateJpaRepository.deleteByRootIdAndFolderId(rootId, jobId);
 
 		log.info("[FolderJobTransactionHelper] Job marked as COMPLETED. rootId={}, jobId={}", rootId, jobId);
@@ -128,7 +124,6 @@ public class FolderJobRepository {
 		if (job.getRetryCount() >= maxRetry) {
 			job.markTerminated();
 			folderJobJpaRepository.save(job);
-			folderMetadataJpaRepository.releaseMovingLock(jobId);
 			log.error(LOG_JOB_TERMINATED, jobId);
 			return true;
 		}

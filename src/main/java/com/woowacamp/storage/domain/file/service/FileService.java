@@ -1,10 +1,11 @@
 package com.woowacamp.storage.domain.file.service;
 
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -13,8 +14,9 @@ import com.woowacamp.storage.domain.file.entity.FileMetadata;
 import com.woowacamp.storage.domain.file.repository.FileMetadataJpaRepository;
 import com.woowacamp.storage.domain.file.repository.FileMetadataRepository;
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
-import com.woowacamp.storage.domain.folder.event.FolderSizeEvent;
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
+import com.woowacamp.storage.domain.folder.service.FolderSizeAdjustmentService;
+import com.woowacamp.storage.domain.folder.utils.FolderPathParser;
 import com.woowacamp.storage.domain.folder.utils.QueryExecuteTemplate;
 import com.woowacamp.storage.global.constant.UploadStatus;
 import com.woowacamp.storage.global.error.ErrorCode;
@@ -33,7 +35,7 @@ public class FileService {
 	private final FileMetadataRepository fileMetadataRepository;
 	private final FileMetadataJpaRepository fileMetadataJpaRepository;
 	private final FolderMetadataJpaRepository folderMetadataRepository;
-	private final ApplicationEventPublisher eventPublisher;
+	private final FolderSizeAdjustmentService folderSizeAdjustmentService;
 	private final ValidateParentsUtil validateParentsUtil;
 
 	@Value("${constant.batchSize}")
@@ -64,11 +66,19 @@ public class FileService {
 		validateParentsUtil.validateParentsFolderLock(targetFolder);
 
 		long originParentId = fileMetadata.getParentFolderId();
+		FolderMetadata originParentFolder = folderMetadataRepository.findByIdNotDeleted(originParentId)
+			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
 		fileMetadata.updateParentFolderId(dto.targetFolderId());
 		fileMetadataJpaRepository.save(fileMetadata);
 
-		eventPublisher.publishEvent(new FolderSizeEvent(originParentId, -fileMetadata.getFileSize()));
-		eventPublisher.publishEvent(new FolderSizeEvent(targetFolder.getId(), fileMetadata.getFileSize()));
+		List<Long> sourceParentIds = parsePathIds(originParentFolder.getIdFullPath());
+		List<Long> targetParentIds = parsePathIds(targetFolder.getIdFullPath());
+		Map<Long, Long> deltaByFolderId = folderSizeAdjustmentService.mergeDeltaByFolderIds(
+			sourceParentIds,
+			targetParentIds,
+			fileMetadata.getFileSize()
+		);
+		folderSizeAdjustmentService.applySizeDeltas(deltaByFolderId);
 	}
 
 	private void validateMetadata(FileMoveDto dto, FileMetadata fileMetadata, FolderMetadata targetFolder) {
@@ -106,7 +116,16 @@ public class FileService {
 		FileMetadata fileMetadata = fileMetadataJpaRepository.findByIdAndOwnerIdAndUploadStatusNot(fileId, userId,
 			UploadStatus.FAIL).orElseThrow(ACCESS_DENIED::baseException);
 		fileMetadataJpaRepository.softDelete(fileMetadata.getId());
-		eventPublisher.publishEvent(new FolderSizeEvent(fileMetadata.getParentFolderId(),-fileMetadata.getFileSize()));
+		folderMetadataRepository.findById(fileMetadata.getParentFolderId())
+			.ifPresent(parentFolder -> {
+				List<Long> parentIds = parsePathIds(parentFolder.getIdFullPath());
+				Map<Long, Long> deltaByFolderId = folderSizeAdjustmentService.mergeDeltaByFolderIds(
+					List.of(),
+					parentIds,
+					-fileMetadata.getFileSize()
+				);
+				folderSizeAdjustmentService.applySizeDeltas(deltaByFolderId);
+			});
 	}
 
 	public void doHardDelete() {
@@ -115,5 +134,14 @@ public class FileService {
 			findFile -> fileMetadataRepository.findSoftDeletedFileWithLastIdAndDuration(
 				findFile == null ? null : findFile.getId(), pageSize, timeLimit),
 			fileMetadataList -> fileMetadataRepository.deleteAll(fileMetadataList));
+	}
+
+	private List<Long> parsePathIds(String idFullPath) {
+		return FolderPathParser.parsing(idFullPath)
+			.orElseThrow(() -> ErrorCode.FOLDER_PATH_ERROR.baseException(
+				StorageStringUtil.format("Failed to parse path. idFullPath={}", idFullPath)))
+			.stream()
+			.map(Long::parseLong)
+			.toList();
 	}
 }

@@ -14,7 +14,6 @@ import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.woowacamp.storage.domain.file.dto.FileMoveDto;
@@ -22,8 +21,8 @@ import com.woowacamp.storage.domain.file.entity.FileMetadata;
 import com.woowacamp.storage.domain.file.repository.FileMetadataJpaRepository;
 import com.woowacamp.storage.domain.file.repository.FileMetadataRepository;
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
-import com.woowacamp.storage.domain.folder.event.FolderSizeEvent;
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
+import com.woowacamp.storage.domain.folder.service.FolderSizeAdjustmentService;
 import com.woowacamp.storage.global.constant.CommonConstant;
 import com.woowacamp.storage.global.constant.PermissionType;
 import com.woowacamp.storage.global.constant.UploadStatus;
@@ -47,7 +46,7 @@ class FileServiceTest {
 	// NOTE: 기존 코드가 변수명이 folderMetadataRepository였지만 실제 타입은 JpaRepository였음(그대로 유지)
 	@Mock private FolderMetadataJpaRepository folderMetadataRepository;
 
-	@Mock private ApplicationEventPublisher eventPublisher;
+	@Mock private FolderSizeAdjustmentService folderSizeAdjustmentService;
 	@Mock private ValidateParentsUtil validateParentsUtil;
 
 	@BeforeEach
@@ -90,7 +89,6 @@ class FileServiceTest {
 			.nameFullPath(nameFullPath)
 			.idFullPath(idFullPath)
 			.namePathLength(namePathLength)
-			.isMoving(false)
 			.build();
 	}
 
@@ -147,7 +145,7 @@ class FileServiceTest {
 
 			then(folderMetadataRepository).shouldHaveNoInteractions();
 			then(validateParentsUtil).shouldHaveNoInteractions();
-			then(eventPublisher).shouldHaveNoInteractions();
+			then(folderSizeAdjustmentService).shouldHaveNoInteractions();
 		}
 
 		@Test
@@ -165,7 +163,7 @@ class FileServiceTest {
 			assertEquals(ErrorCode.FOLDER_NOT_FOUND.getMessage(), ex.getMessage());
 
 			then(validateParentsUtil).shouldHaveNoInteractions();
-			then(eventPublisher).shouldHaveNoInteractions();
+			then(folderSizeAdjustmentService).shouldHaveNoInteractions();
 
 			// file 상태 변화 없음을 실객체로 검증
 			assertEquals(111L, f.getParentFolderId());
@@ -192,7 +190,7 @@ class FileServiceTest {
 			then(fileMetadataJpaRepository).should(never())
 				.existsByParentFolderIdAndUploadFileNameAndUploadStatusNot(anyLong(), anyString(), any());
 			then(validateParentsUtil).shouldHaveNoInteractions();
-			then(eventPublisher).shouldHaveNoInteractions();
+			then(folderSizeAdjustmentService).shouldHaveNoInteractions();
 
 			assertEquals(111L, f.getParentFolderId());
 		}
@@ -216,7 +214,7 @@ class FileServiceTest {
 			assertEquals(ErrorCode.ACCESS_DENIED.getMessage(), ex.getMessage());
 
 			then(validateParentsUtil).shouldHaveNoInteractions();
-			then(eventPublisher).shouldHaveNoInteractions();
+			then(folderSizeAdjustmentService).shouldHaveNoInteractions();
 
 			assertEquals(111L, f.getParentFolderId());
 		}
@@ -240,7 +238,7 @@ class FileServiceTest {
 			then(fileMetadataJpaRepository).should(never())
 				.existsByParentFolderIdAndUploadFileNameAndUploadStatusNot(anyLong(), anyString(), any());
 			then(validateParentsUtil).shouldHaveNoInteractions();
-			then(eventPublisher).shouldHaveNoInteractions();
+			then(folderSizeAdjustmentService).shouldHaveNoInteractions();
 
 			assertEquals(111L, f.getParentFolderId());
 		}
@@ -266,7 +264,7 @@ class FileServiceTest {
 			assertEquals(ErrorCode.FILE_NAME_DUPLICATE.getMessage(), ex.getMessage());
 
 			then(validateParentsUtil).shouldHaveNoInteractions();
-			then(eventPublisher).shouldHaveNoInteractions();
+			then(folderSizeAdjustmentService).shouldHaveNoInteractions();
 
 			assertEquals(111L, f.getParentFolderId());
 		}
@@ -295,12 +293,12 @@ class FileServiceTest {
 			assertEquals(ErrorCode.PARENT_LOCKED.getMessage(), ex.getMessage());
 
 			assertEquals(111L, f.getParentFolderId());
-			then(eventPublisher).shouldHaveNoInteractions();
+			then(folderSizeAdjustmentService).shouldHaveNoInteractions();
 		}
 
 		@Test
-		@DisplayName("성공: parentFolderId 변경 + FolderSizeEvent 2개 발행(원본 -size, 타겟 +size)")
-		void success_update_and_publish_2_events() {
+		@DisplayName("성공: parentFolderId 변경 + FolderSizeAdjustmentService 동기 반영")
+		void success_update_and_apply_move_delta() {
 			long fileId = 1L;
 			long originParentId = 111L;
 			long targetFolderId = 222L;
@@ -313,9 +311,12 @@ class FileServiceTest {
 			FileMetadata f = file(fileId, rootId, userId, originParentId, fileSize, "a.txt", UploadStatus.SUCCESS);
 			FolderMetadata target = folder(targetFolderId, rootId, userId, 1L,
 				"t", "/t/", "/222/", 3, CommonConstant.UNAVAILABLE_TIME);
+			FolderMetadata originParent = folder(originParentId, rootId, userId, 1L,
+				"origin", "/origin/", "/111/", 8, CommonConstant.UNAVAILABLE_TIME);
 
 			given(fileMetadataJpaRepository.findById(fileId)).willReturn(Optional.of(f));
 			given(folderMetadataRepository.findByIdNotDeleted(targetFolderId)).willReturn(Optional.of(target));
+			given(folderMetadataRepository.findByIdNotDeleted(originParentId)).willReturn(Optional.of(originParent));
 
 			given(fileMetadataJpaRepository.existsByParentFolderIdAndUploadFileNameAndUploadStatusNot(
 				targetFolderId, "a.txt", UploadStatus.FAIL
@@ -328,22 +329,10 @@ class FileServiceTest {
 
 			// then (✅ 실객체 상태)
 			assertEquals(targetFolderId, f.getParentFolderId());
-
-			// ✅ 이벤트 2개
-			ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
-			then(eventPublisher).should(times(2)).publishEvent(captor.capture());
-
-			assertTrue(captor.getAllValues().get(0) instanceof FolderSizeEvent);
-			assertTrue(captor.getAllValues().get(1) instanceof FolderSizeEvent);
-
-			FolderSizeEvent e1 = (FolderSizeEvent) captor.getAllValues().get(0);
-			FolderSizeEvent e2 = (FolderSizeEvent) captor.getAllValues().get(1);
-
-			assertEquals(originParentId, e1.getFolderMetadataId());
-			assertEquals(-fileSize, e1.getSize());
-
-			assertEquals(targetFolderId, e2.getFolderMetadataId());
-			assertEquals(fileSize, e2.getSize());
+			then(folderSizeAdjustmentService).should()
+				.mergeDeltaByFolderIds(anyList(), anyList(), eq(fileSize));
+			then(folderSizeAdjustmentService).should()
+				.applySizeDeltas(anyMap());
 		}
 
 		@Test
@@ -360,9 +349,12 @@ class FileServiceTest {
 			FileMetadata f = file(fileId, rootId, userId, originParentId, 1L, "a.txt", UploadStatus.SUCCESS);
 			FolderMetadata target = folder(targetFolderId, rootId, userId, 1L,
 				"t", "/t/", "/222/", 3, CommonConstant.UNAVAILABLE_TIME);
+			FolderMetadata originParent = folder(originParentId, rootId, userId, 1L,
+				"origin", "/origin/", "/111/", 8, CommonConstant.UNAVAILABLE_TIME);
 
 			given(fileMetadataJpaRepository.findById(fileId)).willReturn(Optional.of(f));
 			given(folderMetadataRepository.findByIdNotDeleted(targetFolderId)).willReturn(Optional.of(target));
+			given(folderMetadataRepository.findByIdNotDeleted(originParentId)).willReturn(Optional.of(originParent));
 
 			given(fileMetadataJpaRepository.existsByParentFolderIdAndUploadFileNameAndUploadStatusNot(
 				targetFolderId, "a.txt", UploadStatus.FAIL
@@ -380,10 +372,11 @@ class FileServiceTest {
 			// then (최종 상태는 변경)
 			assertEquals(targetFolderId, f.getParentFolderId());
 
-			// 그리고 validateParentsUtil -> publishEvent 순서도 보장
-			InOrder inOrder = inOrder(validateParentsUtil, eventPublisher);
+			// 그리고 validateParentsUtil -> merge -> apply 순서도 보장
+			InOrder inOrder = inOrder(validateParentsUtil, folderSizeAdjustmentService);
 			inOrder.verify(validateParentsUtil).validateParentsFolderLock(target);
-			inOrder.verify(eventPublisher, times(2)).publishEvent(any(FolderSizeEvent.class));
+			inOrder.verify(folderSizeAdjustmentService).mergeDeltaByFolderIds(anyList(), anyList(), eq(1L));
+			inOrder.verify(folderSizeAdjustmentService).applySizeDeltas(anyMap());
 
 		}
 	}

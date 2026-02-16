@@ -2,6 +2,8 @@ package com.woowacamp.storage.domain.file.service;
 
 import java.net.URL;
 import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -15,9 +17,12 @@ import com.woowacamp.storage.domain.file.entity.FileMetadataFactory;
 import com.woowacamp.storage.domain.file.repository.FileMetadataJpaRepository;
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
+import com.woowacamp.storage.domain.folder.service.FolderSizeAdjustmentService;
+import com.woowacamp.storage.domain.folder.utils.FolderPathParser;
 import com.woowacamp.storage.global.constant.CommonConstant;
 import com.woowacamp.storage.global.constant.UploadStatus;
 import com.woowacamp.storage.global.error.ErrorCode;
+import com.woowacamp.storage.global.util.StorageStringUtil;
 import com.woowacamp.storage.global.util.ValidateParentsUtil;
 import com.woowacamp.storage.lock.annotation.DistributedLock;
 
@@ -36,6 +41,7 @@ public class S3FileService {
 	private final FolderMetadataJpaRepository folderMetadataJpaRepository;
 	private final PresignedUrlService presignedUrlService;
 	private final ValidateParentsUtil validateParentsUtil;
+	private final FolderSizeAdjustmentService folderSizeAdjustmentService;
 
 	@Value("${file.request.maxFileSize}")
 	private long MAX_FILE_SIZE;
@@ -64,6 +70,14 @@ public class S3FileService {
 		FileMetadata savedFile = fileMetadataJpaRepository.save(fileMetadata);
 		savedFile.updateIdFullPath(parentFolder.getIdFullPath());
 		fileMetadataJpaRepository.save(savedFile);
+
+		List<Long> parentIds = parsePathIds(parentFolder.getIdFullPath());
+		Map<Long, Long> deltaByFolderId = folderSizeAdjustmentService.mergeDeltaByFolderIds(
+			List.of(),
+			parentIds,
+			dto.fileSize()
+		);
+		folderSizeAdjustmentService.applySizeDeltas(deltaByFolderId);
 
 		URL presignedUrl = presignedUrlService.getPresignedUrl(uuidFileName);
 
@@ -167,5 +181,14 @@ public class S3FileService {
 			uuidFileName = UUID.randomUUID().toString();
 		}
 		return uuidFileName;
+	}
+
+	private List<Long> parsePathIds(String idFullPath) {
+		return FolderPathParser.parsing(idFullPath)
+			.orElseThrow(() -> ErrorCode.FOLDER_PATH_ERROR.baseException(
+				StorageStringUtil.format("Failed to parse path. idFullPath={}", idFullPath)))
+			.stream()
+			.map(Long::parseLong)
+			.toList();
 	}
 }

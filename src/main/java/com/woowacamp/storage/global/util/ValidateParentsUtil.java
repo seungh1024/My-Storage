@@ -29,26 +29,23 @@ public class ValidateParentsUtil {
 	 * @param targetFolder
 	 */
 	public void validateParentsFolderLock(FolderMetadata sourceFolder, FolderMetadata targetFolder) {
-		List<String> sourceParents = FolderPathParser.parsing(sourceFolder.getIdFullPath())
-			.orElseThrow(() -> ErrorCode.FOLDER_PATH_ERROR.baseException(
-				StorageStringUtil.format(PATH_PARSE_FAILED, sourceFolder.getIdFullPath())));
-		List<String> targetParents = FolderPathParser.parsing(targetFolder.getIdFullPath())
-			.orElseThrow(() -> ErrorCode.FOLDER_PATH_ERROR.baseException(
-				StorageStringUtil.format(PATH_PARSE_FAILED, targetFolder.getIdFullPath())));
-
-		List<Long> lockNames = Stream.concat(sourceParents.stream(), targetParents.stream())
-			.distinct()
-			.map(Long::parseLong)
-			.toList();
-
 		Long rootId = resolveRootId(sourceFolder);
+		List<Long> sourceParentIds = parseParentIds(sourceFolder);
+		List<Long> targetParentIds = parseParentIds(targetFolder);
+		validateParentsFolderLock(rootId, sourceParentIds, targetParentIds);
+	}
+
+	public void validateParentsFolderLock(Long rootId, List<Long> sourceParentIds, List<Long> targetParentIds) {
+		List<Long> lockNames = Stream.concat(sourceParentIds.stream(), targetParentIds.stream())
+			.distinct()
+			.toList();
 		List<Long> parentsLockInfo = folderOperationStateService.findOperationFolderIdsByRootIdAndFolderIds(
 			rootId, lockNames);
 
 		if (parentsLockInfo.size() > 0) {
 			throw ErrorCode.PARENT_LOCKED.baseException(
-				StorageStringUtil.format("Failed to move folder, sourceId: {}, targetId: {}, parents lock Info: {}",
-					sourceFolder.getId(), targetFolder.getId(), parentsLockInfo));
+				StorageStringUtil.format("Failed to move folder. rootId: {}, parents lock Info: {}",
+					rootId, parentsLockInfo));
 		}
 	}
 

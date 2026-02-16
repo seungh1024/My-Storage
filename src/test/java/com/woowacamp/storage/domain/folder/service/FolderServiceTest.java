@@ -33,15 +33,12 @@ import com.woowacamp.storage.domain.folder.dto.request.CreateFolderReqDto;
 import com.woowacamp.storage.domain.folder.dto.request.FolderMoveDto;
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
 import com.woowacamp.storage.domain.folder.event.FolderMoveEvent;
-import com.woowacamp.storage.domain.folder.event.FolderSizeEvent;
 import com.woowacamp.storage.domain.folder.dto.command.FolderJobInsertCommand;
 import com.woowacamp.storage.domain.folder.repository.FolderJobJpaRepository;
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataRepository;
+import com.woowacamp.storage.domain.folder.service.FolderSizeAdjustmentService;
 import com.woowacamp.storage.domain.folderoperation.service.FolderOperationStateService;
-import com.woowacamp.storage.domain.message.event.MessageInfoEvent;
-import com.woowacamp.storage.domain.message.repository.MessageInfoJpaRepository;
-import com.woowacamp.storage.domain.message.util.MessageStatus;
 import com.woowacamp.storage.domain.user.entity.User;
 import com.woowacamp.storage.domain.user.repository.UserRepository;
 import com.woowacamp.storage.global.background.BackgroundJob;
@@ -73,8 +70,8 @@ class FolderServiceTest {
 	@Mock private FolderJobJpaRepository folderJobJpaRepository;
 	@Mock private FolderOperationStateService folderOperationStateService;
 	@Mock private ValidateParentsUtil validateParentsUtil;
+	@Mock private FolderSizeAdjustmentService folderSizeAdjustmentService;
 	@Mock private org.springframework.context.ApplicationEventPublisher publisher;
-	@Mock private MessageInfoJpaRepository messageInfoJpaRepository;
 	@Mock private Clock appClock;
 
 	@BeforeEach
@@ -134,7 +131,6 @@ class FolderServiceTest {
 			.nameFullPath(nameFullPath)
 			.idFullPath(idFullPath)
 			.namePathLength(namePathLength)
-			.isMoving(false)
 			.build();
 	}
 
@@ -365,8 +361,8 @@ class FolderServiceTest {
 		}
 
 		@Test
-		@DisplayName("성공: 검증 통과 -> save + 이벤트 3개 발행 + source 경로/부모 변경")
-		void success_save_and_publish_3_events_and_update_source() {
+		@DisplayName("성공: 검증 통과 -> save + move 이벤트 1개 발행 + source 경로/부모 변경")
+		void success_save_and_publish_move_event_and_update_source() {
 			long sourceId = 10L;
 			long targetId = 30L;
 			long parentId = 20L;
@@ -400,7 +396,8 @@ class FolderServiceTest {
 			given(folderMetadataJpaRepository.existsByParentFolderIdAndUploadFolderName(targetId, "src"))
 				.willReturn(false);
 
-			willDoNothing().given(validateParentsUtil).validateParentsFolderLock(parentNotDeleted, target);
+			willDoNothing().given(validateParentsUtil)
+				.validateParentsFolderLock(anyLong(), anyList(), anyList());
 
 			given(folderMetadataJpaRepository.save(any(FolderMetadata.class))).willAnswer(inv -> inv.getArgument(0));
 
@@ -410,14 +407,15 @@ class FolderServiceTest {
 			assertEquals("/5/30/10/", source.getIdFullPath());
 			assertEquals("/t/src/", source.getNameFullPath());
 			assertEquals(source.getNameFullPath().length(), source.getNamePathLength());
-			assertTrue(source.isMoving());
+
+			then(folderSizeAdjustmentService).should(times(1))
+				.mergeDeltaByFolderIds(anyList(), anyList(), eq(source.getSize()));
+			then(folderSizeAdjustmentService).should(times(1))
+				.applySizeDeltas(anyMap());
 
 			ArgumentCaptor<Object> eventCaptor = ArgumentCaptor.forClass(Object.class);
-			then(publisher).should(times(3)).publishEvent(eventCaptor.capture());
-
-			assertTrue(eventCaptor.getAllValues().get(0) instanceof FolderSizeEvent);
-			assertTrue(eventCaptor.getAllValues().get(1) instanceof FolderSizeEvent);
-			assertTrue(eventCaptor.getAllValues().get(2) instanceof FolderMoveEvent);
+			then(publisher).should(times(1)).publishEvent(eventCaptor.capture());
+			assertTrue(eventCaptor.getValue() instanceof FolderMoveEvent);
 		}
 
 		@Test
@@ -820,7 +818,7 @@ class FolderServiceTest {
 				.willReturn(false);
 
 			willThrow(ErrorCode.PARENT_LOCKED.baseException())
-				.given(validateParentsUtil).validateParentsFolderLock(parentNotDeleted, target);
+				.given(validateParentsUtil).validateParentsFolderLock(anyLong(), anyList(), anyList());
 
 			FolderMoveDto dto = moveDto(userId, targetId, rootId, "x");
 			assertThrows(CustomException.class, () -> folderService.moveFolder(sourceId, dto));
@@ -863,7 +861,8 @@ class FolderServiceTest {
 			given(folderMetadataJpaRepository.existsByParentFolderIdAndUploadFolderName(targetId, "src"))
 				.willReturn(false);
 
-			willDoNothing().given(validateParentsUtil).validateParentsFolderLock(parentNotDeleted, target);
+			willDoNothing().given(validateParentsUtil)
+				.validateParentsFolderLock(anyLong(), anyList(), anyList());
 			willThrow(new RuntimeException("db")).given(folderMetadataJpaRepository).save(any(FolderMetadata.class));
 
 			FolderMoveDto dto = moveDto(userId, targetId, rootId, "x");
@@ -971,7 +970,6 @@ class FolderServiceTest {
 						.nameFullPath(arg.getNameFullPath())
 						.idFullPath(arg.getIdFullPath())
 						.namePathLength(arg.getNamePathLength())
-						.isMoving(arg.isMoving())
 						.build();
 				}
 				return arg;
@@ -1155,106 +1153,4 @@ class FolderServiceTest {
 		}
 	}
 
-	// =========================================================
-	// updateFolderSize
-	// =========================================================
-	@Nested
-	@DisplayName("updateFolderSize")
-	class UpdateFolderSizeTests {
-
-		@Test
-		@DisplayName("실패: folder 없으면 CustomException")
-		void fail_folder_not_found() {
-			given(folderMetadataJpaRepository.findById(10L)).willReturn(Optional.empty());
-			assertThrows(CustomException.class, () -> folderService.updateFolderSize(1L, 10L, 100L));
-		}
-
-		@Test
-		@DisplayName("성공: pending 메시지 없으면 1 반환(업데이트/이벤트 없음)")
-		void no_pending_return_1_no_events() {
-			FolderMetadata f = folder(
-				10L, 1L, 100L, 20L,
-				"a", "/a/", "/10/", 3,
-				0L, CommonConstant.UNAVAILABLE_TIME
-			);
-			given(folderMetadataJpaRepository.findById(10L)).willReturn(Optional.of(f));
-			// ✅ 수정: SENT, PENDING 둘 다 체크
-			given(messageInfoJpaRepository.existsByIdAndStatusIn(1L, List.of(MessageStatus.SENT, MessageStatus.PENDING))).willReturn(false);
-
-			int result = folderService.updateFolderSize(1L, 10L, 100L);
-
-			assertEquals(1, result);
-			then(folderMetadataJpaRepository).should(never())
-				.updateFolderSizeWithVersion(anyLong(), anyLong(), anyLong());
-			then(publisher).shouldHaveNoInteractions();
-		}
-
-		@Test
-		@DisplayName("성공: update 결과 0이면 0 반환(완료 이벤트/상위 전파 없음)")
-		void update_conflict_returns_0_no_events() {
-			FolderMetadata f = folder(
-				10L, 1L, 100L, 20L,
-				"a", "/a/", "/10/", 3,
-				0L, CommonConstant.UNAVAILABLE_TIME
-			);
-
-			given(folderMetadataJpaRepository.findById(10L)).willReturn(Optional.of(f));
-			// ✅ 수정: SENT, PENDING 둘 다 체크
-			given(messageInfoJpaRepository.existsByIdAndStatusIn(1L, List.of(MessageStatus.SENT, MessageStatus.PENDING))).willReturn(true);
-			given(folderMetadataJpaRepository.updateFolderSizeWithVersion(100L, 10L, 0L)).willReturn(0);
-
-			int result = folderService.updateFolderSize(1L, 10L, 100L);
-
-			assertEquals(0, result);
-			then(publisher).shouldHaveNoInteractions();
-		}
-
-		@Test
-		@DisplayName("성공: update 성공 + parent=null이면 MessageInfoEvent만 발행하고 1 반환")
-		void update_success_parent_null_publish_message_only() {
-			FolderMetadata f = folder(
-				10L, 1L, 100L, null,
-				"a", "/a/", "/10/", 3,
-				0L, CommonConstant.UNAVAILABLE_TIME
-			);
-
-			given(folderMetadataJpaRepository.findById(10L)).willReturn(Optional.of(f));
-			// ✅ 수정: SENT, PENDING 둘 다 체크
-			given(messageInfoJpaRepository.existsByIdAndStatusIn(1L, List.of(MessageStatus.SENT, MessageStatus.PENDING))).willReturn(true);
-			given(folderMetadataJpaRepository.updateFolderSizeWithVersion(100L, 10L, 0L)).willReturn(1);
-
-			int result = folderService.updateFolderSize(1L, 10L, 100L);
-
-			assertEquals(1, result);
-
-			ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
-			then(publisher).should(times(1)).publishEvent(captor.capture());
-			assertTrue(captor.getValue() instanceof MessageInfoEvent);
-		}
-
-		@Test
-		@DisplayName("성공: update 성공 + parent!=null이면 MessageInfoEvent + FolderSizeEvent 발행하고 1 반환")
-		void update_success_publish_two_events() {
-			FolderMetadata f = folder(
-				10L, 1L, 100L, 20L,
-				"a", "/a/", "/10/", 3,
-				0L, CommonConstant.UNAVAILABLE_TIME
-			);
-
-			given(folderMetadataJpaRepository.findById(10L)).willReturn(Optional.of(f));
-			// ✅ 수정: SENT, PENDING 둘 다 체크
-			given(messageInfoJpaRepository.existsByIdAndStatusIn(1L, List.of(MessageStatus.SENT, MessageStatus.PENDING))).willReturn(true);
-			given(folderMetadataJpaRepository.updateFolderSizeWithVersion(100L, 10L, 0L)).willReturn(1);
-
-			int result = folderService.updateFolderSize(1L, 10L, 100L);
-
-			assertEquals(1, result);
-
-			ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
-			then(publisher).should(times(2)).publishEvent(captor.capture());
-
-			assertTrue(captor.getAllValues().get(0) instanceof MessageInfoEvent);
-			assertTrue(captor.getAllValues().get(1) instanceof FolderSizeEvent);
-		}
-	}
 }

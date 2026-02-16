@@ -1,14 +1,11 @@
 package com.woowacamp.storage.domain.file.service;
 
-import java.time.Duration;
 import java.util.List;
 
-import org.awaitility.Awaitility;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -23,7 +20,6 @@ import com.woowacamp.storage.domain.file.repository.FileMetadataJpaRepository;
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
 import com.woowacamp.storage.domain.folder.repository.FolderJobJpaRepository;
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
-import com.woowacamp.storage.domain.message.repository.MessageInfoJpaRepository;
 import com.woowacamp.storage.global.error.CustomException;
 
 import static org.assertj.core.api.Assertions.*;
@@ -45,13 +41,7 @@ class FileServiceIntegrationTest extends IntegrationTestBase {
 	private FolderJobJpaRepository folderJobJpaRepository;
 
 	@Autowired
-	private MessageInfoJpaRepository messageInfoJpaRepository;
-
-	@Autowired
 	private FileService fileService;
-
-	@Autowired
-	private RabbitTemplate rabbitTemplate;
 
 	@BeforeEach
 	void setUp() {
@@ -59,22 +49,9 @@ class FileServiceIntegrationTest extends IntegrationTestBase {
 		folderTreeSetUp.setupFolderTree();
 	}
 
-
-
 	private FolderMetadata folder(long folderId) {
 		return folderMetadataJpaRepository.findById(folderId)
 			.orElseThrow(() -> new AssertionError("Folder not found: " + folderId));
-	}
-
-	private void awaitFolderSize(long folderId, long expectedSize) {
-		Awaitility.await()
-			.pollInterval(Duration.ofMillis(300))
-			.atMost(Duration.ofSeconds(20))
-			.untilAsserted(() -> {
-				long actual = folder(folderId).getSize();
-				assertEquals(expectedSize, actual,
-					String.format("Expected folder[%d] size: %d, but was: %d", folderId, expectedSize, actual));
-			});
 	}
 
 	@Nested
@@ -82,7 +59,7 @@ class FileServiceIntegrationTest extends IntegrationTestBase {
 	class FileMoveTest {
 
 		@Test
-		@DisplayName("파일 이동 성공: source/target 폴더 용량이 메시징 처리 후 반영된다")
+		@DisplayName("파일 이동 성공: source/target 폴더 용량이 동기 처리로 즉시 반영된다")
 		void file_move_success_test() {
 			// given
 			List<FileMetadata> files = folderTreeSetUp.getFiles();
@@ -125,9 +102,9 @@ class FileServiceIntegrationTest extends IntegrationTestBase {
 				.orElseThrow(() -> new AssertionError("moved file not found"));
 			assertEquals(targetFolder.getId(), moved.getParentFolderId());
 
-			// then 2) 용량은 메시징(Outbox -> Rabbit -> Consumer) 처리 후 반영 (비동기)
-			awaitFolderSize(sourceFolderBefore.getId(), sourceFolderBeforeSize - fileSize);
-			awaitFolderSize(targetFolderBefore.getId(), targetFolderBeforeSize + fileSize);
+			// then 2) 용량은 동기 배치 업데이트로 즉시 반영
+			assertEquals(sourceFolderBeforeSize - fileSize, folder(sourceFolderBefore.getId()).getSize());
+			assertEquals(targetFolderBeforeSize + fileSize, folder(targetFolderBefore.getId()).getSize());
 		}
 
 		@Test

@@ -5,14 +5,10 @@ import java.util.List;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Component;
 
-import com.woowacamp.storage.domain.file.util.StringFormat;
 import com.woowacamp.storage.domain.folder.service.FolderMoveProcessor;
-import com.woowacamp.storage.domain.folder.service.FolderService;
 import com.woowacamp.storage.domain.message.dto.FolderMoveMessageDto;
-import com.woowacamp.storage.domain.message.dto.FolderSizeMessageDto;
 import com.woowacamp.storage.domain.message.repository.MessageInfoJpaRepository;
 import com.woowacamp.storage.domain.message.util.MessageStatus;
-import com.woowacamp.storage.global.error.ErrorCode;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -22,24 +18,8 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 public class ReceiveMessageService {
 
-	private final FolderService folderService;
 	private final FolderMoveProcessor folderMoveProcessor;
 	private final MessageInfoJpaRepository messageInfoJpaRepository;
-
-
-	@RabbitListener(queues = "${spring.rabbitmq.folder.size.queue}", containerFactory = "folderSizeFactory")
-	public void handleFolderSizeEvent(FolderSizeMessageDto message) {
-		// 처리 실패는 예외로 올려서 retry/DLQ로 전송
-		int updated = folderService.updateFolderSize(message.id(), message.folderMetadataId(), message.size());
-
-		if (updated != 1) {
-			throw ErrorCode.CANNOT_UPDATE_SIZE.baseException(
-				StringFormat.format("Update failed. outboxId={}, folderId={}", message.id(),
-					message.folderMetadataId()));
-		}
-		log.info("[ReceiveMessageService] size update success, folder id: {}, size: {}", message.folderMetadataId(),
-			message.size());
-	}
 
 	/**
 	 * 폴더 이동 메시지 처리

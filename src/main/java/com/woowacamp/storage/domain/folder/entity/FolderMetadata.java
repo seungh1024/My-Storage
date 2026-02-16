@@ -104,14 +104,11 @@ public class FolderMetadata {
 	@Column(name = "name_path_length", columnDefinition = "INT NOT NULL DEFAULT 0")
 	private int namePathLength;
 
-	@Column(name = "is_moving", columnDefinition = "BOOLEAN DEFAULT false")
-	private boolean isMoving = false;
-
 	@Builder
 	public FolderMetadata(Long id, Long rootId, Long ownerId, Long creatorId, LocalDateTime createdAt,
 		LocalDateTime updatedAt, Long parentFolderId, String uploadFolderName, long size,
 		LocalDateTime sharingExpiredAt, PermissionType permissionType, boolean isDeleted, long version,
-		String nameFullPath, String idFullPath, Integer namePathLength, boolean isMoving) {
+		String nameFullPath, String idFullPath, Integer namePathLength) {
 
 		this.id = id;
 		this.rootId = rootId;
@@ -129,7 +126,6 @@ public class FolderMetadata {
 		this.nameFullPath = nameFullPath;
 		this.idFullPath = idFullPath;
 		this.namePathLength = namePathLength;
-		this.isMoving = isMoving;
 	}
 
 	public void initOwnerId(Long ownerId) {
@@ -184,7 +180,4 @@ public class FolderMetadata {
 		this.namePathLength = namePathLength;
 	}
 
-	public void markMoving() {
-		this.isMoving = true;
-	}
 }

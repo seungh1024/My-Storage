@@ -10,14 +10,10 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.woowacamp.storage.domain.folder.service.FolderMoveProcessor;
-import com.woowacamp.storage.domain.folder.service.FolderService;
 import com.woowacamp.storage.domain.message.dto.FolderMoveMessageDto;
-import com.woowacamp.storage.domain.message.dto.FolderSizeMessageDto;
 import com.woowacamp.storage.domain.message.repository.MessageInfoJpaRepository;
 import com.woowacamp.storage.domain.message.util.EventType;
 import com.woowacamp.storage.domain.message.util.MessageStatus;
-import com.woowacamp.storage.global.error.CustomException;
-import com.woowacamp.storage.global.error.ErrorCode;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -30,35 +26,10 @@ class ReceiveMessageServiceTest {
 	private ReceiveMessageService receiveMessageService;
 
 	@Mock
-	private FolderService folderService;
-
-	@Mock
 	private FolderMoveProcessor folderMoveProcessor;
 
 	@Mock
 	private MessageInfoJpaRepository messageInfoJpaRepository;
-
-	@Test
-	@DisplayName("handleFolderSizeEvent: update 성공 시 예외 없이 처리")
-	void handleFolderSizeEvent_success() {
-		FolderSizeMessageDto message = new FolderSizeMessageDto(1L, 10L, 100L, EventType.FOLDER_SIZE);
-		given(folderService.updateFolderSize(1L, 10L, 100L)).willReturn(1);
-
-		assertDoesNotThrow(() -> receiveMessageService.handleFolderSizeEvent(message));
-
-		then(folderService).should().updateFolderSize(1L, 10L, 100L);
-	}
-
-	@Test
-	@DisplayName("handleFolderSizeEvent: update 실패 시 예외 발생")
-	void handleFolderSizeEvent_failure() {
-		FolderSizeMessageDto message = new FolderSizeMessageDto(1L, 10L, 100L, EventType.FOLDER_SIZE);
-		given(folderService.updateFolderSize(1L, 10L, 100L)).willReturn(0);
-
-		CustomException ex = assertThrows(CustomException.class,
-			() -> receiveMessageService.handleFolderSizeEvent(message));
-		assertEquals(ErrorCode.CANNOT_UPDATE_SIZE.getMessage(), ex.getMessage());
-	}
 
 	@Test
 	@DisplayName("handleFolderMoveEvent: 완료된 메시지면 종료")

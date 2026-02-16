@@ -131,7 +131,6 @@ class FolderMoveProcessorIntegrationTest extends IntegrationTestBase {
 
 			FolderMetadata updated = folderMetadataJpaRepository.findById(root.getId()).orElseThrow();
 			assertThat(updated.getNameFullPath()).isEqualTo("/newroot/"+folderName+"/");
-			assertThat(updated.isMoving()).isFalse();
 		}
 
 		@Test

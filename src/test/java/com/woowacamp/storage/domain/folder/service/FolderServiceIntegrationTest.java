@@ -1,11 +1,19 @@
 package com.woowacamp.storage.domain.folder.service;
 
 import java.time.Duration;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.BeforeEach;
@@ -22,6 +30,7 @@ import com.woowacamp.storage.domain.folder.dto.command.MovePlan;
 import com.woowacamp.storage.domain.folder.dto.request.FolderMoveDto;
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
+import com.woowacamp.storage.domain.folder.utils.FolderJobStatus;
 import com.woowacamp.storage.global.error.CustomException;
 import com.woowacamp.storage.global.error.ErrorCode;
 
@@ -53,12 +62,11 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 	}
 
 	/**
-	 * ✅ “상위 폴더가 이동중” 상태를 DB에서 만든다.
+	 * 상위 폴더를 ACTIVE MOVE 상태로 만든다.
 	 * - folder_operation_state ACTIVE MOVE row 생성
 	 * - folder_job row 생성
-	 *
 	 */
-	private void markMovingInDb(long folderId) {
+	private void markActiveMoveInDb(long folderId) {
 		FolderMetadata folder = folderMetadataJpaRepository.findById(folderId)
 			.orElseThrow();
 		Long rootId = folder.getRootId() == null ? folder.getId() : folder.getRootId();
@@ -88,6 +96,70 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 					return false;
 				}
 			});
+	}
+
+	private void assertFolderTreeIntegrity(long rootFolderId) {
+		List<FolderMetadata> folders = folderMetadataJpaRepository.findAll().stream()
+			.filter(folder -> !folder.isDeleted())
+			.filter(folder -> folder.getId() == rootFolderId || Long.valueOf(rootFolderId).equals(folder.getRootId()))
+			.toList();
+
+		Map<Long, FolderMetadata> folderById = new HashMap<>();
+		Map<Long, List<FolderMetadata>> childrenByParentId = new HashMap<>();
+		for (FolderMetadata folder : folders) {
+			folderById.put(folder.getId(), folder);
+			if (folder.getParentFolderId() != null) {
+				childrenByParentId.computeIfAbsent(folder.getParentFolderId(), key -> new ArrayList<>())
+					.add(folder);
+			}
+		}
+
+		assertTrue(folderById.containsKey(rootFolderId), "루트 폴더가 존재해야 합니다");
+
+		Set<Long> visited = new HashSet<>();
+		ArrayDeque<Long> queue = new ArrayDeque<>();
+		queue.add(rootFolderId);
+		while (!queue.isEmpty()) {
+			Long currentId = queue.poll();
+			if (!visited.add(currentId)) {
+				continue;
+			}
+			for (FolderMetadata child : childrenByParentId.getOrDefault(currentId, List.of())) {
+				queue.add(child.getId());
+			}
+		}
+
+		assertEquals(folderById.size(), visited.size(), "고아 폴더 없이 모든 폴더가 루트에서 탐색되어야 합니다");
+
+		for (FolderMetadata folder : folders) {
+			assertTrue(folder.getIdFullPath().startsWith("/"));
+			assertTrue(folder.getIdFullPath().endsWith("/"));
+			assertTrue(folder.getNameFullPath().startsWith("/"));
+			assertTrue(folder.getNameFullPath().endsWith("/"));
+
+			if (folder.getParentFolderId() == null) {
+				assertEquals(rootFolderId, folder.getId(), "부모가 없는 폴더는 루트만 허용");
+				assertEquals("/", folder.getIdFullPath(), "루트의 idFullPath는 '/' 이어야 합니다");
+				assertEquals("/", folder.getNameFullPath(), "루트의 nameFullPath는 '/' 이어야 합니다");
+				continue;
+			}
+
+			assertTrue(folder.getIdFullPath().endsWith("/" + folder.getId() + "/"));
+
+			FolderMetadata parent = folderById.get(folder.getParentFolderId());
+			assertNotNull(parent, "모든 부모는 같은 루트 트리 내부에 존재해야 합니다");
+			assertTrue(folder.getIdFullPath().startsWith(parent.getIdFullPath()),
+				"idFullPath는 부모 prefix를 포함해야 합니다");
+			assertTrue(folder.getNameFullPath().startsWith(parent.getNameFullPath()),
+				"nameFullPath는 부모 prefix를 포함해야 합니다");
+		}
+	}
+
+	private List<FolderMetadata> findActiveFoldersInRoot(long rootFolderId) {
+		return folderMetadataJpaRepository.findAll().stream()
+			.filter(folder -> !folder.isDeleted())
+			.filter(folder -> folder.getId() == rootFolderId || Long.valueOf(rootFolderId).equals(folder.getRootId()))
+			.toList();
 	}
 
 	// =========================================================
@@ -220,14 +292,6 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 				}
 			}
 
-			// ✅ 이동 처리 완료 후 is_moving 해제 확인
-			await(() -> {
-				FolderMetadata movingCheck = folderMetadataJpaRepository.findById(sourceId).orElseThrow();
-				return !movingCheck.isMoving();
-			}, 20_000, 500);
-
-			FolderMetadata afterMove = folderMetadataJpaRepository.findById(sourceId).orElseThrow();
-			assertFalse(afterMove.isMoving());
 		}
 
 		private void findSize(Map<Long, Long> map, Long id) {
@@ -244,7 +308,7 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 
 		@Test
 		@DisplayName("source 폴더의 상위 폴더가 DB에서 ACTIVE MOVE 상태면(PARENT_LOCKED) 하위 폴더 이동이 불가능하다")
-		void source_folder_parent_moving_conflict_db_is_moving_test() {
+		void source_folder_parent_moving_conflict_db_active_move_test() {
 			// child(하위)를 이동시키려는데, parent(상위)가 ACTIVE MOVE 상태면 PARENT_LOCKED
 			FolderMetadata child = folderTreeSetUp.getSubSubFolder();
 			long childId = child.getId();
@@ -255,7 +319,7 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 			long parentId = parent.getId();
 
 			// ✅ DB에서 ACTIVE MOVE 상태 생성
-			markMovingInDb(parentId);
+			markActiveMoveInDb(parentId);
 
 			FolderMetadata targetFolder = folderTreeSetUp.getSubFolders().get(2);
 			long targetId = targetFolder.getId();
@@ -270,7 +334,7 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 
 		@Test
 		@DisplayName("target 폴더의 상위 폴더가 DB에서 ACTIVE MOVE 상태면(PARENT_LOCKED) 이동이 불가능하다")
-		void target_folder_parent_moving_conflict_db_is_moving_test() {
+		void target_folder_parent_moving_conflict_db_active_move_test() {
 			// source를 target으로 이동시키려는데, target의 parent가 ACTIVE MOVE 상태면 PARENT_LOCKED
 			FolderMetadata targetChild = folderTreeSetUp.getSubSubFolder();
 			long targetChildId = targetChild.getId();
@@ -281,7 +345,7 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 			long targetParentId = targetParent.getId();
 
 			// ✅ target의 상위(부모)를 ACTIVE MOVE 상태로 만든다
-			markMovingInDb(targetParentId);
+			markActiveMoveInDb(targetParentId);
 
 			FolderMetadata sourceFolder = folderTreeSetUp.getSubFolders().get(2);
 			long sourceId = sourceFolder.getId();
@@ -304,7 +368,7 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 			long targetId = targetFolder.getId();
 
 			// source 자체를 moving으로 만들어둠
-			markMovingInDb(sourceId);
+			markActiveMoveInDb(sourceId);
 
 			FolderMoveDto dto = moveDto(userId, targetId, sourceFolder.getRootId(), defaultFolderName);
 
@@ -362,7 +426,7 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 	class FolderMoveFailureTest {
 
 		@Test
-		@DisplayName("검증 단계에서 실패하면(source 미이동) is_moving=false 이고 folder_job이 생성되지 않는다")
+		@DisplayName("검증 단계에서 실패하면 source 상태가 유지되고 folder_job이 생성되지 않는다")
 		void validation_failure_before_job_creation_keeps_source_stable() {
 			FolderMetadata sourceFolder = folderTreeSetUp.getSubFolders().get(1);
 			long sourceId = sourceFolder.getId();
@@ -375,8 +439,6 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 
 			assertEquals(ErrorCode.FOLDER_NOT_FOUND.getMessage(), ex.getMessage());
 
-			FolderMetadata refreshedSource = folderMetadataJpaRepository.findById(sourceId).orElseThrow();
-			assertFalse(refreshedSource.isMoving());
 			assertTrue(folderJobJpaRepository.findById(sourceId).isEmpty());
 		}
 	}
@@ -386,66 +448,60 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 	class ConcurrentFolderMoveTest {
 
 		@Test
-		@DisplayName("폴더 이동 동시성 테스트: 루트 용량은 깨지지 않는다")
-		void concurrent_folder_move_test() {
-			FolderMetadata folderA = folderTreeSetUp.getSubSubFolder();
-			FolderMetadata folderB = folderMetadataJpaRepository.findById(folderA.getParentFolderId()).orElseThrow();
-
-			long aId = folderA.getId();
-			long bId = folderB.getId();
-
-			long aParent = folderA.getParentFolderId();
-			long bParent = folderB.getParentFolderId();
-
-			long targetFolderId = folderTreeSetUp.getSubFolders().get(5).getId();
-
+		@DisplayName("동시 이동 후에도 전체 트리는 고아 없이 prefix 일관성을 유지한다")
+		void concurrent_folder_move_tree_integrity_test() {
 			long rootId = folderTreeSetUp.getRootFolder().getId();
 			long rootSize = folderTreeSetUp.getRootFolder().getSize();
-
-			int rounds = 10;
-
-			// ✅ 라운드마다 4개 task 제출하니 latch는 rounds*4가 되어야 함
-			int totalTasks = rounds * 4;
+			int totalTasks = 120;
+			int maxPickAttemptsPerTask = 8;
 
 			ExecutorService executorService = Executors.newFixedThreadPool(16);
 			CountDownLatch latch = new CountDownLatch(totalTasks);
+			AtomicInteger successCount = new AtomicInteger(0);
+			ConcurrentLinkedQueue<Throwable> unexpectedErrors = new ConcurrentLinkedQueue<>();
 
-			for (int i = 0; i < rounds; i++) {
+			for (int i = 0; i < totalTasks; i++) {
 				executorService.submit(() -> {
 					try {
-						folderService.moveFolder(aId, moveDto(userId, targetFolderId, rootId, defaultFolderName));
-					} catch (Exception ignored) {
-						// Expected: concurrent moves may fail due to lock contention; final size is asserted below.
-					} finally {
-						latch.countDown();
-					}
-				});
+						for (int attempt = 0; attempt < maxPickAttemptsPerTask; attempt++) {
+							List<FolderMetadata> folders = findActiveFoldersInRoot(rootId);
+							List<FolderMetadata> movableSources = folders.stream()
+								.filter(folder -> folder.getId() != rootId)
+								.toList();
 
-				executorService.submit(() -> {
-					try {
-						folderService.moveFolder(bId, moveDto(userId, targetFolderId, rootId, defaultFolderName));
-					} catch (Exception ignored) {
-						// Expected: concurrent moves may fail due to lock contention; final size is asserted below.
-					} finally {
-						latch.countDown();
-					}
-				});
+							if (movableSources.isEmpty()) {
+								return;
+							}
 
-				executorService.submit(() -> {
-					try {
-						folderService.moveFolder(aId, moveDto(userId, aParent, rootId, defaultFolderName));
-					} catch (Exception ignored) {
-						// Expected: concurrent moves may fail due to lock contention; final size is asserted below.
-					} finally {
-						latch.countDown();
-					}
-				});
+							FolderMetadata source = movableSources.get(
+								ThreadLocalRandom.current().nextInt(movableSources.size()));
 
-				executorService.submit(() -> {
-					try {
-						folderService.moveFolder(bId, moveDto(userId, bParent, rootId, defaultFolderName));
-					} catch (Exception ignored) {
-						// Expected: concurrent moves may fail due to lock contention; final size is asserted below.
+							List<FolderMetadata> targets = folders.stream()
+								.filter(target -> !target.getId().equals(source.getId()))
+								.filter(target -> !target.getId().equals(source.getParentFolderId()))
+								.filter(target -> !target.getIdFullPath().startsWith(source.getIdFullPath()))
+								.toList();
+
+							if (targets.isEmpty()) {
+								continue;
+							}
+
+							FolderMetadata target = targets.get(
+								ThreadLocalRandom.current().nextInt(targets.size()));
+
+							try {
+								folderService.moveFolder(
+									source.getId(),
+									moveDto(userId, target.getId(), rootId, defaultFolderName)
+								);
+								successCount.incrementAndGet();
+								return;
+							} catch (CustomException ignored) {
+								// 동시성 충돌/검증 실패는 허용하고 다음 후보로 재시도
+							}
+						}
+					} catch (Throwable t) {
+						unexpectedErrors.add(t);
 					} finally {
 						latch.countDown();
 					}
@@ -456,18 +512,28 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 				latch.await();
 			} catch (InterruptedException e) {
 				Thread.currentThread().interrupt();
-				fail("Concurrent move test interrupted");
+				fail("Concurrent move integrity test interrupted");
 			}
 			executorService.shutdown();
 
-			// ✅ 비동기 용량 반영 안정화 대기 (폴링)
-			await(() -> {
-				FolderMetadata root = folderMetadataJpaRepository.findById(rootId).orElseThrow();
-				return root.getSize() == rootSize;
-			}, 15_000, 300);
+			if (!unexpectedErrors.isEmpty()) {
+				Throwable first = unexpectedErrors.peek();
+				fail("동시 이동 중 비정상 오류 발생: " + first.getClass().getSimpleName());
+			}
+			assertTrue(successCount.get() > 0, "랜덤 이동이 최소 1건 이상 성공해야 합니다");
 
-			FolderMetadata findRootFolder = folderMetadataJpaRepository.findById(rootId).orElseThrow();
-			assertEquals(rootSize, findRootFolder.getSize());
+			await(() -> folderJobJpaRepository.findAll().stream()
+					.noneMatch(job -> job.getStatus() == FolderJobStatus.WAITING
+						|| job.getStatus() == FolderJobStatus.RUNNING),
+				20_000, 300);
+
+			await(() -> folderMetadataJpaRepository.findById(rootId)
+				.map(root -> root.getSize() == rootSize)
+				.orElse(false), 15_000, 300);
+
+			FolderMetadata refreshedRoot = folderMetadataJpaRepository.findById(rootId).orElseThrow();
+			assertEquals(rootSize, refreshedRoot.getSize());
+			assertFolderTreeIntegrity(rootId);
 		}
 	}
 

@@ -65,13 +65,6 @@ public interface FolderMetadataJpaRepository extends JpaRepository<FolderMetadat
 	@Transactional
 	@Modifying
 	@Query("""
-            UPDATE FolderMetadata f set f.size = f.size + :size, f.updatedAt = NOW() WHERE f.id IN (:ids)
-        """)
-	void updateAllSizeByIdInBatch(@Param("size") long size, @Param("ids") List<Long> ids);
-
-	@Transactional
-	@Modifying
-	@Query("""
             UPDATE FolderMetadata f set f.isDeleted = true, f.updatedAt = NOW() where f.id = :id
         """)
 	void softDeleteById(@Param("id") Long id);
@@ -184,32 +177,6 @@ public interface FolderMetadataJpaRepository extends JpaRepository<FolderMetadat
             AND name_full_path LIKE CONCAT(:prefix, '%')
         """, nativeQuery = true)
 	Optional<Integer> findMaxFolderNamePathLengthByPrefix(@Param("id") Long id, @Param("prefix") String prefix);
-
-	@Transactional
-	@Modifying(flushAutomatically = true, clearAutomatically = true)
-	@Query(value = """
-            UPDATE FolderMetadata f
-            SET f.isMoving = true, f.updatedAt = NOW()
-            WHERE f.id = :id AND f.isMoving = false
-        """)
-	int getMovingLock(@Param("id") Long id);
-
-	@Transactional
-	@Modifying(flushAutomatically = true, clearAutomatically = true)
-	@Query(value = """
-            UPDATE FolderMetadata f
-            SET f.isMoving = false, f.updatedAt = NOW()
-            WHERE f.id = :id AND f.isMoving = true
-        """)
-	int releaseMovingLock(@Param("id") Long id);
-
-	@Query(value = """
-            SELECT f.id
-            FROM FolderMetadata f
-            WHERE f.id IN (:ids)
-            AND (f.isMoving = true or f.isDeleted = true)
-        """)
-	List<Long> findParentIdsMovingOrDeleted(@Param("ids") List<Long> ids);
 
 	@Query(value = """
             SELECT f.id

@@ -5,6 +5,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.Executor;
 
@@ -27,17 +28,14 @@ import com.woowacamp.storage.domain.folder.dto.request.CreateFolderReqDto;
 import com.woowacamp.storage.domain.folder.dto.request.FolderMoveDto;
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
 import com.woowacamp.storage.domain.folder.event.FolderMoveEvent;
-import com.woowacamp.storage.domain.folder.event.FolderSizeEvent;
 import com.woowacamp.storage.domain.folder.dto.command.FolderJobInsertCommand;
 import com.woowacamp.storage.domain.folder.repository.FolderJobJpaRepository;
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataRepository;
 import com.woowacamp.storage.domain.folder.utils.FolderJobStatus;
+import com.woowacamp.storage.domain.folder.utils.FolderPathParser;
 import com.woowacamp.storage.domain.folder.utils.QueryExecuteTemplate;
 import com.woowacamp.storage.domain.folderoperation.service.FolderOperationStateService;
-import com.woowacamp.storage.domain.message.event.MessageInfoEvent;
-import com.woowacamp.storage.domain.message.repository.MessageInfoJpaRepository;
-import com.woowacamp.storage.domain.message.util.MessageStatus;
 import com.woowacamp.storage.domain.user.entity.User;
 import com.woowacamp.storage.domain.user.repository.UserRepository;
 import com.woowacamp.storage.global.background.BackgroundJob;
@@ -68,10 +66,9 @@ public class FolderService {
 	private final BackgroundJob backgroundJob;
 	private final FolderJobJpaRepository folderJobJpaRepository;
 	private final ValidateParentsUtil validateParentsUtil;
+	private final FolderSizeAdjustmentService folderSizeAdjustmentService;
 
 	private final ApplicationEventPublisher publisher;
-	private final MessageInfoJpaRepository messageInfoJpaRepository;
-
 	private final FolderOperationStateService folderOperationStateService;
 	private final Clock appClock;
 
@@ -149,26 +146,24 @@ public class FolderService {
 		MovePlan movePlan = buildMovePlanAndValidate(sourceFolder, targetFolder, sourceParentFolder);
 		getFolderJobLock(sourceRootId, sourceFolderId, movePlan);
 
-		validateParentsUtil.validateParentsFolderLock(sourceParentFolder, targetFolder);
+		List<Long> sourceParentIds = parsePathIds(sourceParentFolder.getIdFullPath());
+		List<Long> targetParentIds = parsePathIds(targetFolder.getIdFullPath());
+		validateParentsUtil.validateParentsFolderLock(sourceRootId, sourceParentIds, targetParentIds);
 
-		Long originalParentId = sourceFolder.getParentFolderId();
 		sourceFolder.updateParentFolderId(targetFolder.getId());
 		sourceFolder.updateMoveRootPath(
 			movePlan.nextSourceIdFullPath(),
 			movePlan.nextSourceNameFullPath(),
 			movePlan.nextSourceNamePathLength()
 		);
-		sourceFolder.markMoving();
 		folderMetadataJpaRepository.save(sourceFolder);
 
-		log.info("[moveFolder] About to publish events. sourceId={}, originalParentId={}, targetId={}, size={}",
-			sourceFolderId, originalParentId, targetFolder.getId(), sourceFolder.getSize());
-		publisher.publishEvent(new FolderSizeEvent(originalParentId, -sourceFolder.getSize()));
-		log.info("[moveFolder] Published FolderSizeEvent for originalParent. parentId={}, size={}",
-			originalParentId, -sourceFolder.getSize());
-		publisher.publishEvent(new FolderSizeEvent(targetFolder.getId(), sourceFolder.getSize()));
-		log.info("[moveFolder] Published FolderSizeEvent for target. targetId={}, size={}",
-			targetFolder.getId(), sourceFolder.getSize());
+		Map<Long, Long> deltaByFolderId = folderSizeAdjustmentService.mergeDeltaByFolderIds(
+			sourceParentIds,
+			targetParentIds,
+			sourceFolder.getSize()
+		);
+		folderSizeAdjustmentService.applySizeDeltas(deltaByFolderId);
 
 		publisher.publishEvent(new FolderMoveEvent(sourceFolderId));
 		log.info("[moveFolder] Published FolderMoveEvent. folderId={}", sourceFolderId);
@@ -440,47 +435,6 @@ public class FolderService {
 			folderMetadataList -> folderMetadataList.forEach(folder -> deleteFolderTree(folder)));
 	}
 
-	@Transactional
-	public int updateFolderSize(Long id, Long folderId, long size) {
-		FolderMetadata folderMetadata = folderMetadataJpaRepository.findById(folderId)
-			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
-
-		// 처리되지 않은 메세지가 없다면 리턴
-		if (!messageInfoJpaRepository.existsByIdAndStatusIn(id, List.of(MessageStatus.SENT, MessageStatus.PENDING))) {
-			log.info("[update folder size] early returned id: {}, folderId: {}, size: {}", id, folderId, size);
-			return 1;
-		}
-
-		// 사이즈 업데이트
-		int result = 0;
-		int cnt = 3;
-		while (result == 0 && cnt-- > 0) {
-			result = folderMetadataJpaRepository.updateFolderSizeWithVersion(size, folderMetadata.getId(),
-				folderMetadata.getVersion());
-			folderMetadata = folderMetadataJpaRepository.findById(folderId)
-				.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
-			log.info("[update folder size] id: {}, folderId: {}, size: {}, update result: {}, version: {}", id,
-				folderId, size, result, folderMetadata.getVersion());
-		}
-		log.info("[update folder size] id: {}, folderId: {}, size: {}, update result: {}", id, folderId, size, result);
-		if (result == 0) {
-			return 0;
-		}
-		log.info(
-			"[update folder size] id: {}, folderId: {}, size: {}, folderMetadata.id: {}, folderMetadata.rootId:{}, folderMetadata.size:{}",
-			id, folderId, size, folderMetadata.getId(), folderMetadata.getRootId(), folderMetadata.getSize());
-
-		// MessageInfo 완료 처리
-		publisher.publishEvent(new MessageInfoEvent(id));
-
-		// 상위 폴더 이벤트 전파
-		if (folderMetadata.getParentFolderId() != null) {
-			publisher.publishEvent(new FolderSizeEvent(folderMetadata.getParentFolderId(), size));
-		}
-
-		return result;
-	}
-
 	/**
 	 * 루트 폴더 기준으로 락을 잡는다. 이 락은 작업 대상 폴더의 락을 잡기 위해 짧게 유지하는 락이다.
 	 * 대상 폴더의 락을 잡기 전에 발생하는 동시성 문제를 방지하는 용도이다.
@@ -516,6 +470,15 @@ public class FolderService {
 			throw ErrorCode.FOLDER_JOB_CONFLICT.baseException(
 				StorageStringUtil.format("Other job already running. folderId: {}", sourceFolderId), e);
 		}
+	}
+
+	private List<Long> parsePathIds(String idFullPath) {
+		return FolderPathParser.parsing(idFullPath)
+			.orElseThrow(() -> ErrorCode.FOLDER_PATH_ERROR.baseException(
+				StorageStringUtil.format("Failed to parse path. idFullPath={}", idFullPath)))
+			.stream()
+			.map(Long::parseLong)
+			.toList();
 	}
 
 }

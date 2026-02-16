@@ -1,6 +1,7 @@
 package com.woowacamp.storage.domain.file.service;
 
 import java.net.URL;
+import java.util.Map;
 import java.util.Optional;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -23,6 +24,7 @@ import com.woowacamp.storage.domain.file.entity.FileMetadataFactory;
 import com.woowacamp.storage.domain.file.repository.FileMetadataJpaRepository;
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
+import com.woowacamp.storage.domain.folder.service.FolderSizeAdjustmentService;
 import com.woowacamp.storage.global.constant.CommonConstant;
 import com.woowacamp.storage.global.constant.UploadStatus;
 import com.woowacamp.storage.global.error.CustomException;
@@ -49,6 +51,8 @@ class S3FileServiceTest {
 	private PresignedUrlService presignedUrlService;
 	@Mock
 	private ValidateParentsUtil validateParentsUtil;
+	@Mock
+	private FolderSizeAdjustmentService folderSizeAdjustmentService;
 
 	@BeforeEach
 	void setUp() {
@@ -460,6 +464,7 @@ class S3FileServiceTest {
 			given(fileMetadata.getId()).willReturn(777L);
 
 			FileMetadata saved = mock(FileMetadata.class);
+			Map<Long, Long> deltaByFolderId = Map.of(100L, dto.fileSize());
 
 			// UUID는 랜덤이라 "캡처"로 동일성만 검증
 			ArgumentCaptor<String> objectKeyCaptor = ArgumentCaptor.forClass(String.class);
@@ -473,6 +478,8 @@ class S3FileServiceTest {
 				given(fileMetadataJpaRepository.save(fileMetadata)).willReturn(saved);
 				willDoNothing().given(saved).updateIdFullPath("/100/");
 				given(fileMetadataJpaRepository.save(saved)).willReturn(saved);
+				given(folderSizeAdjustmentService.mergeDeltaByFolderIds(anyList(), anyList(), eq(dto.fileSize())))
+					.willReturn(deltaByFolderId);
 
 				given(presignedUrlService.getPresignedUrl(objectKeyCaptor.capture())).willReturn(presigned);
 
@@ -488,12 +495,15 @@ class S3FileServiceTest {
 				assertFalse(capturedKey.isBlank());
 				assertEquals(capturedKey, res.objectKey());
 
-				InOrder inOrder = inOrder(folderMetadataJpaRepository, validateParentsUtil, fileMetadataJpaRepository, presignedUrlService);
+				InOrder inOrder = inOrder(folderMetadataJpaRepository, validateParentsUtil, fileMetadataJpaRepository,
+					folderSizeAdjustmentService, presignedUrlService);
 				inOrder.verify(folderMetadataJpaRepository).findById(dto.parentFolderId());
 				inOrder.verify(folderMetadataJpaRepository).findByIdForUpdate(dto.rootId());
 				inOrder.verify(validateParentsUtil).validateParentsFolderLock(parent);
 				inOrder.verify(fileMetadataJpaRepository).save(fileMetadata);
 				inOrder.verify(fileMetadataJpaRepository).save(saved);
+				inOrder.verify(folderSizeAdjustmentService).mergeDeltaByFolderIds(anyList(), anyList(), eq(dto.fileSize()));
+				inOrder.verify(folderSizeAdjustmentService).applySizeDeltas(deltaByFolderId);
 				inOrder.verify(presignedUrlService).getPresignedUrl(anyString());
 			}
 		}

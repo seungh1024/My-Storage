@@ -1,5 +1,6 @@
 package com.woowacamp.storage.domain.folder.repository;
 
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -32,6 +33,9 @@ class FolderJobRepositoryTest extends IntegrationTestBase {
 	@Autowired
 	private JdbcTemplate jdbcTemplate;
 
+	@Autowired
+	private Clock appClock;
+
 	@BeforeEach
 	void setUp() {
 		cleanup();
@@ -57,7 +61,7 @@ class FolderJobRepositoryTest extends IntegrationTestBase {
 			.lastFolderId(null)
 			.lastFileId(null)
 			.parentStack("[]")
-			.updatedAt(LocalDateTime.now())
+			.updatedAt(LocalDateTime.now(appClock))
 			.status(status)
 			.build();
 		return folderJobJpaRepository.save(job);
@@ -142,7 +146,7 @@ class FolderJobRepositoryTest extends IntegrationTestBase {
 	@DisplayName("오래된 RUNNING Job을 조회한다 (커서 페이징)")
 	void findStuckJobsWithCursor_ReturnsOldJobs() {
 		// given
-		LocalDateTime oldTime = LocalDateTime.now().minusMinutes(20);
+		LocalDateTime oldTime = LocalDateTime.now(appClock).minusMinutes(20);
 
 		// JdbcTemplate으로 직접 INSERT (updatedAt 제어)
 		createJobWithUpdatedAt(1L, FolderJobStatus.RUNNING, oldTime.minusMinutes(2));
@@ -153,7 +157,7 @@ class FolderJobRepositoryTest extends IntegrationTestBase {
 		createJob(4L, FolderJobStatus.RUNNING);
 
 		// when
-		LocalDateTime threshold = LocalDateTime.now().minusMinutes(10);
+		LocalDateTime threshold = LocalDateTime.now(appClock).minusMinutes(10);
 		List<FolderJob> stuckJobs = folderJobRepository.findStuckJobsWithCursor(
 			List.of(FolderJobStatus.RUNNING, FolderJobStatus.FAILED), threshold, null, 10);
 
@@ -167,7 +171,7 @@ class FolderJobRepositoryTest extends IntegrationTestBase {
 	@DisplayName("오래된 COMPLETED Job을 조회한다 (커서 페이징)")
 	void findCompletedJobsWithCursor_ReturnsOldJobs() {
 		// given
-		LocalDateTime oldTime = LocalDateTime.now().minusDays(10);
+		LocalDateTime oldTime = LocalDateTime.now(appClock).minusDays(10);
 
 		// JdbcTemplate으로 직접 INSERT
 		createJobWithUpdatedAt(1L, FolderJobStatus.COMPLETED, oldTime.minusDays(2));
@@ -177,7 +181,7 @@ class FolderJobRepositoryTest extends IntegrationTestBase {
 		createJob(3L, FolderJobStatus.COMPLETED);
 
 		// when
-		LocalDateTime threshold = LocalDateTime.now().minusDays(7);
+		LocalDateTime threshold = LocalDateTime.now(appClock).minusDays(7);
 		List<FolderJob> completedJobs = folderJobRepository.findCompletedJobsWithCursor(threshold, null, 10);
 
 		// then
@@ -208,13 +212,13 @@ class FolderJobRepositoryTest extends IntegrationTestBase {
 	@DisplayName("커서 기반 페이징이 올바르게 동작한다")
 	void findStuckJobsWithCursor_Pagination_Works() {
 		// given
-		LocalDateTime oldTime = LocalDateTime.now().minusMinutes(20);
+		LocalDateTime oldTime = LocalDateTime.now(appClock).minusMinutes(20);
 
 		for (long i = 1; i <= 5; i++) {
 			createJobWithUpdatedAt(i, FolderJobStatus.RUNNING, oldTime);
 		}
 
-		LocalDateTime threshold = LocalDateTime.now().minusMinutes(10);
+		LocalDateTime threshold = LocalDateTime.now(appClock).minusMinutes(10);
 
 		// when - 첫 페이지 (2개)
 		List<FolderJob> page1 = folderJobRepository.findStuckJobsWithCursor(
