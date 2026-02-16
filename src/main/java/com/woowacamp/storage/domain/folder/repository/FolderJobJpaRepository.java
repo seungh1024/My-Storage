@@ -45,10 +45,10 @@ public interface FolderJobJpaRepository extends JpaRepository<FolderJob, FolderJ
 	@Transactional
 	@Modifying
 	@Query("""
-		UPDATE FolderJob fj
-		SET fj.status = :newStatus, fj.updatedAt = :updatedAt
-		WHERE fj.rootId = :rootId AND fj.id = :id AND fj.status = :expectedStatus
-	""")
+        UPDATE FolderJob fj
+        SET fj.status = :newStatus, fj.updatedAt = :updatedAt
+        WHERE fj.rootId = :rootId AND fj.id = :id AND fj.status = :expectedStatus
+    """)
 	int updateStatusCAS(@Param("rootId") Long rootId,
 		@Param("id") Long id,
 		@Param("expectedStatus") FolderJobStatus expectedStatus,
@@ -58,14 +58,14 @@ public interface FolderJobJpaRepository extends JpaRepository<FolderJob, FolderJ
 	@Transactional
 	@Modifying
 	@Query("""
-		UPDATE FolderJob fj
-		SET fj.currentParentId = :currentParentId,
-			fj.lastFolderId = :lastFolderId,
-			fj.lastFileId = :lastFileId,
-			fj.parentStack = :parentStack,
-			fj.updatedAt = :updatedAt
-		WHERE fj.rootId = :rootId AND fj.id = :id
-	""")
+        UPDATE FolderJob fj
+        SET fj.currentParentId = :currentParentId,
+            fj.lastFolderId = :lastFolderId,
+            fj.lastFileId = :lastFileId,
+            fj.parentStack = :parentStack,
+            fj.updatedAt = :updatedAt
+        WHERE fj.rootId = :rootId AND fj.id = :id
+    """)
 	int updateProgress(@Param("rootId") Long rootId,
 		@Param("id") Long id,
 		@Param("currentParentId") Long currentParentId,

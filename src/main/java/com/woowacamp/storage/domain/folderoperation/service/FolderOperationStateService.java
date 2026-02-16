@@ -5,6 +5,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -40,14 +41,12 @@ public class FolderOperationStateService {
 		try {
 			folderOperationStateJpaRepository.insert(rootId, folderId, FolderOperationType.MOVE.name(),
 				FolderOperationStatus.ACTIVE.name(), rootIdFullPath, projectedMaxNamePathLength, jobId);
-		} catch (DataIntegrityViolationException e) {
-			String specificMessage = e.getMostSpecificCause() == null ? null : e.getMostSpecificCause().getMessage();
-			if (specificMessage == null || !specificMessage.contains("Duplicate entry")) {
-				throw e;
-			}
+		} catch (DuplicateKeyException e) {
 			throw ErrorCode.FOLDER_JOB_CONFLICT.baseException(
 				StorageStringUtil.format("Folder operation already exists. rootId={}, folderId={}", rootId, folderId),
 				e);
+		} catch (DataIntegrityViolationException e) {
+			throw e;
 		}
 	}
 

@@ -356,7 +356,7 @@ class FolderServiceTest {
 	@DisplayName("moveFolder")
 	class MoveFolderTests {
 
-		private void stubJobLockSuccess(long sourceId) {
+		private void stubJobLockSuccess() {
 			given(folderJobJpaRepository.insert(any(FolderJobInsertCommand.class))).willReturn(1);
 		}
 
@@ -369,7 +369,7 @@ class FolderServiceTest {
 			long rootId = 1L;
 			long userId = 100L;
 
-			stubJobLockSuccess(sourceId);
+			stubJobLockSuccess();
 
 			FolderMetadata source = folder(
 				sourceId, rootId, userId, parentId,
@@ -792,7 +792,7 @@ class FolderServiceTest {
 			long rootId = 1L;
 			long userId = 100L;
 
-			stubJobLockSuccess(sourceId);
+			stubJobLockSuccess();
 
 			FolderMetadata source = folder(
 				sourceId, rootId, userId, parentId,
@@ -836,7 +836,7 @@ class FolderServiceTest {
 			long rootId = 1L;
 			long userId = 100L;
 
-			stubJobLockSuccess(sourceId);
+			stubJobLockSuccess();
 
 			FolderMetadata source = folder(
 				sourceId, rootId, userId, parentId,
