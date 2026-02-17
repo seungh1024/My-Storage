@@ -218,7 +218,7 @@ public class FolderService {
 		Long sourceRootId = sourceFolder.getRootId() == null ? sourceFolder.getId() : sourceFolder.getRootId();
 		List<Long> activeMoveFolderIdsInSourceSubtree = folderOperationStateService.findActiveMoveFolderIdsByRootIdAndPrefix(
 			sourceRootId,
-			sourceFolder.getIdFullPath()
+			sourceFolder.getNameFullPath()
 		);
 		if (!activeMoveFolderIdsInSourceSubtree.isEmpty()) {
 			throw ErrorCode.PARENT_LOCKED.baseException(
@@ -306,12 +306,12 @@ public class FolderService {
 		validateFolderOwner(parentFolder, req.userId());
 
 		FolderMetadata folderMetadata = createFolderMetadata(user, parentFolder, req);
+		folderMetadata.updateNameFullPath(createPathValidationResult.projectedParentNameFullPath());
+		folderMetadata.updateNamePathLength(folderMetadata.getNameFullPath().length());
 
 		// 저장 및 pk 전체 경로 업데이트
 		FolderMetadata newFolder = folderMetadataJpaRepository.save(folderMetadata);
 		newFolder.updateIdFullPath(createPathValidationResult.projectedParentIdFullPath());
-		newFolder.updateNameFullPath(createPathValidationResult.projectedParentNameFullPath());
-		newFolder.updateNamePathLength(newFolder.getNameFullPath().length());
 		folderMetadataJpaRepository.save(newFolder);
 		if (createPathValidationResult.hasReservation()) {
 			Long rootId = parentFolder.getRootId() == null ? parentFolder.getId() : parentFolder.getRootId();
@@ -450,7 +450,7 @@ public class FolderService {
 		folderOperationStateService.insertActiveMove(
 			rootId,
 			sourceFolderId,
-			movePlan.nextSourceIdFullPath(),
+			movePlan.nextSourceNameFullPath(),
 			movePlan.projectedMaxNamePathLength(),
 			sourceFolderId
 		);

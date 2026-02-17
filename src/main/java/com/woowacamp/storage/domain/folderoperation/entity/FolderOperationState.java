@@ -27,7 +27,7 @@ import lombok.NoArgsConstructor;
 @EntityListeners(AuditingEntityListener.class)
 @Table(name = "folder_operation_state", indexes = {
 	@Index(name = "idx_folder_operation_state_filter_prefix_max",
-		columnList = "root_id, operation_state, operation_type, root_id_full_path, projected_max_name_path_length")
+		columnList = "root_id, operation_state, operation_type, root_name_full_path, projected_max_name_path_length")
 })
 public class FolderOperationState {
 
@@ -49,9 +49,9 @@ public class FolderOperationState {
 	@NotNull
 	private FolderOperationStatus operationState;
 
-	@Column(name = "root_id_full_path", nullable = false, length = 250)
+	@Column(name = "root_name_full_path", columnDefinition = "VARCHAR(250)", nullable = false)
 	@NotNull
-	private String rootIdFullPath;
+	private String rootNameFullPath;
 
 	@Column(name = "projected_max_name_path_length", nullable = false)
 	private int projectedMaxNamePathLength;
@@ -70,21 +70,21 @@ public class FolderOperationState {
 
 	@Builder
 	public FolderOperationState(Long rootId, Long folderId, FolderOperationType operationType,
-		FolderOperationStatus operationState, String rootIdFullPath, int projectedMaxNamePathLength,
+		FolderOperationStatus operationState, String rootNameFullPath, int projectedMaxNamePathLength,
 		Long jobId, LocalDateTime createdAt, LocalDateTime updatedAt) {
 		this.rootId = rootId;
 		this.folderId = folderId;
 		this.operationType = operationType;
 		this.operationState = operationState;
-		this.rootIdFullPath = rootIdFullPath;
+		this.rootNameFullPath = rootNameFullPath;
 		this.projectedMaxNamePathLength = projectedMaxNamePathLength;
 		this.jobId = jobId;
 		this.createdAt = createdAt == null ? LocalDateTime.now() : createdAt;
 		this.updatedAt = updatedAt == null ? LocalDateTime.now() : updatedAt;
 	}
 
-	public void updateProjectedInfo(String rootIdFullPath, int projectedMaxNamePathLength, Long jobId) {
-		this.rootIdFullPath = rootIdFullPath;
+	public void updateProjectedInfo(String rootNameFullPath, int projectedMaxNamePathLength, Long jobId) {
+		this.rootNameFullPath = rootNameFullPath;
 		this.projectedMaxNamePathLength = projectedMaxNamePathLength;
 		this.jobId = jobId;
 	}

@@ -114,7 +114,63 @@
   - cycle prevention under concurrent requests
   - deterministic overflow classified as non-retryable
   - recovery flow for partial async failures
+## Progress Update (2026-02-16)
 
+### Completed
+- Applied `folder_operation_state`-based collision control to both `moveFolder` and `createFolder`.
+- Included `root_id` in `folder_job` handling and aligned completion cleanup with `(root_id, folder_id)`.
+- Removed `is_moving`-based collision decisions and unified conflict checks on `folder_operation_state`.
+- Switched parent-size propagation (folder/file move and file create paths) from async event fan-out to in-transaction batch updates.
+- Added `FolderSizeAdjustmentService` and `FolderMetadataRepository.batchUpdateSizeDeltas` to unify size-delta calculation and persistence.
+- Strengthened move concurrency integration tests with randomized moves plus integrity checks (prefix/orphan detection) and root-size invariants.
+
+### Validation Alignment
+- Updated unit-test expectations for the new move collision policy (block both ancestor and descendant move conflicts).
+- Re-aligned failure tests for path-length boundary behavior (`250` allowed) and the updated validation order.
+
+### Remaining Work
+- Tune randomized concurrent move integration tests (retry count/task count) to balance stability and CI runtime.
+- Finalize regression coverage for size-propagation consistency across move/upload/file-move paths.
+- Clean up docs/comments that still reference old `is_moving` assumptions.
+
+### Additional Changes (2026-02-16, Path-Based Policy Hardening)
+- Simplified `move vs move` from conditional descendant allowance to strict ancestor/descendant blocking:
+  - Ancestor conflict: block when any operation state exists on `source/target` ancestor paths.
+  - Descendant conflict: block when any ACTIVE move exists in the `source` subtree.
+- Reordered `moveFolder` flow so ancestor conflict validation runs before `getFolderJobLock`.
+- Unified create path validation/calculation into `validateAndResolveForCreate`:
+  - Enforced single moving-ancestor lookup (`single row or error`).
+  - Calculated projected parent path by trimming/rebuilding suffix from `id_full_path` token index of moving root.
+  - Standardized path-length boundary check to `> maxPathLength` (`250` is valid).
+- On successful create under a moving ancestor, updated projected max length to prevent downstream DFS path overflow.
+- Updated related failing tests to match the new validation order and conflict policy.
+
+## Latest Sync Update (2026-02-17)
+
+### What is completed
+- Finalized the path-based concurrency policy:
+  - `move`: block both ancestor and descendant conflicts (one in-flight move per subtree).
+  - `create`: validate against reconstructed projected parent path under moving ancestor.
+- Flattened `CreatePathValidationResult` and applied single-row projected-max update on successful create.
+- Reordered `moveFolder` so ancestor conflict validation runs before `getFolderJobLock`.
+- Updated unit/integration tests to match the new policy and execution order.
+- Updated documentation while preserving prior decision history:
+  - Added latest root-cause and decision notes to `docs/POST_PATH_BASED_ADDITIONAL_CHANGES_2026-02-16.md`.
+
+### Current status
+- Code and docs are aligned with the finalized policy.
+- Test rerun/confirmation is still required in an environment that can download Gradle distribution.
+
+### Resume from here
+- Core files:
+  - `src/main/java/com/woowacamp/storage/domain/folder/service/FolderService.java`
+  - `src/main/java/com/woowacamp/storage/global/util/ValidateParentsUtil.java`
+  - `src/main/java/com/woowacamp/storage/domain/folderoperation/service/FolderOperationStateService.java`
+- Verification files:
+  - `src/test/java/com/woowacamp/storage/domain/folder/service/FolderServiceTest.java`
+  - `src/test/java/com/woowacamp/storage/global/util/ValidateParentsUtilTest.java`
+- Documentation file:
+  - `docs/POST_PATH_BASED_ADDITIONAL_CHANGES_2026-02-16.md`
 ---
 
 # 폴더 이동 동시성 의사결정 문서 (한글)
@@ -333,33 +389,29 @@
 - create 성공 시 moving 조상의 projected max 값을 갱신해, 이동 중 생성이 이후 DFS 업데이트에서 길이 초과를 유발하지 않도록 보강했다.
 - `moveFolder` 검증 순서 변경에 따라 관련 실패 테스트 케이스를 정책 기준으로 갱신했다.
 
-## Progress Update (2026-02-16)
+## 최신 동기화 (2026-02-17)
 
-### Completed
-- Applied `folder_operation_state`-based collision control to both `moveFolder` and `createFolder`.
-- Included `root_id` in `folder_job` handling and aligned completion cleanup with `(root_id, folder_id)`.
-- Removed `is_moving`-based collision decisions and unified conflict checks on `folder_operation_state`.
-- Switched parent-size propagation (folder/file move and file create paths) from async event fan-out to in-transaction batch updates.
-- Added `FolderSizeAdjustmentService` and `FolderMetadataRepository.batchUpdateSizeDeltas` to unify size-delta calculation and persistence.
-- Strengthened move concurrency integration tests with randomized moves plus integrity checks (prefix/orphan detection) and root-size invariants.
+### 어디까지 완료했는지
+- 경로 기반 동시성 정책을 최종 정리했다:
+  - `move`: 상/하위 충돌 모두 차단(서브트리 내 동시 move 1건).
+  - `create`: moving 조상 기준 예상 parent 경로를 재구성해 길이 검증.
+- `CreatePathValidationResult`를 평탄화하고, create 성공 시 projected max 단건 갱신 흐름으로 반영했다.
+- `moveFolder`에서 상위 충돌 검증이 `getFolderJobLock`보다 먼저 실행되도록 순서를 조정했다.
+- 관련 단위/통합 테스트를 현재 정책 순서에 맞게 보정했다.
+- 진행 내용 문서화:
+  - `docs/POST_PATH_BASED_ADDITIONAL_CHANGES_2026-02-16.md`에 기존 기록을 유지한 채, 최신 원인 분석/의사결정 섹션 추가.
 
-### Validation Alignment
-- Updated unit-test expectations for the new move collision policy (block both ancestor and descendant move conflicts).
-- Re-aligned failure tests for path-length boundary behavior (`250` allowed) and the updated validation order.
+### 현재 상태
+- 코드/문서는 정책 기준으로 동기화되어 있다.
+- 테스트 실행은 환경 제약(Gradle 배포 다운로드 네트워크 제한)으로 이 문맥에서 최종 재실행 확인이 필요하다.
 
-### Remaining Work
-- Tune randomized concurrent move integration tests (retry count/task count) to balance stability and CI runtime.
-- Finalize regression coverage for size-propagation consistency across move/upload/file-move paths.
-- Clean up docs/comments that still reference old `is_moving` assumptions.
-
-### Additional Changes (2026-02-16, Path-Based Policy Hardening)
-- Simplified `move vs move` from conditional descendant allowance to strict ancestor/descendant blocking:
-  - Ancestor conflict: block when any operation state exists on `source/target` ancestor paths.
-  - Descendant conflict: block when any ACTIVE move exists in the `source` subtree.
-- Reordered `moveFolder` flow so ancestor conflict validation runs before `getFolderJobLock`.
-- Unified create path validation/calculation into `validateAndResolveForCreate`:
-  - Enforced single moving-ancestor lookup (`single row or error`).
-  - Calculated projected parent path by trimming/rebuilding suffix from `id_full_path` token index of moving root.
-  - Standardized path-length boundary check to `> maxPathLength` (`250` is valid).
-- On successful create under a moving ancestor, updated projected max length to prevent downstream DFS path overflow.
-- Updated related failing tests to match the new validation order and conflict policy.
+### 다음 재개 지점
+- 핵심 파일:
+  - `src/main/java/com/woowacamp/storage/domain/folder/service/FolderService.java`
+  - `src/main/java/com/woowacamp/storage/global/util/ValidateParentsUtil.java`
+  - `src/main/java/com/woowacamp/storage/domain/folderoperation/service/FolderOperationStateService.java`
+- 검증 파일:
+  - `src/test/java/com/woowacamp/storage/domain/folder/service/FolderServiceTest.java`
+  - `src/test/java/com/woowacamp/storage/global/util/ValidateParentsUtilTest.java`
+- 문서 파일:
+  - `docs/POST_PATH_BASED_ADDITIONAL_CHANGES_2026-02-16.md`

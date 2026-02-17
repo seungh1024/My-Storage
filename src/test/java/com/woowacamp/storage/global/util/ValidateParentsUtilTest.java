@@ -150,7 +150,7 @@ class ValidateParentsUtilTest {
 	}
 
 	private ActiveMoveReservationProjection activeMoveState(Long folderId, int projectedMaxNamePathLength,
-		String rootIdFullPath) {
+		String rootNameFullPath) {
 		return new ActiveMoveReservationProjection() {
 			@Override
 			public Long getFolderId() {
@@ -163,8 +163,8 @@ class ValidateParentsUtilTest {
 			}
 
 			@Override
-			public String getRootIdFullPath() {
-				return rootIdFullPath;
+			public String getRootNameFullPath() {
+				return rootNameFullPath;
 			}
 		};
 	}

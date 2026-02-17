@@ -16,7 +16,7 @@ import lombok.RequiredArgsConstructor;
 public class FolderOperationStateRepository {
 	private static final String INSERT_ACTIVE_MOVE_SQL = """
         INSERT INTO folder_operation_state (
-            root_id, folder_id, operation_type, operation_state, root_id_full_path,
+            root_id, folder_id, operation_type, operation_state, root_name_full_path,
             projected_max_name_path_length, job_id, created_at, updated_at
         )
         VALUES (
@@ -37,7 +37,7 @@ public class FolderOperationStateRepository {
 
 	private final JdbcTemplate jdbcTemplate;
 
-	public int insertActiveMove(Long rootId, Long folderId, String rootIdFullPath, int projectedMaxNamePathLength,
+	public int insertActiveMove(Long rootId, Long folderId, String rootNameFullPath, int projectedMaxNamePathLength,
 		Long jobId) {
 		return jdbcTemplate.update(
 			INSERT_ACTIVE_MOVE_SQL,
@@ -45,7 +45,7 @@ public class FolderOperationStateRepository {
 			folderId,
 			FolderOperationType.MOVE.name(),
 			FolderOperationStatus.ACTIVE.name(),
-			rootIdFullPath,
+			rootNameFullPath,
 			projectedMaxNamePathLength,
 			jobId
 		);

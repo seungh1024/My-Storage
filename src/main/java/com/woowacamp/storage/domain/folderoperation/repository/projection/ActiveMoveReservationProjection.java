@@ -5,5 +5,5 @@ public interface ActiveMoveReservationProjection {
 
     Integer getProjectedMaxNamePathLength();
 
-    String getRootIdFullPath();
+    String getRootNameFullPath();
 }

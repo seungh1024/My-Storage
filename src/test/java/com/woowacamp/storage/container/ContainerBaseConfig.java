@@ -80,13 +80,6 @@ public abstract class ContainerBaseConfig {
 	protected void purgeAllQueues(RabbitTemplate rabbitTemplate) {
 		try {
 			rabbitTemplate.execute(channel -> {
-				// folder.size.queue 비우기
-				try {
-					channel.queuePurge("folder.size.queue");
-				} catch (Exception e) {
-					// 큐가 없으면 무시
-				}
-
 				// folder.move.queue 비우기
 				try {
 					channel.queuePurge("folder.move.queue");
@@ -95,12 +88,6 @@ public abstract class ContainerBaseConfig {
 				}
 
 				// DLQ도 비우기
-				try {
-					channel.queuePurge("folder.dlx.size.queue");
-				} catch (Exception e) {
-					// 큐가 없으면 무시
-				}
-
 				try {
 					channel.queuePurge("folder.dlx.move.queue");
 				} catch (Exception e) {

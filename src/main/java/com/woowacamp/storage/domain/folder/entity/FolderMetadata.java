@@ -32,6 +32,8 @@ import lombok.NoArgsConstructor;
 	@Index(name = "folder_idx_parent_folder_id_size", columnList = "parent_folder_id, folder_size"),
 	@Index(name = "folder_idx_parent_folder_id_is_deleted", columnList = "parent_folder_id, is_deleted"),
 	@Index(name = "folder_idx_find_folder_with_cursor", columnList = "parent_folder_id, is_deleted, folder_metadata_id"),
+	@Index(name = "folder_idx_parent_folder_id_upload_folder_name",
+		columnList = "parent_folder_id, upload_folder_name"),
 	@Index(name = "folder_idx_is_deleted_folder_metadata_id", columnList = "is_deleted, folder_metadata_id"),
 	@Index(name = "folder_idx_root_deleted_namepath_length",
 		columnList = "root_id, is_deleted, name_full_path, name_path_length")
@@ -97,7 +99,7 @@ public class FolderMetadata {
 	private String nameFullPath;
 
 	// pk로 만들어진 전체 경로
-	@Column(name = "id_full_path", columnDefinition = "VARCHAR(250)")
+	@Column(name = "id_full_path", columnDefinition = "VARCHAR(3000)")
 	@NotNull
 	private String idFullPath;
 

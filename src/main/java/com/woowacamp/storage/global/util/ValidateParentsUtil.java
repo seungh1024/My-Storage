@@ -117,7 +117,7 @@ public class ValidateParentsUtil {
 		String suffixNamePath = buildSuffixPathByTokens(parentPathNamesInOrder, movingRootIndex);
 
 		// 이동 후 경로 생성
-		String projectedParentIdFullPath = activeMoveState.getRootIdFullPath() + suffixIdPath;
+		String projectedParentIdFullPath = movingRootFolder.getIdFullPath() + suffixIdPath;
 		String projectedParentNameFullPath = movingRootFolder.getNameFullPath() + suffixNamePath;
 		int createdPathLengthAfterMove = projectedParentNameFullPath.length() + folderNameLength + 1;
 		int nextProjectedMaxNamePathLength = Math.max(

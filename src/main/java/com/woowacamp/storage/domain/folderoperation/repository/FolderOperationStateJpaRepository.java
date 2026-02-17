@@ -29,7 +29,7 @@ public interface FolderOperationStateJpaRepository extends JpaRepository<FolderO
     @Query("""
             SELECT fos.folderId AS folderId,
                    fos.projectedMaxNamePathLength AS projectedMaxNamePathLength,
-                   fos.rootIdFullPath AS rootIdFullPath
+                   fos.rootNameFullPath AS rootNameFullPath
             FROM FolderOperationState fos
             WHERE fos.rootId = :rootId
               AND fos.folderId IN :folderIds
@@ -48,10 +48,10 @@ public interface FolderOperationStateJpaRepository extends JpaRepository<FolderO
             WHERE fos.rootId = :rootId
               AND fos.operationType = :operationType
               AND fos.operationState = :operationState
-              AND fos.rootIdFullPath LIKE CONCAT(:rootIdFullPathPrefix, '%')
+              AND fos.rootNameFullPath LIKE CONCAT(:rootNameFullPathPrefix, '%')
         """)
     Optional<Integer> findMaxProjectedNamePathLengthInActiveMoveSubtreeByPrefix(@Param("rootId") Long rootId,
-        @Param("rootIdFullPathPrefix") String rootIdFullPathPrefix,
+        @Param("rootNameFullPathPrefix") String rootNameFullPathPrefix,
         @Param("operationType") FolderOperationType operationType,
         @Param("operationState") FolderOperationStatus operationState);
 
@@ -61,10 +61,10 @@ public interface FolderOperationStateJpaRepository extends JpaRepository<FolderO
             WHERE fos.rootId = :rootId
               AND fos.operationType = :operationType
               AND fos.operationState = :operationState
-              AND fos.rootIdFullPath LIKE CONCAT(:rootIdFullPathPrefix, '%')
+              AND fos.rootNameFullPath LIKE CONCAT(:rootNameFullPathPrefix, '%')
         """)
     List<Long> findFolderIdsInActiveMoveSubtreeByPrefix(@Param("rootId") Long rootId,
-        @Param("rootIdFullPathPrefix") String rootIdFullPathPrefix,
+        @Param("rootNameFullPathPrefix") String rootNameFullPathPrefix,
         @Param("operationType") FolderOperationType operationType,
         @Param("operationState") FolderOperationStatus operationState);
 

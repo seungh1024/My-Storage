@@ -14,7 +14,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 
 import com.woowacamp.storage.config.IntegrationTestBase;
-import com.woowacamp.storage.domain.message.dto.FolderSizeMessageDto;
+import com.woowacamp.storage.domain.message.dto.FolderMoveMessageDto;
 import com.woowacamp.storage.domain.message.entity.MessageInfo;
 import com.woowacamp.storage.domain.message.repository.MessageInfoJpaRepository;
 import com.woowacamp.storage.domain.message.util.EventType;
@@ -53,9 +53,9 @@ class MessageInfoSchedulerTest extends IntegrationTestBase {
 		void retry_pending_message_will_be_success() {
 			long temp = 1;
 			for (int i = 0; i < batchSize; i++) {
-				FolderSizeMessageDto dto = new FolderSizeMessageDto(temp, temp, temp, EventType.FOLDER_SIZE);
+				FolderMoveMessageDto dto = new FolderMoveMessageDto(temp, temp, EventType.FOLDER_MOVE);
 				temp++;
-				MessageInfo messageInfo = new MessageInfo("FolderMove", EventType.FOLDER_SIZE,
+				MessageInfo messageInfo = new MessageInfo("FolderMove", EventType.FOLDER_MOVE,
 					jsonSerializer.serialize(dto));
 				messageInfoJpaRepository.save(messageInfo);
 			}
@@ -78,9 +78,9 @@ class MessageInfoSchedulerTest extends IntegrationTestBase {
 		void success_message_will_be_deleted() {
 			long temp = 1;
 			for (int i = 0; i < batchSize; i++) {
-				FolderSizeMessageDto dto = new FolderSizeMessageDto(temp, temp, temp, EventType.FOLDER_SIZE);
+				FolderMoveMessageDto dto = new FolderMoveMessageDto(temp, temp, EventType.FOLDER_MOVE);
 				temp++;
-				MessageInfo messageInfo = new MessageInfo("FolderMove", EventType.FOLDER_SIZE,
+				MessageInfo messageInfo = new MessageInfo("FolderMove", EventType.FOLDER_MOVE,
 					jsonSerializer.serialize(dto));
 				messageInfo.markSent();
 				messageInfoJpaRepository.save(messageInfo);
@@ -98,9 +98,9 @@ class MessageInfoSchedulerTest extends IntegrationTestBase {
 		void message_will_be_failed_when_retryCnt_over_maxRetry() {
 			long temp = 1;
 			for (int i = 0; i < batchSize; i++) {
-				FolderSizeMessageDto dto = new FolderSizeMessageDto(temp, temp, temp, EventType.FOLDER_SIZE);
+				FolderMoveMessageDto dto = new FolderMoveMessageDto(temp, temp, EventType.FOLDER_MOVE);
 				temp++;
-				MessageInfo messageInfo = new MessageInfo("FolderMove", EventType.FOLDER_SIZE,
+				MessageInfo messageInfo = new MessageInfo("FolderMove", EventType.FOLDER_MOVE,
 					jsonSerializer.serialize(dto));
 				for (int j = 0; j <= maxRetry; j++) {
 					messageInfo.incrementRetryCount();

@@ -256,14 +256,14 @@ class FolderOperationStateServiceIntegrationTest extends IntegrationTestBase {
 	}
 
 	private void saveState(Long rootId, Long folderId, FolderOperationType operationType, FolderOperationStatus operationStatus,
-		String rootIdFullPath, int projectedMaxNamePathLength, Long jobId) {
+		String rootNameFullPath, int projectedMaxNamePathLength, Long jobId) {
 		folderOperationStateJpaRepository.save(
 			FolderOperationState.builder()
 				.rootId(rootId)
 				.folderId(folderId)
 				.operationType(operationType)
 				.operationState(operationStatus)
-				.rootIdFullPath(rootIdFullPath)
+				.rootNameFullPath(rootNameFullPath)
 				.projectedMaxNamePathLength(projectedMaxNamePathLength)
 				.jobId(jobId)
 				.build()

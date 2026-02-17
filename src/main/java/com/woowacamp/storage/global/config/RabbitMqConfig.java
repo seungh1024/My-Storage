@@ -34,18 +34,6 @@ public class RabbitMqConfig {
 	@Value("${spring.rabbitmq.folder.ttl}")
 	private int messageTtl;  // TTL 추가
 
-	// ===== size =====
-	@Value("${spring.rabbitmq.folder.size.queue}")
-	private String folderSizeQueueName;
-	@Value("${spring.rabbitmq.folder.size.key}")
-	private String folderSizeBindingKey;
-
-	@Value("${spring.rabbitmq.folder.size.dlx.exchange}")
-	private String folderSizeDlxExchangeName;
-	@Value("${spring.rabbitmq.folder.size.dlx.queue}")
-	private String folderSizeDlqName;
-	@Value("${spring.rabbitmq.folder.size.dlx.key}")
-	private String folderSizeDlxRoutingKey;
 
 	// ===== move =====
 	@Value("${spring.rabbitmq.folder.move.queue}")
@@ -61,44 +49,13 @@ public class RabbitMqConfig {
 	private String folderMoveDlxRoutingKey;
 
 	/**
-	 * 메인 Exchange: Topic (folder.size.* / folder.move.* 같은 패턴 바인딩용)
+	 * 메인 Exchange: Topic
 	 */
 	@Bean
 	public TopicExchange folderExchange() {
 		return new TopicExchange(folderExchangeName);
 	}
 
-	// =========================
-	// Size Queue / Binding / DLX
-	// =========================
-	@Bean
-	public Queue folderSizeQueue() {
-		return QueueBuilder.durable(folderSizeQueueName)
-			.withArgument("x-dead-letter-exchange", folderSizeDlxExchangeName)
-			.withArgument("x-dead-letter-routing-key", folderSizeDlxRoutingKey)
-			.withArgument("x-message-ttl", messageTtl)  // ✅ TTL 추가
-			.build();
-	}
-
-	@Bean
-	public Binding folderSizeBinding(TopicExchange folderExchange, Queue folderSizeQueue) {
-		return BindingBuilder.bind(folderSizeQueue).to(folderExchange).with(folderSizeBindingKey);
-	}
-
-	@Bean
-	public DirectExchange folderSizeDlxExchange() {
-		return new DirectExchange(folderSizeDlxExchangeName);
-	}
-
-	@Bean
-	public Queue folderSizeDlq() {
-		return QueueBuilder.durable(folderSizeDlqName).build();
-	}
-
-	@Bean
-	public Binding folderSizeDlqBinding(Queue folderSizeDlq, DirectExchange folderSizeDlxExchange) {
-		return BindingBuilder.bind(folderSizeDlq).to(folderSizeDlxExchange).with(folderSizeDlxRoutingKey);
-	}
 
 	// =========================
 	// Move Queue / Binding / DLX

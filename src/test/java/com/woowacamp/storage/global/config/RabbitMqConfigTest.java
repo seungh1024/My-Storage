@@ -44,24 +44,6 @@ class RabbitMqConfigTest {
 		TopicExchange exchange = config.folderExchange();
 		assertEquals("folder.exchange", exchange.getName());
 
-		Queue sizeQueue = config.folderSizeQueue();
-		assertEquals("folder.size.queue", sizeQueue.getName());
-		assertEquals(1234, sizeQueue.getArguments().get("x-message-ttl"));
-		assertEquals("folder.size.dlx.exchange", sizeQueue.getArguments().get("x-dead-letter-exchange"));
-		assertEquals("folder.size.dlx.key", sizeQueue.getArguments().get("x-dead-letter-routing-key"));
-
-		Binding sizeBinding = config.folderSizeBinding(exchange, sizeQueue);
-		assertEquals("folder.size.queue", sizeBinding.getDestination());
-		assertEquals("folder.exchange", sizeBinding.getExchange());
-		assertEquals("folder.size.key", sizeBinding.getRoutingKey());
-
-		DirectExchange sizeDlx = config.folderSizeDlxExchange();
-		assertEquals("folder.size.dlx.exchange", sizeDlx.getName());
-		Queue sizeDlq = config.folderSizeDlq();
-		assertEquals("folder.size.dlx.queue", sizeDlq.getName());
-		Binding sizeDlqBinding = config.folderSizeDlqBinding(sizeDlq, sizeDlx);
-		assertEquals("folder.size.dlx.key", sizeDlqBinding.getRoutingKey());
-
 		Queue moveQueue = config.folderMoveQueue();
 		assertEquals("folder.move.queue", moveQueue.getName());
 		assertEquals(1234, moveQueue.getArguments().get("x-message-ttl"));
@@ -143,11 +125,6 @@ class RabbitMqConfigTest {
 		RabbitMqConfig config = new RabbitMqConfig(messageInfoJpaRepository);
 		ReflectionTestUtils.setField(config, "folderExchangeName", "folder.exchange");
 		ReflectionTestUtils.setField(config, "messageTtl", 1234);
-		ReflectionTestUtils.setField(config, "folderSizeQueueName", "folder.size.queue");
-		ReflectionTestUtils.setField(config, "folderSizeBindingKey", "folder.size.key");
-		ReflectionTestUtils.setField(config, "folderSizeDlxExchangeName", "folder.size.dlx.exchange");
-		ReflectionTestUtils.setField(config, "folderSizeDlqName", "folder.size.dlx.queue");
-		ReflectionTestUtils.setField(config, "folderSizeDlxRoutingKey", "folder.size.dlx.key");
 		ReflectionTestUtils.setField(config, "folderMoveQueueName", "folder.move.queue");
 		ReflectionTestUtils.setField(config, "folderMoveBindingKey", "folder.move.key");
 		ReflectionTestUtils.setField(config, "folderMoveDlxExchangeName", "folder.move.dlx.exchange");

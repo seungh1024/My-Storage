@@ -12,16 +12,6 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class RabbitListenerContainerFactory {
 
-	// ===== size =====
-	@Value("${spring.rabbitmq.folder.size.consumerSize}")
-	private int sizeConsumerSize;
-
-	@Value("${spring.rabbitmq.folder.size.maxConsumerSize}")
-	private int sizeMaxConsumerSize;
-
-	@Value("${spring.rabbitmq.folder.size.prefetch}")
-	private int sizePrefetch;
-
 	// ===== move =====
 	@Value("${spring.rabbitmq.folder.move.consumerSize}")
 	private int moveConsumerSize;
@@ -35,15 +25,6 @@ public class RabbitListenerContainerFactory {
 	// 재시도 설정은 공통으로 통일
 	@Value("${spring.rabbitmq.folder.retryCnt}")
 	private int maxAttempts;
-
-	@Bean(name = "folderSizeFactory")
-	public SimpleRabbitListenerContainerFactory folderSizeFactory(
-		ConnectionFactory connectionFactory,
-		MessageConverter messageConverter
-	) {
-		return buildFactory(connectionFactory, messageConverter,
-			sizeConsumerSize, sizeMaxConsumerSize, sizePrefetch);
-	}
 
 	@Bean(name = "folderMoveFactory")
 	public SimpleRabbitListenerContainerFactory folderMoveFactory(

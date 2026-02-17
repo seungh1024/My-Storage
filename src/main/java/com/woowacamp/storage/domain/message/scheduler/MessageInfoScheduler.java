@@ -9,7 +9,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.woowacamp.storage.domain.file.util.StringFormat;
 import com.woowacamp.storage.domain.folder.utils.QueryExecuteTemplate;
-import com.woowacamp.storage.domain.message.dto.FolderSizeMessageDto;
 import com.woowacamp.storage.domain.message.dto.FolderMoveMessageDto;
 import com.woowacamp.storage.domain.message.dto.OutboxMessage;
 import com.woowacamp.storage.domain.message.entity.MessageInfo;
@@ -59,6 +58,7 @@ public class MessageInfoScheduler {
 		if (outboxMessage == null) {
 			log.warn("[SEND MESSAGE SCHEDULER] skip message. id={}, eventType={}", message.getId(),
 				message.getEventType());
+			messageInfoJpaRepository.updateMessageInfoStatus(message.getId(), MessageStatus.FAILED);
 			return;
 		}
 		try {
@@ -74,18 +74,10 @@ public class MessageInfoScheduler {
 		if (type == null) {
 			return null;
 		}
-		return switch (type) {
-			case FOLDER_SIZE -> buildFolderSizeMessage(message);
-			case FOLDER_MOVE -> buildFolderMoveMessage(message);
-		};
-	}
-
-	private FolderSizeMessageDto buildFolderSizeMessage(MessageInfo message) {
-		FolderSizeMessageDto dto = jsonSerializer.deserialize(message.getPayload(), FolderSizeMessageDto.class);
-		if (dto.folderMetadataId() == null) {
+		if (type != EventType.FOLDER_MOVE) {
 			return null;
 		}
-		return new FolderSizeMessageDto(message.getId(), dto.folderMetadataId(), dto.size(), EventType.FOLDER_SIZE);
+		return buildFolderMoveMessage(message);
 	}
 
 	private FolderMoveMessageDto buildFolderMoveMessage(MessageInfo message) {

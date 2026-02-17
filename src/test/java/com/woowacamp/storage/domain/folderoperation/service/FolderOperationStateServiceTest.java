@@ -80,7 +80,7 @@ class FolderOperationStateServiceTest {
 		void insertActiveMove_fail_whenNotDuplicateIntegrityViolation() {
 			// given
 			willThrow(new DataIntegrityViolationException("constraint violation",
-				new RuntimeException("Data too long for column 'root_id_full_path'")))
+				new RuntimeException("Data too long for column 'root_name_full_path'")))
 				.given(folderOperationStateRepository)
 				.insertActiveMove(anyLong(), anyLong(), anyString(), anyInt(), anyLong());
 
@@ -285,7 +285,7 @@ class FolderOperationStateServiceTest {
 			}
 
 			@Override
-			public String getRootIdFullPath() {
+			public String getRootNameFullPath() {
 				return "/1/" + folderId + "/";
 			}
 		};

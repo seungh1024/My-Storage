@@ -27,10 +27,10 @@ public class FolderOperationStateService {
 	private final FolderOperationStateRepository folderOperationStateRepository;
 
 	@Transactional
-	public void insertActiveMove(Long rootId, Long folderId, String rootIdFullPath, int projectedMaxNamePathLength,
+	public void insertActiveMove(Long rootId, Long folderId, String rootNameFullPath, int projectedMaxNamePathLength,
 		Long jobId) {
 		try {
-			folderOperationStateRepository.insertActiveMove(rootId, folderId, rootIdFullPath,
+			folderOperationStateRepository.insertActiveMove(rootId, folderId, rootNameFullPath,
 				projectedMaxNamePathLength, jobId);
 		} catch (DuplicateKeyException e) {
 			throw ErrorCode.FOLDER_JOB_CONFLICT.baseException(
@@ -40,17 +40,18 @@ public class FolderOperationStateService {
 	}
 
 	@Transactional(readOnly = true)
-	public Optional<Integer> findMaxActiveMoveProjectedNamePathLengthByPrefix(Long rootId, String rootIdFullPathPrefix) {
+	public Optional<Integer> findMaxActiveMoveProjectedNamePathLengthByPrefix(Long rootId,
+		String rootNameFullPathPrefix) {
 		return folderOperationStateJpaRepository.findMaxProjectedNamePathLengthInActiveMoveSubtreeByPrefix(rootId,
-			rootIdFullPathPrefix,
+			rootNameFullPathPrefix,
 			FolderOperationType.MOVE, FolderOperationStatus.ACTIVE);
 	}
 
 	@Transactional(readOnly = true)
-	public List<Long> findActiveMoveFolderIdsByRootIdAndPrefix(Long rootId, String rootIdFullPathPrefix) {
+	public List<Long> findActiveMoveFolderIdsByRootIdAndPrefix(Long rootId, String rootNameFullPathPrefix) {
 		return folderOperationStateJpaRepository.findFolderIdsInActiveMoveSubtreeByPrefix(
 			rootId,
-			rootIdFullPathPrefix,
+			rootNameFullPathPrefix,
 			FolderOperationType.MOVE,
 			FolderOperationStatus.ACTIVE
 		);

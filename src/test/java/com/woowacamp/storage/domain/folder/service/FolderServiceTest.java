@@ -785,7 +785,7 @@ class FolderServiceTest {
 			given(folderMetadataJpaRepository.findByIdNotDeleted(parentId)).willReturn(Optional.of(parent));
 			given(folderMetadataJpaRepository.existsByParentFolderIdAndUploadFolderName(targetId, "src"))
 				.willReturn(false);
-			given(folderOperationStateService.findActiveMoveFolderIdsByRootIdAndPrefix(rootId, source.getIdFullPath()))
+			given(folderOperationStateService.findActiveMoveFolderIdsByRootIdAndPrefix(rootId, source.getNameFullPath()))
 				.willReturn(List.of(999L));
 
 			assertThrows(CustomException.class, () -> folderService.moveFolder(sourceId, moveDto(userId, targetId, rootId, "x")));
