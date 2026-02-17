@@ -214,3 +214,32 @@
 - 문제의 본질은 "조회 누락" 단일 원인이 아니라,
   "검증 모델의 과소평가 가능성 + DFS/create 타이밍 불일치"의 결합이었다.
 - 따라서 해결도 단일 max 비교가 아니라, 정책 단순화(move 1건) + 경로 재구성 검증(create)의 조합이 필요했다.
+
+---
+
+## 11) 추가 원인 분석: `SENT` 오표기로 인한 미전달/락 잔류 가능성
+
+### 문제
+- `moveFolder`에서 찍히는
+  - `[moveFolder] Published FolderMoveEvent...`
+  - `[moveFolder] All events published successfully.`
+  로그는 도메인 이벤트 publish 호출 성공을 의미할 뿐, Rabbit broker confirm ACK를 의미하지 않았다.
+- 그런데 `AFTER_COMMIT` 비동기 리스너에서 `send` 직후 `MessageInfo`를 바로 `SENT`로 갱신하고 있었다.
+- 이 구조에서는 네트워크/브로커 순간 장애 시 실제 미전달이어도 `SENT`로 기록될 수 있고, 결과적으로 move 소비가 일어나지 않아 `folder_operation_state` 락이 오래 남을 수 있다.
+
+### 고민
+- `SENT`를 애플리케이션 코드에서 선반영할지
+- confirm callback 기반으로만 상태를 전이할지
+- 스케줄러 재발행 경로에서도 동일 규칙을 강제할지
+
+### 선택
+- `FolderMoveEventListener(AFTER_COMMIT)`의 즉시 `SENT` 갱신 로직을 제거했다.
+- `SENT`는 Rabbit publisher confirm callback(`ack=true`)에서만 갱신하도록 단일화했다.
+- 스케줄러는 기존처럼 `send`만 수행하고, `SENT` 갱신은 callback 경로에만 의존하도록 유지했다.
+
+### 결과
+- 전송 확인 전 `SENT` 오표기 가능성이 제거됐다.
+- "SENT인데 실제 미전달"로 인해 발생하던 move 미소비/락 잔류 가능성이 감소했다.
+- 상태 전이 해석이 명확해졌다:
+  - `PENDING -> SENT`: confirm ACK
+  - `SENT -> SUCCESS`: 컨슈머 처리 완료

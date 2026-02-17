@@ -171,6 +171,30 @@
   - `src/test/java/com/woowacamp/storage/global/util/ValidateParentsUtilTest.java`
 - Documentation file:
   - `docs/POST_PATH_BASED_ADDITIONAL_CHANGES_2026-02-16.md`
+
+## Latest Sync Update (2026-02-17, Outbox Confirm Alignment)
+
+### What happened
+- Move API logs showed:
+  - `[moveFolder] Published FolderMoveEvent...`
+  - `[moveFolder] All events published successfully.`
+- But lock rows remained in `folder_operation_state` because these logs only confirm Spring-domain event publication, not Rabbit publish confirm ACK.
+- Root cause: `MessageInfo` status was set to `SENT` immediately in `AFTER_COMMIT` async listener, before broker confirm callback.
+
+### Decision
+- Remove immediate `SENT` transition from `FolderMoveEventListener` (`AFTER_COMMIT`).
+- Keep `SENT` transition only in Rabbit publisher confirm callback (`ack=true`).
+- Keep scheduler retry path as-is (it does not directly set `SENT`), so retries depend on confirm/callback-driven status transitions.
+
+### Result
+- Eliminated false-positive `SENT` on transient network/publish issues.
+- Reduced chance of "message marked SENT but not actually delivered" states that can leave move jobs unconsumed and locks stale.
+
+### Resume from here
+- Verify production state progression for move outbox:
+  - `PENDING -> SENT` only by publisher confirm ACK
+  - `SENT -> SUCCESS` only after consumer completion
+- If stale ACTIVE locks still exist, inspect `folder_job`/`message_info`/DLQ together for the same folder id and recovery path.
 ---
 
 # 폴더 이동 동시성 의사결정 문서 (한글)
@@ -415,3 +439,28 @@
   - `src/test/java/com/woowacamp/storage/global/util/ValidateParentsUtilTest.java`
 - 문서 파일:
   - `docs/POST_PATH_BASED_ADDITIONAL_CHANGES_2026-02-16.md`
+
+## 추가 동기화 (2026-02-17, Outbox Confirm 정렬)
+
+### 무엇이 문제였는가
+- `moveFolder` 로그의
+  - `[moveFolder] Published FolderMoveEvent...`
+  - `[moveFolder] All events published successfully.`
+  는 도메인 이벤트 publish 성공 로그였고, Rabbit publish confirm ACK를 보장하지 않았다.
+- 그런데 `AFTER_COMMIT` 비동기 리스너에서 `send` 직후 `MessageInfo`를 즉시 `SENT`로 바꿔서,
+  네트워크/브로커 이슈 시 "SENT인데 실제 미전달" 상태가 발생할 수 있었다.
+
+### 의사결정
+- `FolderMoveEventListener`에서 즉시 `SENT` 갱신 로직 제거.
+- `SENT`는 Rabbit publisher confirm 콜백(`ack=true`)에서만 전이하도록 고정.
+- 스케줄러 재발행 경로는 기존대로 유지(직접 `SENT` 갱신 없음).
+
+### 반영 결과
+- 전송 확인 전 `SENT` 오표기 가능성을 제거했다.
+- 이동 메시지 미전달로 인한 장기 `ACTIVE` 락 잔류 가능성을 낮췄다.
+
+### 다음 재개 지점
+- 운영 점검 기준:
+  - `PENDING -> SENT`는 confirm ACK에서만 발생하는지
+  - `SENT -> SUCCESS`는 소비 완료 후에만 발생하는지
+- 잔류 `ACTIVE`가 보이면 동일 `folder_id` 기준으로 `folder_job`, `message_info`, DLQ(`x-death`)를 함께 확인.
