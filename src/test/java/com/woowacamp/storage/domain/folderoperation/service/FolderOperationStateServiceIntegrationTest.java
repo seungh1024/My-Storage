@@ -180,9 +180,10 @@ class FolderOperationStateServiceIntegrationTest extends IntegrationTestBase {
 		void findSingleActiveMoveOperationByRootIdAndFolderIds_fail_whenMultipleRows() {
 			saveState(1L, 91L, FolderOperationType.MOVE, FolderOperationStatus.ACTIVE, "/1/91/", 120, 901L);
 			saveState(1L, 92L, FolderOperationType.MOVE, FolderOperationStatus.ACTIVE, "/1/92/", 121, 902L);
+			List<Long> folderIds = List.of(91L, 92L);
 
 			assertThrows(CustomException.class,
-				() -> folderOperationStateService.findSingleActiveMoveOperationByRootIdAndFolderIds(1L, List.of(91L, 92L)));
+				() -> folderOperationStateService.findSingleActiveMoveOperationByRootIdAndFolderIds(1L, folderIds));
 		}
 	}
 

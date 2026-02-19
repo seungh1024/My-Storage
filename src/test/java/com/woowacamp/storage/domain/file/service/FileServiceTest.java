@@ -64,6 +64,10 @@ class FileServiceTest {
 		return new FileMoveLockContext(fileId, dto.targetFolderId(), dto.rootId(), dto.fileName());
 	}
 
+	private void moveFileWithLock(long fileId, FileMoveDto dto) {
+		fileService.moveFile(moveLockContext(fileId, dto), dto);
+	}
+
 	// ====== FolderMetadata fixture (✅ mock 금지) ======
 	private FolderMetadata folder(
 		long id,
@@ -145,7 +149,7 @@ class FileServiceTest {
 
 			given(fileMetadataJpaRepository.findById(fileId)).willReturn(Optional.empty());
 
-			CustomException ex = assertThrows(CustomException.class, () -> fileService.moveFile(moveLockContext(fileId, dto), dto));
+			CustomException ex = assertThrows(CustomException.class, () -> moveFileWithLock(fileId, dto));
 			assertEquals(ErrorCode.FILE_NOT_FOUND.getMessage(), ex.getMessage());
 
 			then(folderMetadataRepository).shouldHaveNoInteractions();
@@ -164,7 +168,7 @@ class FileServiceTest {
 
 			given(folderMetadataRepository.findByIdNotDeleted(dto.targetFolderId())).willReturn(Optional.empty());
 
-			CustomException ex = assertThrows(CustomException.class, () -> fileService.moveFile(moveLockContext(fileId, dto), dto));
+			CustomException ex = assertThrows(CustomException.class, () -> moveFileWithLock(fileId, dto));
 			assertEquals(ErrorCode.FOLDER_NOT_FOUND.getMessage(), ex.getMessage());
 
 			then(validateParentsUtil).shouldHaveNoInteractions();
@@ -189,7 +193,7 @@ class FileServiceTest {
 			given(fileMetadataJpaRepository.findById(fileId)).willReturn(Optional.of(f));
 			given(folderMetadataRepository.findByIdNotDeleted(dto.targetFolderId())).willReturn(Optional.of(target));
 
-			CustomException ex = assertThrows(CustomException.class, () -> fileService.moveFile(moveLockContext(fileId, dto), dto));
+			CustomException ex = assertThrows(CustomException.class, () -> moveFileWithLock(fileId, dto));
 			assertEquals(ErrorCode.ACCESS_DENIED.getMessage(), ex.getMessage());
 
 			then(fileMetadataJpaRepository).should(never())
@@ -215,7 +219,7 @@ class FileServiceTest {
 			given(fileMetadataJpaRepository.findById(fileId)).willReturn(Optional.of(f));
 			given(folderMetadataRepository.findByIdNotDeleted(dto.targetFolderId())).willReturn(Optional.of(target));
 
-			CustomException ex = assertThrows(CustomException.class, () -> fileService.moveFile(moveLockContext(fileId, dto), dto));
+			CustomException ex = assertThrows(CustomException.class, () -> moveFileWithLock(fileId, dto));
 			assertEquals(ErrorCode.ACCESS_DENIED.getMessage(), ex.getMessage());
 
 			then(validateParentsUtil).shouldHaveNoInteractions();
@@ -237,7 +241,7 @@ class FileServiceTest {
 			given(fileMetadataJpaRepository.findById(fileId)).willReturn(Optional.of(f));
 			given(folderMetadataRepository.findByIdNotDeleted(dto.targetFolderId())).willReturn(Optional.of(target));
 
-			CustomException ex = assertThrows(CustomException.class, () -> fileService.moveFile(moveLockContext(fileId, dto), dto));
+			CustomException ex = assertThrows(CustomException.class, () -> moveFileWithLock(fileId, dto));
 			assertEquals(ErrorCode.FILE_NOT_FOUND.getMessage(), ex.getMessage());
 
 			then(fileMetadataJpaRepository).should(never())
@@ -265,7 +269,7 @@ class FileServiceTest {
 				dto.targetFolderId(), "a.txt", UploadStatus.FAIL
 			)).willReturn(true);
 
-			CustomException ex = assertThrows(CustomException.class, () -> fileService.moveFile(moveLockContext(fileId, dto), dto));
+			CustomException ex = assertThrows(CustomException.class, () -> moveFileWithLock(fileId, dto));
 			assertEquals(ErrorCode.FILE_NAME_DUPLICATE.getMessage(), ex.getMessage());
 
 			then(validateParentsUtil).shouldHaveNoInteractions();
@@ -294,7 +298,7 @@ class FileServiceTest {
 			willThrow(ErrorCode.PARENT_LOCKED.baseException())
 				.given(validateParentsUtil).validateParentsFolderLock(target);
 
-			CustomException ex = assertThrows(CustomException.class, () -> fileService.moveFile(moveLockContext(fileId, dto), dto));
+			CustomException ex = assertThrows(CustomException.class, () -> moveFileWithLock(fileId, dto));
 			assertEquals(ErrorCode.PARENT_LOCKED.getMessage(), ex.getMessage());
 
 			assertEquals(111L, f.getParentFolderId());
@@ -330,7 +334,7 @@ class FileServiceTest {
 			willDoNothing().given(validateParentsUtil).validateParentsFolderLock(target);
 
 			// when
-			fileService.moveFile(moveLockContext(fileId, dto), dto);
+			moveFileWithLock(fileId, dto);
 
 			// then (✅ 실객체 상태)
 			assertEquals(targetFolderId, f.getParentFolderId());
@@ -372,7 +376,7 @@ class FileServiceTest {
 			}).given(validateParentsUtil).validateParentsFolderLock(target);
 
 			// when
-			fileService.moveFile(moveLockContext(fileId, dto), dto);
+			moveFileWithLock(fileId, dto);
 
 			// then (최종 상태는 변경)
 			assertEquals(targetFolderId, f.getParentFolderId());

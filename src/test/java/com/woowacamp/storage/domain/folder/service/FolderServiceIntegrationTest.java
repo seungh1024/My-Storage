@@ -66,6 +66,10 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 		return new MoveLockContext(sourceFolderId, dto.targetFolderId(), dto.rootId(), dto.folderName());
 	}
 
+	private void moveFolderWithLock(long sourceFolderId, FolderMoveDto dto) {
+		folderService.moveFolder(moveLockContext(sourceFolderId, dto), dto);
+	}
+
 	/**
 	 * 상위 폴더를 ACTIVE MOVE 상태로 만든다.
 	 * - folder_operation_state ACTIVE MOVE row 생성
@@ -187,7 +191,7 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 			FolderMoveDto dto = moveDto(userId, targetId, targetFolder.getRootId(), defaultFolderName);
 
 			CustomException ex = assertThrows(CustomException.class,
-				() -> folderService.moveFolder(moveLockContext(sourceId, dto), dto));
+				() -> moveFolderWithLock(sourceId, dto));
 
 			assertEquals(ErrorCode.FOLDER_NOT_FOUND.getMessage(), ex.getMessage());
 		}
@@ -202,7 +206,7 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 			FolderMoveDto dto = moveDto(userId, targetId, sourceFolder.getRootId(), defaultFolderName);
 
 			CustomException ex = assertThrows(CustomException.class,
-				() -> folderService.moveFolder(moveLockContext(sourceId, dto), dto));
+				() -> moveFolderWithLock(sourceId, dto));
 
 			assertEquals(ErrorCode.FOLDER_NOT_FOUND.getMessage(), ex.getMessage());
 		}
@@ -217,7 +221,7 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 			FolderMoveDto dto = moveDto(userId, targetId, sourceFolder.getRootId(), defaultFolderName);
 
 			CustomException ex = assertThrows(CustomException.class,
-				() -> folderService.moveFolder(moveLockContext(sourceId, dto), dto));
+				() -> moveFolderWithLock(sourceId, dto));
 
 			assertEquals(ErrorCode.FOLDER_MOVE_NOT_AVAILABLE.getMessage(), ex.getMessage());
 		}
@@ -236,7 +240,7 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 			FolderMoveDto dto = moveDto(userId, targetId, sourceFolder.getRootId(), defaultFolderName);
 
 			CustomException ex = assertThrows(CustomException.class,
-				() -> folderService.moveFolder(moveLockContext(sourceId, dto), dto));
+				() -> moveFolderWithLock(sourceId, dto));
 
 			assertEquals(ErrorCode.FOLDER_MOVE_NOT_AVAILABLE.getMessage(), ex.getMessage());
 		}
@@ -262,7 +266,7 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 			findSize(sourceInfo, originalParentId);
 			findSize(targetInfo, targetId);
 
-			folderService.moveFolder(moveLockContext(sourceId, dto), dto);
+			moveFolderWithLock(sourceId, dto);
 
 			// ✅ 용량 전파를 위한 대기 시간 증가 (비동기 처리 + MQ 왕복)
 			await(() -> {
@@ -332,7 +336,7 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 			FolderMoveDto dto = moveDto(userId, targetId, targetFolder.getRootId(), defaultFolderName);
 
 			CustomException ex = assertThrows(CustomException.class,
-				() -> folderService.moveFolder(moveLockContext(childId, dto), dto));
+				() -> moveFolderWithLock(childId, dto));
 
 			assertEquals(ErrorCode.PARENT_LOCKED.getMessage(), ex.getMessage());
 		}
@@ -358,7 +362,7 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 			FolderMoveDto dto = moveDto(userId, targetChildId, sourceFolder.getRootId(), defaultFolderName);
 
 			CustomException ex = assertThrows(CustomException.class,
-				() -> folderService.moveFolder(moveLockContext(sourceId, dto), dto));
+				() -> moveFolderWithLock(sourceId, dto));
 
 			assertEquals(ErrorCode.PARENT_LOCKED.getMessage(), ex.getMessage());
 		}
@@ -378,7 +382,7 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 			FolderMoveDto dto = moveDto(userId, targetId, sourceFolder.getRootId(), defaultFolderName);
 
 			CustomException ex = assertThrows(CustomException.class,
-				() -> folderService.moveFolder(moveLockContext(sourceId, dto), dto));
+				() -> moveFolderWithLock(sourceId, dto));
 
 			// source(rootId, folderId)에 ACTIVE MOVE row가 이미 있으므로 상위/하위 작업 충돌로 차단
 			String msg = ex.getMessage();
@@ -397,7 +401,7 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 			FolderMoveDto dto = moveDto(userId, targetId, targetFolder.getRootId(), sourceFolder.getUploadFolderName());
 
 			CustomException ex = assertThrows(CustomException.class,
-				() -> folderService.moveFolder(moveLockContext(sourceId, dto), dto));
+				() -> moveFolderWithLock(sourceId, dto));
 
 			assertEquals(ErrorCode.EXCEED_MAX_PATH_LENGTH.getMessage(), ex.getMessage());
 		}
@@ -419,7 +423,7 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 			long targetId = targetFolder.getId();
 
 			FolderMoveDto dto = moveDto(userId, targetId, childFolder.getRootId(), defaultFolderName);
-			folderService.moveFolder(moveLockContext(childId, dto), dto);
+			moveFolderWithLock(childId, dto);
 
 			FolderMetadata moved = folderMetadataJpaRepository.findById(childId).orElseThrow();
 			assertEquals(targetId, moved.getParentFolderId());
@@ -440,7 +444,7 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 			FolderMoveDto dto = moveDto(userId, invalidTargetId, sourceFolder.getRootId(), defaultFolderName);
 
 			CustomException ex = assertThrows(CustomException.class,
-				() -> folderService.moveFolder(moveLockContext(sourceId, dto), dto));
+				() -> moveFolderWithLock(sourceId, dto));
 
 			assertEquals(ErrorCode.FOLDER_NOT_FOUND.getMessage(), ex.getMessage());
 
@@ -496,7 +500,7 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 
 								try {
 									FolderMoveDto request = moveDto(userId, target.getId(), rootId, defaultFolderName);
-									folderService.moveFolder(moveLockContext(source.getId(), request), request);
+									moveFolderWithLock(source.getId(), request);
 									successCount.incrementAndGet();
 									return;
 								} catch (CustomException ignored) {

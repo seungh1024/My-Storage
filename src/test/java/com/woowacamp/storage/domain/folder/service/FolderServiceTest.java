@@ -124,6 +124,14 @@ class FolderServiceTest {
 		return new CreateLockContext(req.parentFolderId(), req.rootId(), req.uploadFolderName());
 	}
 
+	private void moveFolderWithLock(Long sourceFolderId, FolderMoveDto dto) {
+		folderService.moveFolder(moveLockContext(sourceFolderId, dto), dto);
+	}
+
+	private Long createFolderWithLock(CreateFolderReqDto req) {
+		return folderService.createFolder(createLockContext(req), req);
+	}
+
 	// ====== FolderMetadata fixture ======
 	private FolderMetadata folder(
 		long id,
@@ -426,7 +434,7 @@ class FolderServiceTest {
 			given(folderMetadataJpaRepository.save(any(FolderMetadata.class))).willAnswer(inv -> inv.getArgument(0));
 
 			FolderMoveDto request = moveDto(userId, targetId, rootId, "lock-key-only");
-			folderService.moveFolder(moveLockContext(sourceId, request), request);
+			moveFolderWithLock(sourceId, request);
 
 			assertEquals(targetId, source.getParentFolderId());
 			assertEquals("/5/30/10/", source.getIdFullPath());
@@ -475,7 +483,7 @@ class FolderServiceTest {
 				.insertActiveMove(anyLong(), anyLong(), anyString(), anyInt(), anyLong());
 
 			FolderMoveDto dto = moveDto(userId, targetId, 1L, "x");
-			assertThrows(CustomException.class, () -> folderService.moveFolder(moveLockContext(sourceId, dto), dto));
+			assertThrows(CustomException.class, () -> moveFolderWithLock(sourceId, dto));
 
 			then(folderJobJpaRepository).shouldHaveNoInteractions();
 			then(folderMetadataJpaRepository).should(never()).save(any());
@@ -512,7 +520,7 @@ class FolderServiceTest {
 				given(folderJobJpaRepository.insert(any(FolderJobInsertCommand.class))).willReturn(0);
 
 			FolderMoveDto dto = moveDto(userId, targetId, 1L, "x");
-			assertThrows(CustomException.class, () -> folderService.moveFolder(moveLockContext(10L, dto), dto));
+			assertThrows(CustomException.class, () -> moveFolderWithLock(10L, dto));
 		}
 
 		@Test
@@ -546,7 +554,7 @@ class FolderServiceTest {
 					.willThrow(new DataIntegrityViolationException("dup"));
 
 			FolderMoveDto dto = moveDto(userId, targetId, 1L, "x");
-			assertThrows(CustomException.class, () -> folderService.moveFolder(moveLockContext(10L, dto), dto));
+			assertThrows(CustomException.class, () -> moveFolderWithLock(10L, dto));
 		}
 
 		@Test
@@ -555,7 +563,7 @@ class FolderServiceTest {
 			given(folderMetadataJpaRepository.findByIdNotDeleted(10L)).willReturn(Optional.empty());
 
 			FolderMoveDto dto = moveDto(100L, 30L, 1L, "x");
-			assertThrows(CustomException.class, () -> folderService.moveFolder(moveLockContext(10L, dto), dto));
+			assertThrows(CustomException.class, () -> moveFolderWithLock(10L, dto));
 			then(folderMetadataJpaRepository).should(never()).findByIdNotDeleted(30L);
 		}
 
@@ -579,7 +587,7 @@ class FolderServiceTest {
 			given(folderMetadataJpaRepository.findByIdNotDeleted(targetId)).willReturn(Optional.of(target));
 
 			FolderMoveDto dto = moveDto(100L, targetId, 1L, "x");
-			assertThrows(CustomException.class, () -> folderService.moveFolder(moveLockContext(sourceId, dto), dto));
+			assertThrows(CustomException.class, () -> moveFolderWithLock(sourceId, dto));
 			then(folderMetadataJpaRepository).should(never()).findByIdNotDeleted(20L);
 		}
 
@@ -599,7 +607,7 @@ class FolderServiceTest {
 			given(folderMetadataJpaRepository.findByIdNotDeleted(targetId)).willReturn(Optional.empty());
 
 			FolderMoveDto dto = moveDto(100L, targetId, 1L, "x");
-			assertThrows(CustomException.class, () -> folderService.moveFolder(moveLockContext(sourceId, dto), dto));
+			assertThrows(CustomException.class, () -> moveFolderWithLock(sourceId, dto));
 			then(folderMetadataJpaRepository).should(never()).findByIdNotDeleted(20L);
 		}
 
@@ -624,7 +632,7 @@ class FolderServiceTest {
 			given(folderMetadataJpaRepository.findByIdNotDeleted(targetId)).willReturn(Optional.of(target));
 
 			FolderMoveDto dto = moveDto(100L, targetId, 1L, "x");
-			assertThrows(CustomException.class, () -> folderService.moveFolder(moveLockContext(sourceId, dto), dto));
+			assertThrows(CustomException.class, () -> moveFolderWithLock(sourceId, dto));
 			then(folderMetadataJpaRepository).should(never()).findByIdNotDeleted(20L);
 		}
 
@@ -657,7 +665,7 @@ class FolderServiceTest {
 			given(folderMetadataJpaRepository.findByIdNotDeleted(parentId)).willReturn(Optional.of(parent));
 
 			FolderMoveDto dto = moveDto(userId, targetId, 1L, "x");
-			assertThrows(CustomException.class, () -> folderService.moveFolder(moveLockContext(sourceId, dto), dto));
+			assertThrows(CustomException.class, () -> moveFolderWithLock(sourceId, dto));
 
 			then(folderMetadataJpaRepository).should(never())
 				.existsByParentFolderIdAndUploadFolderName(anyLong(), anyString());
@@ -689,7 +697,7 @@ class FolderServiceTest {
 			given(folderMetadataJpaRepository.findByIdNotDeleted(parentId)).willReturn(Optional.of(parent));
 
 			FolderMoveDto dto = moveDto(userId, sourceId, rootId, "x");
-			assertThrows(CustomException.class, () -> folderService.moveFolder(moveLockContext(sourceId, dto), dto));
+			assertThrows(CustomException.class, () -> moveFolderWithLock(sourceId, dto));
 
 			then(folderMetadataJpaRepository).should(never()).save(any());
 			then(validateParentsUtil).shouldHaveNoInteractions();
@@ -726,7 +734,7 @@ class FolderServiceTest {
 			given(folderMetadataJpaRepository.findByIdNotDeleted(parentId)).willReturn(Optional.of(parent));
 
 			FolderMoveDto dto = moveDto(userId, targetId, rootId, "x");
-			assertThrows(CustomException.class, () -> folderService.moveFolder(moveLockContext(sourceId, dto), dto));
+			assertThrows(CustomException.class, () -> moveFolderWithLock(sourceId, dto));
 
 			then(folderMetadataJpaRepository).should(never())
 				.existsByParentFolderIdAndUploadFolderName(anyLong(), anyString());
@@ -766,7 +774,7 @@ class FolderServiceTest {
 				.willReturn(true);
 
 			FolderMoveDto dto = moveDto(userId, targetId, rootId, "dtoNameIrrelevant");
-			assertThrows(CustomException.class, () -> folderService.moveFolder(moveLockContext(sourceId, dto), dto));
+			assertThrows(CustomException.class, () -> moveFolderWithLock(sourceId, dto));
 
 			then(folderMetadataJpaRepository).should(never()).save(any());
 			then(validateParentsUtil).shouldHaveNoInteractions();
@@ -807,7 +815,7 @@ class FolderServiceTest {
 				.willReturn(List.of(999L));
 
 			FolderMoveDto request = moveDto(userId, targetId, rootId, "x");
-			assertThrows(CustomException.class, () -> folderService.moveFolder(moveLockContext(sourceId, request), request));
+			assertThrows(CustomException.class, () -> moveFolderWithLock(sourceId, request));
 
 			then(folderOperationStateService).should(never()).insertActiveMove(anyLong(), anyLong(), anyString(), anyInt(), anyLong());
 			then(folderMetadataJpaRepository).should(never()).save(any());
@@ -849,7 +857,7 @@ class FolderServiceTest {
 				.willReturn(false);
 
 			FolderMoveDto dto = moveDto(userId, targetId, rootId, "x");
-			assertThrows(CustomException.class, () -> folderService.moveFolder(moveLockContext(sourceId, dto), dto));
+			assertThrows(CustomException.class, () -> moveFolderWithLock(sourceId, dto));
 
 			then(validateParentsUtil).should(times(1))
 				.validateParentsFolderLock(anyLong(), anyList(), anyList());
@@ -893,7 +901,7 @@ class FolderServiceTest {
 				.given(validateParentsUtil).validateParentsFolderLock(anyLong(), anyList(), anyList());
 
 			FolderMoveDto dto = moveDto(userId, targetId, rootId, "x");
-			assertThrows(CustomException.class, () -> folderService.moveFolder(moveLockContext(sourceId, dto), dto));
+			assertThrows(CustomException.class, () -> moveFolderWithLock(sourceId, dto));
 
 			then(folderMetadataJpaRepository).should(never()).save(any());
 			then(publisher).shouldHaveNoInteractions();
@@ -938,7 +946,7 @@ class FolderServiceTest {
 			willThrow(new RuntimeException("db")).given(folderMetadataJpaRepository).save(any(FolderMetadata.class));
 
 			FolderMoveDto dto = moveDto(userId, targetId, rootId, "x");
-			assertThrows(RuntimeException.class, () -> folderService.moveFolder(moveLockContext(sourceId, dto), dto));
+			assertThrows(RuntimeException.class, () -> moveFolderWithLock(sourceId, dto));
 
 			then(publisher).shouldHaveNoInteractions();
 		}
@@ -975,7 +983,7 @@ class FolderServiceTest {
 			given(folderMetadataJpaRepository.save(any(FolderMetadata.class))).willAnswer(inv -> inv.getArgument(0));
 
 			FolderMoveDto dto = moveDto(userId, targetId, 1L, "x");
-			assertDoesNotThrow(() -> folderService.moveFolder(moveLockContext(sourceId, dto), dto));
+			assertDoesNotThrow(() -> moveFolderWithLock(sourceId, dto));
 
 			InOrder inOrder = inOrder(folderMetadataJpaRepository, folderOperationStateService, folderJobJpaRepository);
 			inOrder.verify(folderMetadataJpaRepository).findByIdNotDeleted(sourceId);
@@ -1047,7 +1055,7 @@ class FolderServiceTest {
 				return arg;
 			});
 
-			Long id = folderService.createFolder(createLockContext(req), req);
+			Long id = createFolderWithLock(req);
 			assertEquals(999L, id);
 			then(validateParentsUtil).should()
 				.validateAndResolveForCreate(parent, "new".length(), 250);
@@ -1074,7 +1082,7 @@ class FolderServiceTest {
 			given(folderMetadataJpaRepository.findById(20L)).willReturn(Optional.of(parent));
 			given(userRepository.findById(100L)).willReturn(Optional.empty());
 
-			assertThrows(CustomException.class, () -> folderService.createFolder(createLockContext(req), req));
+			assertThrows(CustomException.class, () -> createFolderWithLock(req));
 			then(folderMetadataJpaRepository).should(never()).save(any());
 		}
 
@@ -1088,7 +1096,7 @@ class FolderServiceTest {
 
 			given(folderMetadataJpaRepository.findById(parentId)).willReturn(Optional.empty());
 
-			assertThrows(CustomException.class, () -> folderService.createFolder(createLockContext(req), req));
+			assertThrows(CustomException.class, () -> createFolderWithLock(req));
 			then(userRepository).shouldHaveNoInteractions();
 			then(folderMetadataJpaRepository).should(never()).save(any());
 		}
@@ -1107,7 +1115,7 @@ class FolderServiceTest {
 				folder(parentId, 1L, userId, 1L, "p", "/p/", "/20/", 3, 0L, CommonConstant.UNAVAILABLE_TIME)
 			));
 
-			assertThrows(CustomException.class, () -> folderService.createFolder(createLockContext(req), req));
+			assertThrows(CustomException.class, () -> createFolderWithLock(req));
 
 			then(folderMetadataJpaRepository).should(never())
 				.existsByParentFolderIdAndUploadFolderName(anyLong(), anyString());
@@ -1131,7 +1139,7 @@ class FolderServiceTest {
 			given(folderMetadataJpaRepository.existsByParentFolderIdAndUploadFolderName(parentId, "dup"))
 				.willReturn(true);
 
-			assertThrows(CustomException.class, () -> folderService.createFolder(createLockContext(req), req));
+			assertThrows(CustomException.class, () -> createFolderWithLock(req));
 			then(folderMetadataJpaRepository).should(never()).save(any());
 		}
 
@@ -1152,7 +1160,7 @@ class FolderServiceTest {
 			given(folderMetadataJpaRepository.existsByParentFolderIdAndUploadFolderName(parentId, "ok"))
 				.willReturn(false);
 
-			assertThrows(CustomException.class, () -> folderService.createFolder(createLockContext(req), req));
+			assertThrows(CustomException.class, () -> createFolderWithLock(req));
 			then(folderMetadataJpaRepository).should(never()).save(any());
 		}
 
@@ -1179,7 +1187,7 @@ class FolderServiceTest {
 				.given(validateParentsUtil)
 				.validateAndResolveForCreate(any(FolderMetadata.class), anyInt(), anyInt());
 
-			assertThrows(CustomException.class, () -> folderService.createFolder(createLockContext(req), req));
+			assertThrows(CustomException.class, () -> createFolderWithLock(req));
 			then(folderMetadataJpaRepository).should(never()).save(any());
 			then(validateParentsUtil).should()
 				.validateAndResolveForCreate(parent, "veryLongName".length(), 10);
@@ -1205,7 +1213,7 @@ class FolderServiceTest {
 				.given(validateParentsUtil)
 				.validateAndResolveForCreate(parent, "ok".length(), 250);
 
-			assertThrows(CustomException.class, () -> folderService.createFolder(createLockContext(req), req));
+			assertThrows(CustomException.class, () -> createFolderWithLock(req));
 
 			then(folderMetadataJpaRepository).should(never()).save(any());
 		}
@@ -1230,7 +1238,7 @@ class FolderServiceTest {
 
 			willThrow(new RuntimeException("db")).given(folderMetadataJpaRepository).save(any(FolderMetadata.class));
 
-			assertThrows(RuntimeException.class, () -> folderService.createFolder(createLockContext(req), req));
+			assertThrows(RuntimeException.class, () -> createFolderWithLock(req));
 			then(folderMetadataJpaRepository).should(times(1)).save(any(FolderMetadata.class));
 		}
 	}

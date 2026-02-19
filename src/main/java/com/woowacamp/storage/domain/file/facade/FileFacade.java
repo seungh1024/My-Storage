@@ -32,9 +32,13 @@ public class FileFacade {
 		FolderMetadata targetFolder = folderMetadataJpaRepository.findByIdNotDeleted(dto.targetFolderId())
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
 
-		Long rootId = sourceFile.getRootId() == null
-			? (targetFolder.getRootId() == null ? targetFolder.getId() : targetFolder.getRootId())
-			: sourceFile.getRootId();
+		Long rootId = sourceFile.getRootId();
+		if (rootId == null) {
+			rootId = targetFolder.getRootId();
+			if (rootId == null) {
+				rootId = targetFolder.getId();
+			}
+		}
 
 		FileMoveLockContext lockContext = new FileMoveLockContext(
 			fileId,

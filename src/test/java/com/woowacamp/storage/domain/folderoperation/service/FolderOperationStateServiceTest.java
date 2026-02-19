@@ -229,16 +229,17 @@ class FolderOperationStateServiceTest {
 		void findSingleActiveMoveOperationByRootIdAndFolderIds_fail_whenMultipleRows() {
 			ActiveMoveReservationProjection first = projection(10L, 140);
 			ActiveMoveReservationProjection second = projection(20L, 150);
+			List<Long> folderIds = List.of(10L, 20L);
 			given(folderOperationStateJpaRepository.findActiveMoveReservationsByRootIdAndFolderIdsAndTypeAndState(
 				eq(1L),
-				eq(List.of(10L, 20L)),
+				eq(folderIds),
 				eq(FolderOperationType.MOVE),
 				eq(FolderOperationStatus.ACTIVE)
 			)).willReturn(List.of(first, second));
 
 			assertThrows(CustomException.class,
 				() -> folderOperationStateService.findSingleActiveMoveOperationByRootIdAndFolderIds(1L,
-					List.of(10L, 20L)));
+					folderIds));
 		}
 	}
 

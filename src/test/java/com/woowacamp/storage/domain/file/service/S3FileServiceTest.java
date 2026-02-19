@@ -79,6 +79,10 @@ class S3FileServiceTest {
 		return new FileCreateLockContext(dto.parentFolderId(), dto.rootId(), dto.fileName());
 	}
 
+	private FileUploadResponseDto createFileMetadataWithLock(FileUploadRequestDto dto) {
+		return s3FileService.createFileMetadata(createLockContext(dto), dto);
+	}
+
 	// =========================================================
 	// createFileMetadata
 	// =========================================================
@@ -94,7 +98,7 @@ class S3FileServiceTest {
 			given(folderMetadataJpaRepository.findById(dto.parentFolderId())).willReturn(Optional.empty());
 
 			// when & then
-			CustomException ex = assertThrows(CustomException.class, () -> s3FileService.createFileMetadata(createLockContext(dto), dto));
+			CustomException ex = assertThrows(CustomException.class, () -> createFileMetadataWithLock(dto));
 			assertEquals(ErrorCode.FOLDER_NOT_FOUND.getMessage(), ex.getMessage());
 
 			then(fileMetadataJpaRepository).shouldHaveNoInteractions();
@@ -114,7 +118,7 @@ class S3FileServiceTest {
 			given(parent.getOwnerId()).willReturn(999L);
 
 			// when & then
-			CustomException ex = assertThrows(CustomException.class, () -> s3FileService.createFileMetadata(createLockContext(dto), dto));
+			CustomException ex = assertThrows(CustomException.class, () -> createFileMetadataWithLock(dto));
 			assertEquals(ErrorCode.ACCESS_DENIED.getMessage(), ex.getMessage());
 
 			then(fileMetadataJpaRepository).shouldHaveNoInteractions(); // duplicate 체크도 안 감
@@ -135,7 +139,7 @@ class S3FileServiceTest {
 			given(parent.getOwnerId()).willReturn(dto.userId());
 
 			// when & then
-			CustomException ex = assertThrows(CustomException.class, () -> s3FileService.createFileMetadata(createLockContext(dto), dto));
+			CustomException ex = assertThrows(CustomException.class, () -> createFileMetadataWithLock(dto));
 			assertEquals(ErrorCode.INVALID_FILE_NAME.getMessage(), ex.getMessage());
 
 			then(fileMetadataJpaRepository).shouldHaveNoInteractions();
@@ -156,7 +160,7 @@ class S3FileServiceTest {
 			given(parent.getOwnerId()).willReturn(dto.userId());
 
 			// when & then
-			CustomException ex = assertThrows(CustomException.class, () -> s3FileService.createFileMetadata(createLockContext(dto), dto));
+			CustomException ex = assertThrows(CustomException.class, () -> createFileMetadataWithLock(dto));
 			assertEquals(ErrorCode.INVALID_FILE_NAME.getMessage(), ex.getMessage());
 
 			then(fileMetadataJpaRepository).shouldHaveNoInteractions();
@@ -181,7 +185,7 @@ class S3FileServiceTest {
 			)).willReturn(true);
 
 			// when & then
-			CustomException ex = assertThrows(CustomException.class, () -> s3FileService.createFileMetadata(createLockContext(dto), dto));
+			CustomException ex = assertThrows(CustomException.class, () -> createFileMetadataWithLock(dto));
 			assertEquals(ErrorCode.FILE_NAME_DUPLICATE.getMessage(), ex.getMessage());
 
 			then(folderMetadataJpaRepository).should(never()).findByIdForUpdate(anyLong());
@@ -208,7 +212,7 @@ class S3FileServiceTest {
 			given(folderMetadataJpaRepository.findByIdForUpdate(dto.rootId())).willReturn(Optional.empty());
 
 			// when & then
-			CustomException ex = assertThrows(CustomException.class, () -> s3FileService.createFileMetadata(createLockContext(dto), dto));
+			CustomException ex = assertThrows(CustomException.class, () -> createFileMetadataWithLock(dto));
 			assertEquals(ErrorCode.FOLDER_NOT_FOUND.getMessage(), ex.getMessage());
 
 			then(validateParentsUtil).shouldHaveNoInteractions();
@@ -236,7 +240,7 @@ class S3FileServiceTest {
 			// root.getSize()는 이 케이스에서 안 쓰임(>MAX에서 바로 throw)
 
 			// when & then
-			CustomException ex = assertThrows(CustomException.class, () -> s3FileService.createFileMetadata(createLockContext(dto), dto));
+			CustomException ex = assertThrows(CustomException.class, () -> createFileMetadataWithLock(dto));
 			assertEquals(ErrorCode.EXCEED_MAX_FILE_SIZE.getMessage(), ex.getMessage());
 
 			then(validateParentsUtil).shouldHaveNoInteractions();
@@ -264,7 +268,7 @@ class S3FileServiceTest {
 			given(root.getSize()).willReturn(995L); // 995 + 10 > 1000
 
 			// when & then
-			CustomException ex = assertThrows(CustomException.class, () -> s3FileService.createFileMetadata(createLockContext(dto), dto));
+			CustomException ex = assertThrows(CustomException.class, () -> createFileMetadataWithLock(dto));
 			assertEquals(ErrorCode.EXCEED_MAX_STORAGE_SIZE.getMessage(), ex.getMessage());
 
 			then(validateParentsUtil).shouldHaveNoInteractions();
@@ -295,7 +299,7 @@ class S3FileServiceTest {
 				.given(validateParentsUtil).validateParentsFolderLock(parent);
 
 			// when & then
-			CustomException ex = assertThrows(CustomException.class, () -> s3FileService.createFileMetadata(createLockContext(dto), dto));
+			CustomException ex = assertThrows(CustomException.class, () -> createFileMetadataWithLock(dto));
 			assertEquals(ErrorCode.PARENT_LOCKED.getMessage(), ex.getMessage());
 
 			then(fileMetadataJpaRepository).should(never()).save(any());
@@ -328,7 +332,7 @@ class S3FileServiceTest {
 					.thenThrow(new RuntimeException("boom"));
 
 				// when & then
-				assertThrows(RuntimeException.class, () -> s3FileService.createFileMetadata(createLockContext(dto), dto));
+				assertThrows(RuntimeException.class, () -> createFileMetadataWithLock(dto));
 
 				then(fileMetadataJpaRepository).should(never()).save(any());
 				then(presignedUrlService).shouldHaveNoInteractions();
@@ -365,7 +369,7 @@ class S3FileServiceTest {
 				willThrow(new RuntimeException("db")).given(fileMetadataJpaRepository).save(fileMetadata);
 
 				// when & then
-				assertThrows(RuntimeException.class, () -> s3FileService.createFileMetadata(createLockContext(dto), dto));
+				assertThrows(RuntimeException.class, () -> createFileMetadataWithLock(dto));
 
 				then(presignedUrlService).shouldHaveNoInteractions();
 				then(fileMetadataJpaRepository).should(times(1)).save(fileMetadata);
@@ -405,7 +409,7 @@ class S3FileServiceTest {
 				willThrow(new RuntimeException("boom")).given(saved).updateIdFullPath("/100/");
 
 				// when & then
-				assertThrows(RuntimeException.class, () -> s3FileService.createFileMetadata(createLockContext(dto), dto));
+				assertThrows(RuntimeException.class, () -> createFileMetadataWithLock(dto));
 
 				then(fileMetadataJpaRepository).should(times(1)).save(fileMetadata);
 				then(fileMetadataJpaRepository).should(never()).save(saved);
@@ -447,7 +451,7 @@ class S3FileServiceTest {
 				willThrow(new RuntimeException("db2")).given(fileMetadataJpaRepository).save(saved);
 
 				// when & then
-				assertThrows(RuntimeException.class, () -> s3FileService.createFileMetadata(createLockContext(dto), dto));
+				assertThrows(RuntimeException.class, () -> createFileMetadataWithLock(dto));
 
 				then(presignedUrlService).shouldHaveNoInteractions();
 			}
@@ -499,7 +503,7 @@ class S3FileServiceTest {
 				given(presignedUrlService.getPresignedUrl(objectKeyCaptor.capture())).willReturn(presigned);
 
 				// when
-				FileUploadResponseDto res = s3FileService.createFileMetadata(createLockContext(dto), dto);
+				FileUploadResponseDto res = createFileMetadataWithLock(dto);
 
 				// then
 				assertEquals(777L, res.id());
@@ -565,7 +569,7 @@ class S3FileServiceTest {
 					.willReturn(new URL("https://example.com/upload"));
 
 				// when
-				s3FileService.createFileMetadata(createLockContext(dto), dto);
+				createFileMetadataWithLock(dto);
 
 				// then
 				then(fileMetadataJpaRepository).should(times(2)).existsByUuidFileName(anyString());

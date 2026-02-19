@@ -59,6 +59,10 @@ class FileServiceIntegrationTest extends IntegrationTestBase {
 		return new FileMoveLockContext(fileId, dto.targetFolderId(), dto.rootId(), dto.fileName());
 	}
 
+	private void moveFileWithLock(long fileId, FileMoveDto dto) {
+		fileService.moveFile(moveLockContext(fileId, dto), dto);
+	}
+
 	@Nested
 	@DisplayName("파일 이동 테스트")
 	class FileMoveTest {
@@ -100,7 +104,7 @@ class FileServiceIntegrationTest extends IntegrationTestBase {
 			);
 
 			// when
-			fileService.moveFile(moveLockContext(sourceFile.getId(), dto), dto);
+			moveFileWithLock(sourceFile.getId(), dto);
 
 			// then 1) 파일의 parentFolderId는 DB에서 바뀌어 있어야 함(동기 영역)
 			FileMetadata moved = fileMetadataJpaRepository.findById(sourceFile.getId())
@@ -128,7 +132,7 @@ class FileServiceIntegrationTest extends IntegrationTestBase {
 
 			// when & then
 			long sourceFileId = sourceFile.getId();
-			assertThatThrownBy(() -> fileService.moveFile(moveLockContext(sourceFileId, dto), dto))
+			assertThatThrownBy(() -> moveFileWithLock(sourceFileId, dto))
 				.isInstanceOf(CustomException.class);
 		}
 	}
