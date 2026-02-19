@@ -119,7 +119,7 @@ public class RabbitMqConfig {
 		if (ack) {
 			markSent(outboxId);
 		} else {
-			markFailed(outboxId);
+			increaseRetryCount(outboxId);
 		}
 	}
 
@@ -128,7 +128,7 @@ public class RabbitMqConfig {
 		if (outboxId == null) {
 			return;
 		}
-		markFailed(outboxId);
+		increaseRetryCount(outboxId);
 	}
 
 	private Long extractOutboxId(org.springframework.amqp.rabbit.connection.CorrelationData correlationData) {
@@ -158,10 +158,10 @@ public class RabbitMqConfig {
 		}
 	}
 
-	private void markFailed(long outboxId) {
-		int updated = messageInfoJpaRepository.markFailed(outboxId, MessageStatus.FAILED);
+	private void increaseRetryCount(long outboxId) {
+		int updated = messageInfoJpaRepository.updateRetryCount(outboxId);
 		if (updated == 0) {
-			log.debug("markFailed skipped in return/confirm callback. id={}", outboxId);
+			log.debug("increaseRetryCount skipped in return/confirm callback. id={}", outboxId);
 		}
 	}
 }

@@ -81,7 +81,7 @@ class RabbitMqConfigTest {
 		then(messageInfoJpaRepository).should().markSent(10L, MessageStatus.SENT);
 
 		confirmCallback.confirm(correlationData, false, "err");
-		then(messageInfoJpaRepository).should().markFailed(10L, MessageStatus.FAILED);
+		then(messageInfoJpaRepository).should().updateRetryCount(10L);
 
 		RabbitTemplate.ReturnsCallback returnsCallback = getReturnsCallback(template);
 		assertNotNull(returnsCallback);
@@ -92,7 +92,7 @@ class RabbitMqConfigTest {
 		ReturnedMessage returned = new ReturnedMessage(message, 312, "text", "ex", "rk");
 
 		returnsCallback.returnedMessage(returned);
-		then(messageInfoJpaRepository).should().markFailed(11L, MessageStatus.FAILED);
+		then(messageInfoJpaRepository).should().updateRetryCount(11L);
 	}
 
 	private RabbitTemplate.ConfirmCallback getConfirmCallback(RabbitTemplate template) {

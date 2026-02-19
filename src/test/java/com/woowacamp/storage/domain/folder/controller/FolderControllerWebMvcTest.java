@@ -16,6 +16,7 @@ import com.woowacamp.storage.config.JpaTestConfig;
 import com.woowacamp.storage.domain.folder.dto.response.FolderContentsDto;
 import com.woowacamp.storage.domain.folder.dto.request.CreateFolderReqDto;
 import com.woowacamp.storage.domain.folder.dto.request.FolderMoveDto;
+import com.woowacamp.storage.domain.folder.facade.FolderFacade;
 import com.woowacamp.storage.domain.folder.service.FolderService;
 
 import static org.mockito.ArgumentMatchers.*;
@@ -35,12 +36,14 @@ class FolderControllerWebMvcTest {
 
 	@MockBean
 	private FolderService folderService;
+	@MockBean
+	private FolderFacade folderFacade;
 
 	@Test
 	@DisplayName("POST /api/v1/folders -> 201 Created")
 	void createFolder_returnsCreated() throws Exception {
 		CreateFolderReqDto request = new CreateFolderReqDto(1L, 1L, 2L, "new-folder", 1L);
-		given(folderService.createFolder(request)).willReturn(10L);
+		given(folderFacade.createFolder(request)).willReturn(10L);
 
 		mockMvc.perform(post("/api/v1/folders")
 				.contentType(MediaType.APPLICATION_JSON)
@@ -48,7 +51,7 @@ class FolderControllerWebMvcTest {
 			.andExpect(status().isCreated())
 			.andExpect(jsonPath("$.id").value(10L));
 
-		then(folderService).should().createFolder(request);
+		then(folderFacade).should().createFolder(request);
 	}
 
 	@Test
@@ -78,7 +81,7 @@ class FolderControllerWebMvcTest {
 				.content(objectMapper.writeValueAsString(request)))
 			.andExpect(status().isOk());
 
-		then(folderService).should().moveFolder(9L, request);
+		then(folderFacade).should().moveFolder(9L, request);
 	}
 
 	@Test

@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import com.woowacamp.storage.domain.file.dto.request.FileUploadRequestDto;
+import com.woowacamp.storage.domain.file.dto.command.FileCreateLockContext;
 import com.woowacamp.storage.domain.file.dto.response.FileUploadResponseDto;
 import com.woowacamp.storage.domain.file.entity.FileMetadata;
 import com.woowacamp.storage.domain.file.entity.FileMetadataFactory;
@@ -49,15 +50,15 @@ public class S3FileService {
 	private long MAX_STORAGE_SIZE;
 
 	@DistributedLock(keys = """
-            @lockKeys.folderJob(#dto.rootId()),
-               @lockKeys.folderName(#dto.parentFolderId(), #dto.fileName())
+            @lockKeys.folderJob(#lockContext.rootId()),
+               @lockKeys.folderName(#lockContext.parentFolderId(), #lockContext.fileName())
         """)
-	public FileUploadResponseDto createFileMetadata(FileUploadRequestDto dto) {
-		FolderMetadata parentFolder = folderMetadataJpaRepository.findById(dto.parentFolderId())
+	public FileUploadResponseDto createFileMetadata(FileCreateLockContext lockContext, FileUploadRequestDto dto) {
+		FolderMetadata parentFolder = folderMetadataJpaRepository.findById(lockContext.parentFolderId())
 			.orElseThrow(FOLDER_NOT_FOUND::baseException);
 		// 파일 기본 검증
 		validateFile(dto, parentFolder);
-		validateFileSize(dto.fileSize(), dto.rootId());
+		validateFileSize(dto.fileSize(), lockContext.rootId());
 
 		// 고아 방지를 위해 상위 부모중 삭제 작업 진행 중이면 이동 실패.
 		validateParentsUtil.validateParentsFolderLock(parentFolder);
@@ -155,7 +156,7 @@ public class S3FileService {
 		}
 		// 이미 해당 폴더에 같은 이름의 파일이 존재하는지 확인
 		if (fileMetadataJpaRepository.existsByParentFolderIdAndUploadFileNameAndUploadStatusNot(
-			dto.parentFolderId(), dto.fileName(), UploadStatus.FAIL)) {
+			parentFolder.getId(), dto.fileName(), UploadStatus.FAIL)) {
 			throw ErrorCode.FILE_NAME_DUPLICATE.baseException();
 		}
 	}

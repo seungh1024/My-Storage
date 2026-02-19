@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.woowacamp.storage.domain.file.dto.FileMoveDto;
+import com.woowacamp.storage.domain.file.dto.command.FileMoveLockContext;
 import com.woowacamp.storage.domain.file.entity.FileMetadata;
 import com.woowacamp.storage.domain.file.repository.FileMetadataJpaRepository;
 import com.woowacamp.storage.domain.file.repository.FileMetadataRepository;
@@ -47,15 +48,15 @@ public class FileService {
 	 */
 	@DistributedLock(keys = """
             {
-                @lockKeys.folderJob(#dto.targetFolderId()),
-                @lockKeys.folderName(#dto.targetFolderId(), #dto.fileName())
+                @lockKeys.folderJob(#lockContext.rootId()),
+                @lockKeys.folderName(#lockContext.targetFolderId(), #lockContext.fileName())
                }
         """)
-	public void moveFile(Long fileId, FileMoveDto dto) {
-		FileMetadata fileMetadata = fileMetadataJpaRepository.findById(fileId)
+	public void moveFile(FileMoveLockContext lockContext, FileMoveDto dto) {
+		FileMetadata fileMetadata = fileMetadataJpaRepository.findById(lockContext.fileId())
 			.orElseThrow(ErrorCode.FILE_NOT_FOUND::baseException);
 
-		FolderMetadata targetFolder = folderMetadataRepository.findByIdNotDeleted(dto.targetFolderId())
+		FolderMetadata targetFolder = folderMetadataRepository.findByIdNotDeleted(lockContext.targetFolderId())
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
 		if (!targetFolder.getOwnerId().equals(dto.userId())) {
 			throw ErrorCode.ACCESS_DENIED.baseException();
@@ -68,7 +69,7 @@ public class FileService {
 		long originParentId = fileMetadata.getParentFolderId();
 		FolderMetadata originParentFolder = folderMetadataRepository.findByIdNotDeleted(originParentId)
 			.orElseThrow(ErrorCode.FOLDER_NOT_FOUND::baseException);
-		fileMetadata.updateParentFolderId(dto.targetFolderId());
+		fileMetadata.updateParentFolderId(lockContext.targetFolderId());
 		fileMetadataJpaRepository.save(fileMetadata);
 
 		List<Long> sourceParentIds = parsePathIds(originParentFolder.getIdFullPath());
@@ -91,7 +92,7 @@ public class FileService {
 		if (fileMetadata.getUploadStatus() != UploadStatus.SUCCESS) {
 			throw ErrorCode.FILE_NOT_FOUND.baseException();
 		}
-		if (fileMetadataJpaRepository.existsByParentFolderIdAndUploadFileNameAndUploadStatusNot(dto.targetFolderId(),
+		if (fileMetadataJpaRepository.existsByParentFolderIdAndUploadFileNameAndUploadStatusNot(targetFolder.getId(),
 			fileMetadata.getUploadFileName(), UploadStatus.FAIL)) {
 			throw ErrorCode.FILE_NAME_DUPLICATE.baseException();
 		}

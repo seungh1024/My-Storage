@@ -20,15 +20,10 @@ import com.woowacamp.storage.domain.folder.dto.response.FolderCreateResponseDto;
 import com.woowacamp.storage.domain.folder.dto.request.GetFolderContentsRequestParams;
 import com.woowacamp.storage.domain.folder.dto.request.CreateFolderReqDto;
 import com.woowacamp.storage.domain.folder.dto.request.FolderMoveDto;
+import com.woowacamp.storage.domain.folder.facade.FolderFacade;
 import com.woowacamp.storage.domain.folder.service.FolderService;
-import com.woowacamp.storage.global.annotation.CheckDto;
 import com.woowacamp.storage.global.annotation.CheckField;
-import com.woowacamp.storage.global.annotation.RequestType;
 import com.woowacamp.storage.global.aop.type.FieldType;
-import com.woowacamp.storage.global.aop.type.FileType;
-import com.woowacamp.storage.global.constant.PermissionType;
-
-import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
@@ -38,12 +33,12 @@ import lombok.RequiredArgsConstructor;
 public class FolderController {
 
 	private final FolderService folderService;
+	private final FolderFacade folderFacade;
 
 	@ResponseStatus(HttpStatus.CREATED)
 	@PostMapping
-	public FolderCreateResponseDto createFolder(@Valid @RequestBody CreateFolderReqDto req,
-		HttpServletResponse response) {
-		Long folder = folderService.createFolder(req);
+	public FolderCreateResponseDto createFolder(@Valid @RequestBody CreateFolderReqDto req) {
+		Long folder = folderFacade.createFolder(req);
 		return new FolderCreateResponseDto(folder);
 		// response.setHeader("Location", UrlUtil.getAbsoluteUrl("/api/v1/folders/" + folder));
 	}
@@ -62,7 +57,7 @@ public class FolderController {
 	@PatchMapping("/{folderId}")
 	public void moveFolder(@PathVariable("folderId") Long sourceFolderId,
 		@RequestBody FolderMoveDto dto) {
-		folderService.moveFolder(sourceFolderId, dto);
+		folderFacade.moveFolder(sourceFolderId, dto);
 
 	}
 

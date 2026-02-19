@@ -18,6 +18,7 @@ import com.woowacamp.storage.domain.file.dto.request.FileUploadCompleteRequestDt
 import com.woowacamp.storage.domain.file.dto.request.FileUploadRequestDto;
 import com.woowacamp.storage.domain.file.dto.response.FileUploadResponseDto;
 import com.woowacamp.storage.domain.file.entity.FileMetadata;
+import com.woowacamp.storage.domain.file.facade.FileFacade;
 import com.woowacamp.storage.domain.file.service.FileService;
 import com.woowacamp.storage.domain.file.service.S3FileService;
 
@@ -40,6 +41,8 @@ class FileControllerWebMvcTest {
 
 	@MockBean
 	private S3FileService s3FileService;
+	@MockBean
+	private FileFacade fileFacade;
 
 	@Test
 	@DisplayName("PATCH /api/v1/files/{id} -> 200 OK")
@@ -51,8 +54,7 @@ class FileControllerWebMvcTest {
 				.content(objectMapper.writeValueAsString(dto)))
 			.andExpect(status().isOk());
 
-		then(fileService).should().getFileMetadataBy(5L, dto.userId());
-		then(fileService).should().moveFile(5L, dto);
+		then(fileFacade).should().moveFile(5L, dto);
 	}
 
 	@Test
@@ -71,7 +73,7 @@ class FileControllerWebMvcTest {
 		FileUploadRequestDto request = new FileUploadRequestDto(1L, 2L, 100L, 1L, 1L, "doc", "txt");
 		FileUploadResponseDto response = new FileUploadResponseDto(10L, "object-key", new URL("https://example.com/upload"));
 
-		given(s3FileService.createFileMetadata(request)).willReturn(response);
+		given(fileFacade.createFileMetadata(request)).willReturn(response);
 
 		mockMvc.perform(post("/api/v1/files")
 				.contentType(MediaType.APPLICATION_JSON)
@@ -81,7 +83,7 @@ class FileControllerWebMvcTest {
 			.andExpect(jsonPath("$.objectKey").value("object-key"))
 			.andExpect(jsonPath("$.presignedUrl").value("https://example.com/upload"));
 
-		then(s3FileService).should().createFileMetadata(request);
+		then(fileFacade).should().createFileMetadata(request);
 	}
 
 	@Test

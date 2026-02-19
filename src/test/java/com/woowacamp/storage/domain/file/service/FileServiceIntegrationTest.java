@@ -15,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.woowacamp.storage.config.IntegrationTestBase;
 import com.woowacamp.storage.domain.file.dto.FileMoveDto;
+import com.woowacamp.storage.domain.file.dto.command.FileMoveLockContext;
 import com.woowacamp.storage.domain.file.entity.FileMetadata;
 import com.woowacamp.storage.domain.file.repository.FileMetadataJpaRepository;
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
@@ -52,6 +53,10 @@ class FileServiceIntegrationTest extends IntegrationTestBase {
 	private FolderMetadata folder(long folderId) {
 		return folderMetadataJpaRepository.findById(folderId)
 			.orElseThrow(() -> new AssertionError("Folder not found: " + folderId));
+	}
+
+	private FileMoveLockContext moveLockContext(long fileId, FileMoveDto dto) {
+		return new FileMoveLockContext(fileId, dto.targetFolderId(), dto.rootId(), dto.fileName());
 	}
 
 	@Nested
@@ -95,7 +100,7 @@ class FileServiceIntegrationTest extends IntegrationTestBase {
 			);
 
 			// when
-			fileService.moveFile(sourceFile.getId(), dto);
+			fileService.moveFile(moveLockContext(sourceFile.getId(), dto), dto);
 
 			// then 1) 파일의 parentFolderId는 DB에서 바뀌어 있어야 함(동기 영역)
 			FileMetadata moved = fileMetadataJpaRepository.findById(sourceFile.getId())
@@ -123,7 +128,7 @@ class FileServiceIntegrationTest extends IntegrationTestBase {
 
 			// when & then
 			long sourceFileId = sourceFile.getId();
-			assertThatThrownBy(() -> fileService.moveFile(sourceFileId, dto))
+			assertThatThrownBy(() -> fileService.moveFile(moveLockContext(sourceFileId, dto), dto))
 				.isInstanceOf(CustomException.class);
 		}
 	}

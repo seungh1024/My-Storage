@@ -23,6 +23,8 @@ import com.woowacamp.storage.domain.file.repository.FileMetadataRepository;
 import com.woowacamp.storage.domain.folder.dto.type.CursorType;
 import com.woowacamp.storage.domain.folder.dto.response.FolderContentsDto;
 import com.woowacamp.storage.domain.folder.dto.type.FolderContentsSortField;
+import com.woowacamp.storage.domain.folder.dto.command.CreateLockContext;
+import com.woowacamp.storage.domain.folder.dto.command.MoveLockContext;
 import com.woowacamp.storage.domain.folder.dto.command.MovePlan;
 import com.woowacamp.storage.domain.folder.dto.request.CreateFolderReqDto;
 import com.woowacamp.storage.domain.folder.dto.request.FolderMoveDto;
@@ -118,21 +120,21 @@ public class FolderService {
 	 */
 	@DistributedLock(keys = """
         {
-            @lockKeys.folderJob(#dto.rootId()),
-               @lockKeys.folderName(#dto.targetFolderId(), #dto.folderName())
+            @lockKeys.folderJob(#lockContext.rootId()),
+            @lockKeys.folderName(#lockContext.targetFolderId(), #lockContext.folderName())
         }
         """)
-	public void moveFolder(Long sourceFolderId, FolderMoveDto dto) {
-		FolderMetadata sourceFolder = folderMetadataJpaRepository.findByIdNotDeleted(sourceFolderId)
+	public void moveFolder(MoveLockContext lockContext, FolderMoveDto dto) {
+		FolderMetadata sourceFolder = folderMetadataJpaRepository.findByIdNotDeleted(lockContext.sourceFolderId())
 			.orElseThrow(() -> ErrorCode.FOLDER_NOT_FOUND.baseException(
-				StorageStringUtil.format(FOLDER_ID_MESSAGE, sourceFolderId)));
+				StorageStringUtil.format(FOLDER_ID_MESSAGE, lockContext.sourceFolderId())));
+
+		FolderMetadata targetFolder = folderMetadataJpaRepository.findByIdNotDeleted(lockContext.targetFolderId())
+			.orElseThrow(() -> ErrorCode.FOLDER_NOT_FOUND.baseException(
+				StorageStringUtil.format(FOLDER_ID_MESSAGE, lockContext.targetFolderId())));
+
 		Long sourceRootId = sourceFolder.getRootId() == null ? sourceFolder.getId() : sourceFolder.getRootId();
-
 		validateFolderOwner(sourceFolder, dto.userId());
-
-		FolderMetadata targetFolder = folderMetadataJpaRepository.findByIdNotDeleted(dto.targetFolderId())
-			.orElseThrow(() -> ErrorCode.FOLDER_NOT_FOUND.baseException(
-				StorageStringUtil.format(FOLDER_ID_MESSAGE, dto.targetFolderId())));
 		validateFolderOwner(targetFolder, dto.userId());
 
 		FolderMetadata sourceParentFolder = folderMetadataJpaRepository.findByIdNotDeleted(
@@ -149,7 +151,7 @@ public class FolderService {
 		validateParentsUtil.validateParentsFolderLock(sourceRootId, sourceParentIds, targetParentIds);
 		// source의 하위 검증
 		MovePlan movePlan = buildMovePlanAndValidate(sourceFolder, targetFolder, sourceParentFolder);
-		getFolderJobLock(sourceRootId, sourceFolderId, movePlan);
+		getFolderJobLock(sourceRootId, sourceFolder.getId(), movePlan);
 
 		sourceFolder.updateParentFolderId(targetFolder.getId());
 		sourceFolder.updateMoveRootPath(
@@ -166,8 +168,8 @@ public class FolderService {
 		);
 		folderSizeAdjustmentService.applySizeDeltas(deltaByFolderId);
 
-		publisher.publishEvent(new FolderMoveEvent(sourceFolderId));
-		log.info("[moveFolder] Published FolderMoveEvent. folderId={}", sourceFolderId);
+		publisher.publishEvent(new FolderMoveEvent(sourceFolder.getId()));
+		log.info("[moveFolder] Published FolderMoveEvent. folderId={}", sourceFolder.getId());
 		log.info("[moveFolder] All events published successfully.");
 	}
 
@@ -290,17 +292,15 @@ public class FolderService {
 
 	@DistributedLock(keys = """
         {
-            @lockKeys.folderJob(#req.rootId()),
-            @lockKeys.folderName(#req.parentFolderId(), #req.uploadFolderName())
+            @lockKeys.folderJob(#lockContext.rootId()),
+            @lockKeys.folderName(#lockContext.parentFolderId(), #lockContext.folderName())
         }
         """)
-	public Long createFolder(CreateFolderReqDto req) {
-		User user = userRepository.findById(req.userId()).orElseThrow(ErrorCode.USER_NOT_FOUND::baseException);
-
-		long parentFolderId = req.parentFolderId();
-		FolderMetadata parentFolder = folderMetadataJpaRepository.findById(parentFolderId)
+	public Long createFolder(CreateLockContext lockContext, CreateFolderReqDto req) {
+		FolderMetadata parentFolder = folderMetadataJpaRepository.findById(lockContext.parentFolderId())
 			.orElseThrow(() -> ErrorCode.FOLDER_NOT_FOUND.baseException(
-				StorageStringUtil.format("folder not found when creating folder. find folder id:{}", parentFolderId)));
+				StorageStringUtil.format("folder not found when creating folder. find folder id:{}", lockContext.parentFolderId())));
+		User user = userRepository.findById(req.userId()).orElseThrow(ErrorCode.USER_NOT_FOUND::baseException);
 
 		ValidateParentsUtil.CreatePathValidationResult createPathValidationResult = validateFolder(req, parentFolder);
 		validateFolderOwner(parentFolder, req.userId());

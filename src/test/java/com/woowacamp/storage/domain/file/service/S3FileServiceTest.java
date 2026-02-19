@@ -18,6 +18,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.woowacamp.storage.domain.file.dto.request.FileUploadRequestDto;
+import com.woowacamp.storage.domain.file.dto.command.FileCreateLockContext;
 import com.woowacamp.storage.domain.file.dto.response.FileUploadResponseDto;
 import com.woowacamp.storage.domain.file.entity.FileMetadata;
 import com.woowacamp.storage.domain.file.entity.FileMetadataFactory;
@@ -74,6 +75,10 @@ class S3FileServiceTest {
 		return new FileUploadRequestDto(userId, parentFolderId, fileSize, creatorId, rootId, fileName, fileExtension);
 	}
 
+	private FileCreateLockContext createLockContext(FileUploadRequestDto dto) {
+		return new FileCreateLockContext(dto.parentFolderId(), dto.rootId(), dto.fileName());
+	}
+
 	// =========================================================
 	// createFileMetadata
 	// =========================================================
@@ -89,7 +94,7 @@ class S3FileServiceTest {
 			given(folderMetadataJpaRepository.findById(dto.parentFolderId())).willReturn(Optional.empty());
 
 			// when & then
-			CustomException ex = assertThrows(CustomException.class, () -> s3FileService.createFileMetadata(dto));
+			CustomException ex = assertThrows(CustomException.class, () -> s3FileService.createFileMetadata(createLockContext(dto), dto));
 			assertEquals(ErrorCode.FOLDER_NOT_FOUND.getMessage(), ex.getMessage());
 
 			then(fileMetadataJpaRepository).shouldHaveNoInteractions();
@@ -106,10 +111,10 @@ class S3FileServiceTest {
 
 			FolderMetadata parent = mock(FolderMetadata.class);
 			given(folderMetadataJpaRepository.findById(dto.parentFolderId())).willReturn(Optional.of(parent));
-			given(parent.getOwnerId()).willReturn(999L); // mismatch
+			given(parent.getOwnerId()).willReturn(999L);
 
 			// when & then
-			CustomException ex = assertThrows(CustomException.class, () -> s3FileService.createFileMetadata(dto));
+			CustomException ex = assertThrows(CustomException.class, () -> s3FileService.createFileMetadata(createLockContext(dto), dto));
 			assertEquals(ErrorCode.ACCESS_DENIED.getMessage(), ex.getMessage());
 
 			then(fileMetadataJpaRepository).shouldHaveNoInteractions(); // duplicate 체크도 안 감
@@ -130,7 +135,7 @@ class S3FileServiceTest {
 			given(parent.getOwnerId()).willReturn(dto.userId());
 
 			// when & then
-			CustomException ex = assertThrows(CustomException.class, () -> s3FileService.createFileMetadata(dto));
+			CustomException ex = assertThrows(CustomException.class, () -> s3FileService.createFileMetadata(createLockContext(dto), dto));
 			assertEquals(ErrorCode.INVALID_FILE_NAME.getMessage(), ex.getMessage());
 
 			then(fileMetadataJpaRepository).shouldHaveNoInteractions();
@@ -151,7 +156,7 @@ class S3FileServiceTest {
 			given(parent.getOwnerId()).willReturn(dto.userId());
 
 			// when & then
-			CustomException ex = assertThrows(CustomException.class, () -> s3FileService.createFileMetadata(dto));
+			CustomException ex = assertThrows(CustomException.class, () -> s3FileService.createFileMetadata(createLockContext(dto), dto));
 			assertEquals(ErrorCode.INVALID_FILE_NAME.getMessage(), ex.getMessage());
 
 			then(fileMetadataJpaRepository).shouldHaveNoInteractions();
@@ -169,13 +174,14 @@ class S3FileServiceTest {
 			FolderMetadata parent = mock(FolderMetadata.class);
 			given(folderMetadataJpaRepository.findById(dto.parentFolderId())).willReturn(Optional.of(parent));
 			given(parent.getOwnerId()).willReturn(dto.userId());
+			given(parent.getId()).willReturn(dto.parentFolderId());
 
 			given(fileMetadataJpaRepository.existsByParentFolderIdAndUploadFileNameAndUploadStatusNot(
 				dto.parentFolderId(), dto.fileName(), UploadStatus.FAIL
 			)).willReturn(true);
 
 			// when & then
-			CustomException ex = assertThrows(CustomException.class, () -> s3FileService.createFileMetadata(dto));
+			CustomException ex = assertThrows(CustomException.class, () -> s3FileService.createFileMetadata(createLockContext(dto), dto));
 			assertEquals(ErrorCode.FILE_NAME_DUPLICATE.getMessage(), ex.getMessage());
 
 			then(folderMetadataJpaRepository).should(never()).findByIdForUpdate(anyLong());
@@ -193,6 +199,7 @@ class S3FileServiceTest {
 			FolderMetadata parent = mock(FolderMetadata.class);
 			given(folderMetadataJpaRepository.findById(dto.parentFolderId())).willReturn(Optional.of(parent));
 			given(parent.getOwnerId()).willReturn(dto.userId());
+			given(parent.getId()).willReturn(dto.parentFolderId());
 
 			given(fileMetadataJpaRepository.existsByParentFolderIdAndUploadFileNameAndUploadStatusNot(
 				dto.parentFolderId(), dto.fileName(), UploadStatus.FAIL
@@ -201,7 +208,7 @@ class S3FileServiceTest {
 			given(folderMetadataJpaRepository.findByIdForUpdate(dto.rootId())).willReturn(Optional.empty());
 
 			// when & then
-			CustomException ex = assertThrows(CustomException.class, () -> s3FileService.createFileMetadata(dto));
+			CustomException ex = assertThrows(CustomException.class, () -> s3FileService.createFileMetadata(createLockContext(dto), dto));
 			assertEquals(ErrorCode.FOLDER_NOT_FOUND.getMessage(), ex.getMessage());
 
 			then(validateParentsUtil).shouldHaveNoInteractions();
@@ -218,6 +225,7 @@ class S3FileServiceTest {
 			FolderMetadata parent = mock(FolderMetadata.class);
 			given(folderMetadataJpaRepository.findById(dto.parentFolderId())).willReturn(Optional.of(parent));
 			given(parent.getOwnerId()).willReturn(dto.userId());
+			given(parent.getId()).willReturn(dto.parentFolderId());
 
 			given(fileMetadataJpaRepository.existsByParentFolderIdAndUploadFileNameAndUploadStatusNot(
 				dto.parentFolderId(), dto.fileName(), UploadStatus.FAIL
@@ -228,7 +236,7 @@ class S3FileServiceTest {
 			// root.getSize()는 이 케이스에서 안 쓰임(>MAX에서 바로 throw)
 
 			// when & then
-			CustomException ex = assertThrows(CustomException.class, () -> s3FileService.createFileMetadata(dto));
+			CustomException ex = assertThrows(CustomException.class, () -> s3FileService.createFileMetadata(createLockContext(dto), dto));
 			assertEquals(ErrorCode.EXCEED_MAX_FILE_SIZE.getMessage(), ex.getMessage());
 
 			then(validateParentsUtil).shouldHaveNoInteractions();
@@ -245,6 +253,7 @@ class S3FileServiceTest {
 			FolderMetadata parent = mock(FolderMetadata.class);
 			given(folderMetadataJpaRepository.findById(dto.parentFolderId())).willReturn(Optional.of(parent));
 			given(parent.getOwnerId()).willReturn(dto.userId());
+			given(parent.getId()).willReturn(dto.parentFolderId());
 
 			given(fileMetadataJpaRepository.existsByParentFolderIdAndUploadFileNameAndUploadStatusNot(
 				dto.parentFolderId(), dto.fileName(), UploadStatus.FAIL
@@ -255,7 +264,7 @@ class S3FileServiceTest {
 			given(root.getSize()).willReturn(995L); // 995 + 10 > 1000
 
 			// when & then
-			CustomException ex = assertThrows(CustomException.class, () -> s3FileService.createFileMetadata(dto));
+			CustomException ex = assertThrows(CustomException.class, () -> s3FileService.createFileMetadata(createLockContext(dto), dto));
 			assertEquals(ErrorCode.EXCEED_MAX_STORAGE_SIZE.getMessage(), ex.getMessage());
 
 			then(validateParentsUtil).shouldHaveNoInteractions();
@@ -272,6 +281,7 @@ class S3FileServiceTest {
 			FolderMetadata parent = mock(FolderMetadata.class);
 			given(folderMetadataJpaRepository.findById(dto.parentFolderId())).willReturn(Optional.of(parent));
 			given(parent.getOwnerId()).willReturn(dto.userId());
+			given(parent.getId()).willReturn(dto.parentFolderId());
 
 			given(fileMetadataJpaRepository.existsByParentFolderIdAndUploadFileNameAndUploadStatusNot(
 				dto.parentFolderId(), dto.fileName(), UploadStatus.FAIL
@@ -285,7 +295,7 @@ class S3FileServiceTest {
 				.given(validateParentsUtil).validateParentsFolderLock(parent);
 
 			// when & then
-			CustomException ex = assertThrows(CustomException.class, () -> s3FileService.createFileMetadata(dto));
+			CustomException ex = assertThrows(CustomException.class, () -> s3FileService.createFileMetadata(createLockContext(dto), dto));
 			assertEquals(ErrorCode.PARENT_LOCKED.getMessage(), ex.getMessage());
 
 			then(fileMetadataJpaRepository).should(never()).save(any());
@@ -301,6 +311,7 @@ class S3FileServiceTest {
 			FolderMetadata parent = mock(FolderMetadata.class);
 			given(folderMetadataJpaRepository.findById(dto.parentFolderId())).willReturn(Optional.of(parent));
 			given(parent.getOwnerId()).willReturn(dto.userId());
+			given(parent.getId()).willReturn(dto.parentFolderId());
 
 			given(fileMetadataJpaRepository.existsByParentFolderIdAndUploadFileNameAndUploadStatusNot(
 				dto.parentFolderId(), dto.fileName(), UploadStatus.FAIL
@@ -317,7 +328,7 @@ class S3FileServiceTest {
 					.thenThrow(new RuntimeException("boom"));
 
 				// when & then
-				assertThrows(RuntimeException.class, () -> s3FileService.createFileMetadata(dto));
+				assertThrows(RuntimeException.class, () -> s3FileService.createFileMetadata(createLockContext(dto), dto));
 
 				then(fileMetadataJpaRepository).should(never()).save(any());
 				then(presignedUrlService).shouldHaveNoInteractions();
@@ -333,6 +344,7 @@ class S3FileServiceTest {
 			FolderMetadata parent = mock(FolderMetadata.class);
 			given(folderMetadataJpaRepository.findById(dto.parentFolderId())).willReturn(Optional.of(parent));
 			given(parent.getOwnerId()).willReturn(dto.userId());
+			given(parent.getId()).willReturn(dto.parentFolderId());
 
 			given(fileMetadataJpaRepository.existsByParentFolderIdAndUploadFileNameAndUploadStatusNot(
 				dto.parentFolderId(), dto.fileName(), UploadStatus.FAIL
@@ -353,7 +365,7 @@ class S3FileServiceTest {
 				willThrow(new RuntimeException("db")).given(fileMetadataJpaRepository).save(fileMetadata);
 
 				// when & then
-				assertThrows(RuntimeException.class, () -> s3FileService.createFileMetadata(dto));
+				assertThrows(RuntimeException.class, () -> s3FileService.createFileMetadata(createLockContext(dto), dto));
 
 				then(presignedUrlService).shouldHaveNoInteractions();
 				then(fileMetadataJpaRepository).should(times(1)).save(fileMetadata);
@@ -369,6 +381,7 @@ class S3FileServiceTest {
 			FolderMetadata parent = mock(FolderMetadata.class);
 			given(folderMetadataJpaRepository.findById(dto.parentFolderId())).willReturn(Optional.of(parent));
 			given(parent.getOwnerId()).willReturn(dto.userId());
+			given(parent.getId()).willReturn(dto.parentFolderId());
 			given(parent.getIdFullPath()).willReturn("/100/");
 
 			given(fileMetadataJpaRepository.existsByParentFolderIdAndUploadFileNameAndUploadStatusNot(
@@ -392,7 +405,7 @@ class S3FileServiceTest {
 				willThrow(new RuntimeException("boom")).given(saved).updateIdFullPath("/100/");
 
 				// when & then
-				assertThrows(RuntimeException.class, () -> s3FileService.createFileMetadata(dto));
+				assertThrows(RuntimeException.class, () -> s3FileService.createFileMetadata(createLockContext(dto), dto));
 
 				then(fileMetadataJpaRepository).should(times(1)).save(fileMetadata);
 				then(fileMetadataJpaRepository).should(never()).save(saved);
@@ -409,6 +422,7 @@ class S3FileServiceTest {
 			FolderMetadata parent = mock(FolderMetadata.class);
 			given(folderMetadataJpaRepository.findById(dto.parentFolderId())).willReturn(Optional.of(parent));
 			given(parent.getOwnerId()).willReturn(dto.userId());
+			given(parent.getId()).willReturn(dto.parentFolderId());
 			given(parent.getIdFullPath()).willReturn("/100/");
 
 			given(fileMetadataJpaRepository.existsByParentFolderIdAndUploadFileNameAndUploadStatusNot(
@@ -433,7 +447,7 @@ class S3FileServiceTest {
 				willThrow(new RuntimeException("db2")).given(fileMetadataJpaRepository).save(saved);
 
 				// when & then
-				assertThrows(RuntimeException.class, () -> s3FileService.createFileMetadata(dto));
+				assertThrows(RuntimeException.class, () -> s3FileService.createFileMetadata(createLockContext(dto), dto));
 
 				then(presignedUrlService).shouldHaveNoInteractions();
 			}
@@ -448,6 +462,7 @@ class S3FileServiceTest {
 			FolderMetadata parent = mock(FolderMetadata.class);
 			given(folderMetadataJpaRepository.findById(dto.parentFolderId())).willReturn(Optional.of(parent));
 			given(parent.getOwnerId()).willReturn(dto.userId());
+			given(parent.getId()).willReturn(dto.parentFolderId());
 			given(parent.getIdFullPath()).willReturn("/100/");
 
 			given(fileMetadataJpaRepository.existsByParentFolderIdAndUploadFileNameAndUploadStatusNot(
@@ -484,7 +499,7 @@ class S3FileServiceTest {
 				given(presignedUrlService.getPresignedUrl(objectKeyCaptor.capture())).willReturn(presigned);
 
 				// when
-				FileUploadResponseDto res = s3FileService.createFileMetadata(dto);
+				FileUploadResponseDto res = s3FileService.createFileMetadata(createLockContext(dto), dto);
 
 				// then
 				assertEquals(777L, res.id());
@@ -517,6 +532,7 @@ class S3FileServiceTest {
 			FolderMetadata parent = mock(FolderMetadata.class);
 			given(folderMetadataJpaRepository.findById(dto.parentFolderId())).willReturn(Optional.of(parent));
 			given(parent.getOwnerId()).willReturn(dto.userId());
+			given(parent.getId()).willReturn(dto.parentFolderId());
 			given(parent.getIdFullPath()).willReturn("/100/");
 
 			given(fileMetadataJpaRepository.existsByParentFolderIdAndUploadFileNameAndUploadStatusNot(
@@ -549,7 +565,7 @@ class S3FileServiceTest {
 					.willReturn(new URL("https://example.com/upload"));
 
 				// when
-				s3FileService.createFileMetadata(dto);
+				s3FileService.createFileMetadata(createLockContext(dto), dto);
 
 				// then
 				then(fileMetadataJpaRepository).should(times(2)).existsByUuidFileName(anyString());
@@ -618,6 +634,7 @@ class S3FileServiceTest {
 			FileUploadRequestDto dto = req(10L, 100L, 10L, 10L, 1L, "a.txt", ".txt");
 			FolderMetadata parent = mock(FolderMetadata.class);
 			given(parent.getOwnerId()).willReturn(dto.userId());
+			given(parent.getId()).willReturn(dto.parentFolderId());
 
 			given(fileMetadataJpaRepository.existsByParentFolderIdAndUploadFileNameAndUploadStatusNot(
 				dto.parentFolderId(), dto.fileName(), UploadStatus.FAIL
@@ -635,6 +652,7 @@ class S3FileServiceTest {
 			FileUploadRequestDto dto = req(10L, 100L, 10L, 10L, 1L, "a.txt", ".txt");
 			FolderMetadata parent = mock(FolderMetadata.class);
 			given(parent.getOwnerId()).willReturn(dto.userId());
+			given(parent.getId()).willReturn(dto.parentFolderId());
 
 			given(fileMetadataJpaRepository.existsByParentFolderIdAndUploadFileNameAndUploadStatusNot(
 				dto.parentFolderId(), dto.fileName(), UploadStatus.FAIL

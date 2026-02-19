@@ -52,10 +52,11 @@ public interface MessageInfoJpaRepository extends JpaRepository<MessageInfo, Lon
 	@Modifying
 	@Query("""
             UPDATE MessageInfo m
-            SET m.retryCount = m.retryCount+1
+            SET m.retryCount = m.retryCount+1, m.updatedAt = CURRENT_TIMESTAMP
             WHERE m.id = :id
+            AND m.status = 'PENDING'
         """)
-	void updateRetryCount(@Param("id") Long id);
+	int updateRetryCount(@Param("id") Long id);
 
 	@Transactional
 	@Modifying

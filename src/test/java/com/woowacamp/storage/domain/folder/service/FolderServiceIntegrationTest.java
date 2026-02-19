@@ -27,6 +27,7 @@ import org.springframework.test.context.ActiveProfiles;
 
 import com.woowacamp.storage.config.IntegrationTestBase;
 import com.woowacamp.storage.domain.folder.dto.command.MovePlan;
+import com.woowacamp.storage.domain.folder.dto.command.MoveLockContext;
 import com.woowacamp.storage.domain.folder.dto.request.FolderMoveDto;
 import com.woowacamp.storage.domain.folder.entity.FolderMetadata;
 import com.woowacamp.storage.domain.folder.repository.FolderMetadataJpaRepository;
@@ -59,6 +60,10 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 
 	private FolderMoveDto moveDto(long userId, long targetFolderId, long rootId, String folderName) {
 		return new FolderMoveDto(userId, targetFolderId, rootId, folderName);
+	}
+
+	private MoveLockContext moveLockContext(long sourceFolderId, FolderMoveDto dto) {
+		return new MoveLockContext(sourceFolderId, dto.targetFolderId(), dto.rootId(), dto.folderName());
 	}
 
 	/**
@@ -182,7 +187,7 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 			FolderMoveDto dto = moveDto(userId, targetId, targetFolder.getRootId(), defaultFolderName);
 
 			CustomException ex = assertThrows(CustomException.class,
-				() -> folderService.moveFolder(sourceId, dto));
+				() -> folderService.moveFolder(moveLockContext(sourceId, dto), dto));
 
 			assertEquals(ErrorCode.FOLDER_NOT_FOUND.getMessage(), ex.getMessage());
 		}
@@ -197,7 +202,7 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 			FolderMoveDto dto = moveDto(userId, targetId, sourceFolder.getRootId(), defaultFolderName);
 
 			CustomException ex = assertThrows(CustomException.class,
-				() -> folderService.moveFolder(sourceId, dto));
+				() -> folderService.moveFolder(moveLockContext(sourceId, dto), dto));
 
 			assertEquals(ErrorCode.FOLDER_NOT_FOUND.getMessage(), ex.getMessage());
 		}
@@ -212,7 +217,7 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 			FolderMoveDto dto = moveDto(userId, targetId, sourceFolder.getRootId(), defaultFolderName);
 
 			CustomException ex = assertThrows(CustomException.class,
-				() -> folderService.moveFolder(sourceId, dto));
+				() -> folderService.moveFolder(moveLockContext(sourceId, dto), dto));
 
 			assertEquals(ErrorCode.FOLDER_MOVE_NOT_AVAILABLE.getMessage(), ex.getMessage());
 		}
@@ -231,7 +236,7 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 			FolderMoveDto dto = moveDto(userId, targetId, sourceFolder.getRootId(), defaultFolderName);
 
 			CustomException ex = assertThrows(CustomException.class,
-				() -> folderService.moveFolder(sourceId, dto));
+				() -> folderService.moveFolder(moveLockContext(sourceId, dto), dto));
 
 			assertEquals(ErrorCode.FOLDER_MOVE_NOT_AVAILABLE.getMessage(), ex.getMessage());
 		}
@@ -257,7 +262,7 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 			findSize(sourceInfo, originalParentId);
 			findSize(targetInfo, targetId);
 
-			folderService.moveFolder(sourceId, dto);
+			folderService.moveFolder(moveLockContext(sourceId, dto), dto);
 
 			// ✅ 용량 전파를 위한 대기 시간 증가 (비동기 처리 + MQ 왕복)
 			await(() -> {
@@ -327,7 +332,7 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 			FolderMoveDto dto = moveDto(userId, targetId, targetFolder.getRootId(), defaultFolderName);
 
 			CustomException ex = assertThrows(CustomException.class,
-				() -> folderService.moveFolder(childId, dto));
+				() -> folderService.moveFolder(moveLockContext(childId, dto), dto));
 
 			assertEquals(ErrorCode.PARENT_LOCKED.getMessage(), ex.getMessage());
 		}
@@ -353,7 +358,7 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 			FolderMoveDto dto = moveDto(userId, targetChildId, sourceFolder.getRootId(), defaultFolderName);
 
 			CustomException ex = assertThrows(CustomException.class,
-				() -> folderService.moveFolder(sourceId, dto));
+				() -> folderService.moveFolder(moveLockContext(sourceId, dto), dto));
 
 			assertEquals(ErrorCode.PARENT_LOCKED.getMessage(), ex.getMessage());
 		}
@@ -373,7 +378,7 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 			FolderMoveDto dto = moveDto(userId, targetId, sourceFolder.getRootId(), defaultFolderName);
 
 			CustomException ex = assertThrows(CustomException.class,
-				() -> folderService.moveFolder(sourceId, dto));
+				() -> folderService.moveFolder(moveLockContext(sourceId, dto), dto));
 
 			// source(rootId, folderId)에 ACTIVE MOVE row가 이미 있으므로 상위/하위 작업 충돌로 차단
 			String msg = ex.getMessage();
@@ -392,7 +397,7 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 			FolderMoveDto dto = moveDto(userId, targetId, targetFolder.getRootId(), sourceFolder.getUploadFolderName());
 
 			CustomException ex = assertThrows(CustomException.class,
-				() -> folderService.moveFolder(sourceId, dto));
+				() -> folderService.moveFolder(moveLockContext(sourceId, dto), dto));
 
 			assertEquals(ErrorCode.EXCEED_MAX_PATH_LENGTH.getMessage(), ex.getMessage());
 		}
@@ -414,7 +419,7 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 			long targetId = targetFolder.getId();
 
 			FolderMoveDto dto = moveDto(userId, targetId, childFolder.getRootId(), defaultFolderName);
-			folderService.moveFolder(childId, dto);
+			folderService.moveFolder(moveLockContext(childId, dto), dto);
 
 			FolderMetadata moved = folderMetadataJpaRepository.findById(childId).orElseThrow();
 			assertEquals(targetId, moved.getParentFolderId());
@@ -435,7 +440,7 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 			FolderMoveDto dto = moveDto(userId, invalidTargetId, sourceFolder.getRootId(), defaultFolderName);
 
 			CustomException ex = assertThrows(CustomException.class,
-				() -> folderService.moveFolder(sourceId, dto));
+				() -> folderService.moveFolder(moveLockContext(sourceId, dto), dto));
 
 			assertEquals(ErrorCode.FOLDER_NOT_FOUND.getMessage(), ex.getMessage());
 
@@ -486,17 +491,15 @@ class FolderServiceIntegrationTest extends IntegrationTestBase {
 								continue;
 							}
 
-							FolderMetadata target = targets.get(
-								ThreadLocalRandom.current().nextInt(targets.size()));
+								FolderMetadata target = targets.get(
+									ThreadLocalRandom.current().nextInt(targets.size()));
 
-							try {
-								folderService.moveFolder(
-									source.getId(),
-									moveDto(userId, target.getId(), rootId, defaultFolderName)
-								);
-								successCount.incrementAndGet();
-								return;
-							} catch (CustomException ignored) {
+								try {
+									FolderMoveDto request = moveDto(userId, target.getId(), rootId, defaultFolderName);
+									folderService.moveFolder(moveLockContext(source.getId(), request), request);
+									successCount.incrementAndGet();
+									return;
+								} catch (CustomException ignored) {
 								// 동시성 충돌/검증 실패는 허용하고 다음 후보로 재시도
 							}
 						}

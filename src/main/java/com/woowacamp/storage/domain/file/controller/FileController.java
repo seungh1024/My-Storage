@@ -18,6 +18,7 @@ import com.woowacamp.storage.domain.file.dto.FileMoveDto;
 import com.woowacamp.storage.domain.file.dto.request.FileUploadCompleteRequestDto;
 import com.woowacamp.storage.domain.file.dto.request.FileUploadRequestDto;
 import com.woowacamp.storage.domain.file.dto.response.FileUploadResponseDto;
+import com.woowacamp.storage.domain.file.facade.FileFacade;
 import com.woowacamp.storage.domain.file.service.FileService;
 import com.woowacamp.storage.domain.file.service.S3FileService;
 import com.woowacamp.storage.global.annotation.CheckDto;
@@ -36,11 +37,11 @@ public class FileController {
 
 	private final FileService fileService;
 	private final S3FileService s3FileService;
+	private final FileFacade fileFacade;
 
 	@PatchMapping("/{fileId}")
 	public void moveFile(@PathVariable Long fileId, @RequestBody FileMoveDto dto) {
-		fileService.getFileMetadataBy(fileId, dto.userId());
-		fileService.moveFile(fileId, dto);
+		fileFacade.moveFile(fileId, dto);
 	}
 
 	@DeleteMapping("/{fileId}")
@@ -52,7 +53,7 @@ public class FileController {
 	@PostMapping
 	@ResponseStatus(HttpStatus.CREATED)
 	public FileUploadResponseDto create(@RequestBody FileUploadRequestDto fileUploadRequestDto) {
-		return s3FileService.createFileMetadata(fileUploadRequestDto);
+		return fileFacade.createFileMetadata(fileUploadRequestDto);
 	}
 
 	/**
