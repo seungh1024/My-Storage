@@ -22,7 +22,6 @@ public enum ErrorCode {
 	EXCEED_MAX_STORAGE_SIZE(HttpStatus.BAD_REQUEST, "최대 저장 공간 크기를 초과했습니다."),
 	INVALID_INPUT_VALUE(HttpStatus.BAD_REQUEST, "올바르지 않은 입력입니다."),
 	FILE_METADATA_NOT_FOUND(HttpStatus.NOT_FOUND, "해당 파일을 찾을 수 없습니다."),
-	EXCEED_MAX_FOLDER_DEPTH(HttpStatus.BAD_REQUEST, "최대 폴더 깊이를 초과했습니다."),
 	INVALID_FILE_SIZE(HttpStatus.BAD_REQUEST, "요청 파일 사이즈와 실제 파일 사이즈가 일치하지 않습니다."),
 	FOLDER_MOVE_NOT_AVAILABLE(HttpStatus.BAD_REQUEST, "올바르지 않은 폴더 이동입니다."),
 	CANNOT_MOVE_FOLDER_WHEN_UPLOADING(HttpStatus.BAD_REQUEST, "파일 업로드 중에 폴더 이동할 수 없습니다."),
@@ -41,12 +40,21 @@ public enum ErrorCode {
 	WRONG_OBJECT_KEY(HttpStatus.BAD_REQUEST, "OBJECT KEY가 일치하지 않습니다. 요청 데이터를 다시 확인해 주세요."),
 	PARENT_LOCKED(HttpStatus.CONFLICT, "상위에 이동이나 삭제 작업 중인 폴더가 있습니다."),
 	CANNOT_UPDATE_SIZE(HttpStatus.NOT_FOUND, "폴더를 찾을 수 없습니다."),
+	FOLDER_LOCK_CONFLICT(HttpStatus.CONFLICT, "상위 작업으로, 폴더락 획득에 실패했습니다."),
+	FAILED_TO_GET_FOLDER_LOCK(HttpStatus.BAD_REQUEST, "폴더락 획득에 실패했습니다."),
+	EXCEED_MAX_PATH_LENGTH(HttpStatus.BAD_REQUEST, "전체 경로가 제한을 넘었습니다. 250자 이내로 생성해 주세요."),
+	FOLDER_JOB_NOT_FOUND(HttpStatus.NOT_FOUND, "폴더 작업을 찾을 수 없습니다."),
+	FOLDER_JOB_CREATE_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "폴더 작업 생성에 실패했습니다."),
+	FOLDER_JOB_CONFLICT(HttpStatus.CONFLICT, "폴더 작업이 이미 존재합니다."),
 	// 500,
 	FILE_UPLOAD_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "파일 업로드에 실패했습니다."),
 	FILE_DELETE_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "파일 삭제에 실패했습니다."),
 	PERMISSION_CHECK_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "권한 확인 중 예외가 발생했습니다."),
 	FILE_MOVE_FAILED(HttpStatus.INTERNAL_SERVER_ERROR,"파일 이동에 실패했습니다"),
-	TOO_MUCH_REQUEST(HttpStatus.INTERNAL_SERVER_ERROR, "요청이 많습니다. 잠시 후에 다시 시도해주세요.");
+	TOO_MUCH_REQUEST(HttpStatus.INTERNAL_SERVER_ERROR, "요청이 많습니다. 잠시 후에 다시 시도해주세요."),
+	LOCK_KEY_EXPRESSION_EXCEPTION(HttpStatus.INTERNAL_SERVER_ERROR,"서버 처리 중 예외가 발생했습니다."),
+	FOLDER_PATH_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "사용자 데이터 처리 중 예외가 발생했습니다."),
+	MESSAGE_CONSUME_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "메시지 처리에 실패했습니다.");
 	private final HttpStatus status;
 	private final String message;
 

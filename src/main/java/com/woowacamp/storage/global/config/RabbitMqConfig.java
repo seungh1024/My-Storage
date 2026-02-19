@@ -6,7 +6,6 @@ import org.springframework.amqp.core.DirectExchange;
 import org.springframework.amqp.core.Queue;
 import org.springframework.amqp.core.QueueBuilder;
 import org.springframework.amqp.core.TopicExchange;
-import org.springframework.amqp.rabbit.connection.CachingConnectionFactory;
 import org.springframework.amqp.rabbit.connection.ConnectionFactory;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
@@ -15,101 +14,154 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import com.woowacamp.storage.domain.message.repository.MessageInfoJpaRepository;
+import com.woowacamp.storage.domain.message.util.MessageStatus;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
 @Configuration
+@RequiredArgsConstructor
 public class RabbitMqConfig {
 
-	@Value("${spring.rabbitmq.addresses}")
-	private String addresses;
-	@Value("${spring.rabbitmq.username}")
-	private String userName;
-	@Value("${spring.rabbitmq.password}")
-	private String password;
-	@Value("${spring.rabbitmq.virtual-host}")
-	private String virtualHost;
-	@Value("${spring.rabbitmq.folder-size-queue}")
-	private String folderSizeQueue;
-	@Value("${spring.rabbitmq.folder-size-exchange}")
-	private String folderSizeExchange;
-	@Value("${spring.rabbitmq.folder-size-key}")
-	private String folderSizeKey;
+	private final MessageInfoJpaRepository messageInfoJpaRepository;
 
-	@Value("${spring.rabbitmq.folder-size-dlx-queue}")
-	private String folderSizeDlxQueue;
-	@Value("${spring.rabbitmq.folder-size-dlx-exchange}")
-	private String folderSizeDlxExchange;
-	@Value("${spring.rabbitmq.folder-size-dlx-key}")
-	private String folderSizeDlxKey;
+	// common exchange (one)
+	@Value("${spring.rabbitmq.folder.exchange}")
+	private String folderExchangeName;
 
+	@Value("${spring.rabbitmq.folder.ttl}")
+	private int messageTtl;  // TTL 추가
+
+
+	// ===== move =====
+	@Value("${spring.rabbitmq.folder.move.queue}")
+	private String folderMoveQueueName;
+	@Value("${spring.rabbitmq.folder.move.key}")
+	private String folderMoveBindingKey;
+
+	@Value("${spring.rabbitmq.folder.move.dlx.exchange}")
+	private String folderMoveDlxExchangeName;
+	@Value("${spring.rabbitmq.folder.move.dlx.queue}")
+	private String folderMoveDlqName;
+	@Value("${spring.rabbitmq.folder.move.dlx.key}")
+	private String folderMoveDlxRoutingKey;
+
+	/**
+	 * 메인 Exchange: Topic
+	 */
 	@Bean
-	public ConnectionFactory connectionFactory() {
-		CachingConnectionFactory connectionFactory = new CachingConnectionFactory();
-		connectionFactory.setAddresses(addresses);
-		connectionFactory.setUsername(userName);
-		connectionFactory.setPassword(password);
-		connectionFactory.setVirtualHost(virtualHost);
-		connectionFactory.setConnectionTimeout(3000);
-
-		return connectionFactory;
+	public TopicExchange folderExchange() {
+		return new TopicExchange(folderExchangeName);
 	}
 
+
+	// =========================
+	// Move Queue / Binding / DLX
+	// =========================
 	@Bean
-	public Queue folderSizeQueue() {
-		return QueueBuilder.durable(folderSizeQueue)
-			.withArgument("x-message-ttl", 60000)  // 메시지 TTL 60000ms = 1분
-			.withArgument("x-dead-letter-exchange", folderSizeDlxExchange)  // DLX 설정
-			.withArgument("x-dead-letter-routing-key", folderSizeDlxKey)  // DLX 라우팅 키
+	public Queue folderMoveQueue() {
+		return QueueBuilder.durable(folderMoveQueueName)
+			.withArgument("x-dead-letter-exchange", folderMoveDlxExchangeName)
+			.withArgument("x-dead-letter-routing-key", folderMoveDlxRoutingKey)
+			.withArgument("x-message-ttl", messageTtl)  // ✅ TTL 추가
 			.build();
 	}
 
-	/**
-	 * 라우팅 키에 따라 메세지를 특정 큐로 라우팅하기 위해 TopicExchange 사용.
-	 * 라우팅 키와 정확히 일치하는 큐로 메세지 전달하려면 DirecExchange, Broadcast 하려면 FanoutExchange 사용.
-	 * @return
-	 */
 	@Bean
-	public TopicExchange folderSizeExchange() {
-		return new TopicExchange(folderSizeExchange);
+	public Binding folderMoveBinding(TopicExchange folderExchange, Queue folderMoveQueue) {
+		return BindingBuilder.bind(folderMoveQueue).to(folderExchange).with(folderMoveBindingKey);
 	}
 
 	@Bean
-	public Binding folderSizeBinding(TopicExchange folderSizeExchange, Queue folderSizeQueue) {
-		return BindingBuilder.bind(folderSizeQueue).to(folderSizeExchange).with(folderSizeKey);
+	public DirectExchange folderMoveDlxExchange() {
+		return new DirectExchange(folderMoveDlxExchangeName);
 	}
 
 	@Bean
-	public DirectExchange dlxExchange() {
-		return new DirectExchange(folderSizeDlxExchange);
+	public Queue folderMoveDlq() {
+		return QueueBuilder.durable(folderMoveDlqName).build();
 	}
 
 	@Bean
-	public Queue dlq() {
-		return QueueBuilder.durable(folderSizeDlxQueue).build();
+	public Binding folderMoveDlqBinding(Queue folderMoveDlq, DirectExchange folderMoveDlxExchange) {
+		return BindingBuilder.bind(folderMoveDlq).to(folderMoveDlxExchange).with(folderMoveDlxRoutingKey);
 	}
 
+	// =========================
+	// Converter / Template
+	// =========================
 	@Bean
-	public Binding dlqBinding(Queue dlq, DirectExchange dlxExchange) {
-		return BindingBuilder.bind(dlq).to(dlxExchange).with(folderSizeDlxKey);
-	}
-
-	/**
-	 * json 형태로 메세지 변경
-	 * @return
-	 */
-	@Bean
-	MessageConverter messageConverter() {
+	public MessageConverter messageConverter() {
 		return new Jackson2JsonMessageConverter();
 	}
 
-	/**
-	 * 구성한 connection factory, message converter로 템플릿 구성
-	 * @param connectionFactory
-	 * @param messageConverter
-	 * @return
-	 */
 	@Bean
-	RabbitTemplate rabbitTemplate(ConnectionFactory connectionFactory, MessageConverter messageConverter) {
-		RabbitTemplate rabbitTemplate = new RabbitTemplate(connectionFactory);
-		rabbitTemplate.setMessageConverter(messageConverter);
-		return rabbitTemplate;
+	public RabbitTemplate rabbitTemplate(ConnectionFactory connectionFactory, MessageConverter messageConverter) {
+		RabbitTemplate template = new RabbitTemplate(connectionFactory);
+		template.setMessageConverter(messageConverter);
+		template.setMandatory(true);
+
+		template.setConfirmCallback(this::handleConfirm);
+		template.setReturnsCallback(this::handleReturn);
+
+
+		return template;
+	}
+
+	private void handleConfirm(org.springframework.amqp.rabbit.connection.CorrelationData correlationData,
+		boolean ack, String cause) {
+		Long outboxId = extractOutboxId(correlationData);
+		if (outboxId == null) {
+			return;
+		}
+		if (ack) {
+			markSent(outboxId);
+		} else {
+			increaseRetryCount(outboxId);
+		}
+	}
+
+	private void handleReturn(org.springframework.amqp.core.ReturnedMessage returned) {
+		Long outboxId = extractOutboxId(returned);
+		if (outboxId == null) {
+			return;
+		}
+		increaseRetryCount(outboxId);
+	}
+
+	private Long extractOutboxId(org.springframework.amqp.rabbit.connection.CorrelationData correlationData) {
+		if (correlationData == null) {
+			return null;
+		}
+		String correlationId = correlationData.getId();
+		if (correlationId.isBlank()) {
+			return null;
+		}
+		return Long.parseLong(correlationId);
+	}
+
+	private Long extractOutboxId(org.springframework.amqp.core.ReturnedMessage returned) {
+		var props = returned.getMessage().getMessageProperties();
+		String corrId = props.getCorrelationId(); // send()에서 주입
+		if (corrId == null) {
+			return null;
+		}
+		return Long.parseLong(corrId);
+	}
+
+	private void markSent(long outboxId) {
+		int updated = messageInfoJpaRepository.markSent(outboxId, MessageStatus.SENT);
+		if (updated == 0) {
+			log.debug("markSent skipped in confirm callback. id={}", outboxId);
+		}
+	}
+
+	private void increaseRetryCount(long outboxId) {
+		int updated = messageInfoJpaRepository.updateRetryCount(outboxId);
+		if (updated == 0) {
+			log.debug("increaseRetryCount skipped in return/confirm callback. id={}", outboxId);
+		}
 	}
 }

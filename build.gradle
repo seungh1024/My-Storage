@@ -10,6 +10,10 @@ plugins {
 group = 'com.woowacamp'
 version = '0.0.1-SNAPSHOT'
 
+ext {
+	set('testcontainers.version', '1.20.4')
+}
+
 java {
 	toolchain {
 		languageVersion = JavaLanguageVersion.of(17)
@@ -58,10 +62,14 @@ dependencies {
 	implementation platform('software.amazon.awssdk:bom:2.20.56')
 	implementation 'software.amazon.awssdk:s3' // 필요한 모듈만 추가
 
-	testImplementation 'org.testcontainers:testcontainers:1.19.4'
-	testImplementation 'org.testcontainers:junit-jupiter:1.19.4'
-	testImplementation 'org.testcontainers:mysql:1.19.4'
-	testImplementation 'org.testcontainers:mongodb:1.16.3'
+	// TSID
+	implementation 'com.github.f4b6a3:tsid-creator:5.2.6'
+
+	testImplementation platform('org.testcontainers:testcontainers-bom:1.20.4')
+	testImplementation 'org.testcontainers:testcontainers'
+	testImplementation 'org.testcontainers:junit-jupiter'
+	testImplementation 'org.testcontainers:mysql'
+	testImplementation 'org.testcontainers:rabbitmq'
 	testCompileOnly 'org.projectlombok:lombok'
 	testAnnotationProcessor 'org.projectlombok:lombok'
 	testImplementation 'org.springframework.amqp:spring-rabbit-test'
@@ -76,6 +84,19 @@ checkstyle {
 
 tasks.named('test') {
 	useJUnitPlatform()
+
+	def dockerHost = System.getenv("DOCKER_HOST")
+	if (dockerHost) {
+		environment "DOCKER_HOST", dockerHost
+		systemProperty "DOCKER_HOST", dockerHost
+	}
+
+	def dockerApiVersion = System.getenv("DOCKER_API_VERSION")
+	if (dockerApiVersion) {
+		environment "DOCKER_API_VERSION", dockerApiVersion
+		systemProperty "api.version", dockerApiVersion
+	}
+
 	finalizedBy 'jacocoTestReport'
 }
 
@@ -90,6 +111,8 @@ sonar {
 		property "sonar.projectKey", "seungh1024_My-Storage"
 		property "sonar.organization", "seungh1024"
 		property "sonar.host.url", "https://sonarcloud.io"
+		property "sonar.exclusions", "**/domain/dummy/**"
+		property "sonar.coverage.exclusions", "**/domain/dummy/**"
 		property "sonar.coverage.jacoco.xmlReportPaths", "build/reports/jacoco/test/jacocoTestReport.xml"
 		property "sonar.java.checkstyle.reportPaths", "build/reports/checkstyle/main.xml"
 	}

@@ -7,6 +7,7 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import com.woowacamp.storage.global.constant.CommonConstant;
 import com.woowacamp.storage.global.constant.PermissionType;
+import com.woowacamp.storage.global.util.StorageStringUtil;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -31,7 +32,11 @@ import lombok.NoArgsConstructor;
 	@Index(name = "folder_idx_parent_folder_id_size", columnList = "parent_folder_id, folder_size"),
 	@Index(name = "folder_idx_parent_folder_id_is_deleted", columnList = "parent_folder_id, is_deleted"),
 	@Index(name = "folder_idx_find_folder_with_cursor", columnList = "parent_folder_id, is_deleted, folder_metadata_id"),
-	@Index(name = "folder_idx_is_deleted_folder_metadata_id", columnList = "is_deleted, folder_metadata_id")
+	@Index(name = "folder_idx_parent_folder_id_upload_folder_name",
+		columnList = "parent_folder_id, upload_folder_name"),
+	@Index(name = "folder_idx_is_deleted_folder_metadata_id", columnList = "is_deleted, folder_metadata_id"),
+	@Index(name = "folder_idx_root_deleted_namepath_length",
+		columnList = "root_id, is_deleted, name_full_path, name_path_length")
 })
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
@@ -88,10 +93,24 @@ public class FolderMetadata {
 	@Column(name = "version")
 	private long version = 0L;
 
+	// 폴더명 기반의 전체 경로
+	@Column(name = "name_full_path", columnDefinition = "VARCHAR(250)")
+	@NotNull
+	private String nameFullPath;
+
+	// pk로 만들어진 전체 경로
+	@Column(name = "id_full_path", columnDefinition = "VARCHAR(3000)")
+	@NotNull
+	private String idFullPath;
+
+	@Column(name = "name_path_length", columnDefinition = "INT NOT NULL DEFAULT 0")
+	private int namePathLength;
+
 	@Builder
 	public FolderMetadata(Long id, Long rootId, Long ownerId, Long creatorId, LocalDateTime createdAt,
 		LocalDateTime updatedAt, Long parentFolderId, String uploadFolderName, long size,
-		LocalDateTime sharingExpiredAt, PermissionType permissionType, boolean isDeleted, long version) {
+		LocalDateTime sharingExpiredAt, PermissionType permissionType, boolean isDeleted, long version,
+		String nameFullPath, String idFullPath, Integer namePathLength) {
 
 		this.id = id;
 		this.rootId = rootId;
@@ -106,6 +125,9 @@ public class FolderMetadata {
 		this.permissionType = permissionType;
 		this.isDeleted = isDeleted;
 		this.version = version;
+		this.nameFullPath = nameFullPath;
+		this.idFullPath = idFullPath;
+		this.namePathLength = namePathLength;
 	}
 
 	public void initOwnerId(Long ownerId) {
@@ -140,6 +162,24 @@ public class FolderMetadata {
 
 	public boolean isSharingExpired() {
 		return sharingExpiredAt.isBefore(LocalDateTime.now());
+	}
+
+	public void updateIdFullPath(String parentIdPath) {
+		this.idFullPath = StorageStringUtil.format("{}{}/", parentIdPath, this.id);
+	}
+
+	public void updateNameFullPath(String parentNamePath) {
+		this.nameFullPath = StorageStringUtil.format("{}{}/", parentNamePath, this.uploadFolderName);
+	}
+
+	public void updateNamePathLength(int namePathLength) {
+		this.namePathLength = namePathLength;
+	}
+
+	public void updateMoveRootPath(String idFullPath, String nameFullPath, int namePathLength) {
+		this.idFullPath = idFullPath;
+		this.nameFullPath = nameFullPath;
+		this.namePathLength = namePathLength;
 	}
 
 }

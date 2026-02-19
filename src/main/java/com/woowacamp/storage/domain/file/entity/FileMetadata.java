@@ -5,6 +5,7 @@ import java.time.LocalDateTime;
 import com.woowacamp.storage.global.constant.CommonConstant;
 import com.woowacamp.storage.global.constant.PermissionType;
 import com.woowacamp.storage.global.constant.UploadStatus;
+import com.woowacamp.storage.global.util.StorageStringUtil;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -27,9 +28,13 @@ import lombok.ToString;
 	@Index(name = "file_idx_parent_folder_id_created_at", columnList = "parent_folder_id, created_at"),
 	@Index(name = "file_idx_parent_folder_id_file_size", columnList = "parent_folder_id, file_size"),
 	@Index(name = "file_idx_upload_status", columnList = "upload_status"),
+	@Index(name = "file_idx_parent_folder_id_upload_file_name_upload_status",
+		columnList = "parent_folder_id, upload_file_name, upload_status"),
 	@Index(name = "file_idx_parent_folder_id_file_metadata_id", columnList = "parent_folder_id, file_metadata_id"),
 	@Index(name = "file_idx_created_at_file_metadata_id", columnList = "created_at, file_metadata_id"),
-	@Index(name = "file_idx_is_deleted", columnList = "is_deleted")})
+	@Index(name = "file_idx_is_deleted", columnList = "is_deleted"),
+	@Index(name = "file_idx_root_deleted_namepath_length_status",
+		columnList = "root_id, is_deleted, name_full_path, name_path_length, upload_status")})
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Getter
 @ToString
@@ -100,11 +105,24 @@ public class FileMetadata {
 	@NotNull
 	private boolean isDeleted = false;
 
+	// 폴더명 기반의 전체 경로
+	@Column(name = "name_full_path", columnDefinition = "VARCHAR(250)")
+	@NotNull
+	private String nameFullPath;
+
+	// pk로 만들어진 전체 경로
+	@Column(name = "id_full_path", columnDefinition = "VARCHAR(3000)")
+	@NotNull
+	private String idFullPath;
+
+	@Column(name = "name_path_length", columnDefinition = "INT NOT NULL DEFAULT 0")
+	private int namePathLength;
+
 	@Builder
 	public FileMetadata(Long id, Long rootId, Long creatorId, Long ownerId, String fileType, LocalDateTime createdAt,
 		LocalDateTime updatedAt, Long parentFolderId, Long fileSize, String uploadFileName, String uuidFileName,
 		UploadStatus uploadStatus, String thumbnailUUID, LocalDateTime sharingExpiredAt,
-		PermissionType permissionType) {
+		PermissionType permissionType, String nameFullPath, String idFullPath, Integer namePathLength) {
 		this.id = id;
 		this.rootId = rootId;
 		this.creatorId = creatorId;
@@ -120,6 +138,9 @@ public class FileMetadata {
 		this.thumbnailUUID = thumbnailUUID;
 		this.sharingExpiredAt = sharingExpiredAt;
 		this.permissionType = permissionType;
+		this.nameFullPath = nameFullPath;
+		this.idFullPath = idFullPath;
+		this.namePathLength = namePathLength;
 	}
 
 	public void updateCreatedAt(LocalDateTime createdAt) {
@@ -158,5 +179,17 @@ public class FileMetadata {
 
 	public void updateFailUploadStatus() {
 		this.uploadStatus = UploadStatus.FAIL;
+	}
+
+	public void updateIdFullPath(String parentIdPath) {
+		this.idFullPath = StorageStringUtil.format("{}{}/", parentIdPath, this.id);
+	}
+
+	public void updateNameFullPath(String parentNamePath) {
+		this.nameFullPath = StorageStringUtil.format("{}{}/", parentNamePath, this.uploadFileName);
+	}
+
+	public void updateNamePathLength(int namePathLength) {
+		this.namePathLength = namePathLength;
 	}
 }

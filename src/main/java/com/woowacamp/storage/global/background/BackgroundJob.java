@@ -62,7 +62,6 @@ public class BackgroundJob {
 	}
 
 	/**
-	 * 여러 스레드가 동시에 size()에 접근하면 불필요하게 DB 접근이 많아진다고 판단하여 synchronized 사용
 	 * @param folderMetadataList
 	 */
 	public void addForDeleteFolder(FolderMetadata folderMetadataList) {

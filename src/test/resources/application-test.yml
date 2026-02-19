@@ -2,6 +2,9 @@ spring:
   config:
     activate:
       on-profile: test  # 테스트 프로파일을 활성화
+  task:
+    scheduling:
+      enabled: false
 
   jpa:
     hibernate:
@@ -10,6 +13,77 @@ spring:
       hibernate:
         format_sql: true
     open-in-view: false
+
+  rabbitmq:
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    # 테스트 컨테이너 설정은 ContainerBaseConfig의 @DynamicPropertySource에서 주입됨
+    listener:
+      simple:
+        acknowledge-mode: manual
+        prefetch: 1
+        concurrency: 1
+        max-concurrency: 1
+        # 테스트에서는 빠른 재시도를 위해 짧은 간격 설정
+        retry:
+          enabled: true
+          initial-interval: 1000
+          max-attempts: 3
+          max-interval: 3000
+          multiplier: 2
+    template:
+      retry:
+        enabled: true
+        initial-interval: 1000
+        max-attempts: 3
+        max-interval: 3000
+        multiplier: 2
+    folder:
+      exchange: folder.exchange
+      ttl: 60000
+      retryCnt: 3
+      move:
+        queue: folder.move.queue
+        key: folder.move.key
+        consumerSize: 3
+        maxConsumerSize: 3
+        prefetch: 5
+        receiveTimeout: 1000
+        dlx:
+          exchange: folder.dlx.move.exchange
+          queue: folder.dlx.move.queue
+          key: folder.dlx.move.key
+
+  # Redisson 설정은 ContainerBaseConfig의 @DynamicPropertySource에서 주입됨
+  # spring.redisson.address가 동적으로 설정됨
+  redisson:
+    lock-watchdog-timeout: 10000
+
+# AWS S3 Mock 설정 (테스트용)
+cloud:
+  aws:
+    credentials:
+      accessKey: test-access-key
+      secretKey: test-secret-key
+      bucketName: test-bucket
+      endpoint: http://localhost:7480
+      duration: 10
+
+folder:
+  delete:
+    threadCount: 8
+    queueSize: 32
+    threadName: FolderDelete-
+  message:
+    threadCount: 8
+    queueSize: 32
+    threadName: MessageHandler-
+  search:
+    threadName: FileSearch-
+  path:
+    maxLength: 250
+  job:
+    maxRetry: 3
 
 file:
   reader:
@@ -21,6 +95,8 @@ file:
     maxStorageSize: 1073741824
 
 constant:
-  batchSize: 10
+  batchSize: 500
+  batchLimit: 2000
   deleteSize: 5
   maxRetry: 3
+  retryCnt: 3

@@ -25,8 +25,8 @@ public interface FileMetadataJpaRepository extends JpaRepository<FileMetadata, L
 
 	@Lock(LockModeType.PESSIMISTIC_WRITE)
 	@Query(value = """
-			select f from FileMetadata f where f.id = :id and f.uploadStatus != 'FAIL'
-		""")
+            select f from FileMetadata f where f.id = :id and f.uploadStatus != 'FAIL'
+        """)
 	Optional<FileMetadata> findByIdForUpdate(@Param("id") Long id);
 
 	@Lock(LockModeType.PESSIMISTIC_WRITE)
@@ -35,16 +35,16 @@ public interface FileMetadataJpaRepository extends JpaRepository<FileMetadata, L
 	// 부모 폴더에 락을 걸고 조회하는 메소드
 	@Lock(LockModeType.PESSIMISTIC_WRITE)
 	@Query(value = """
-			select f from FileMetadata f where f.parentFolderId=:parentFolderId and f.uploadStatus != 'FAIL'
-		""")
+            select f from FileMetadata f where f.parentFolderId=:parentFolderId and f.uploadStatus != 'FAIL'
+        """)
 	List<FileMetadata> findByParentFolderIdForUpdate(Long parentFolderId);
 
 	@Modifying
 	@Query(value = """
-			update FileMetadata f
-			set f.fileSize = :fileSize, f.uploadStatus = :uploadStatus, f.createdAt = NOW(), f.updatedAt = NOW()
-			where f.id = :fileId
-		""")
+            update FileMetadata f
+            set f.fileSize = :fileSize, f.uploadStatus = :uploadStatus, f.createdAt = NOW(), f.updatedAt = NOW()
+            where f.id = :fileId
+        """)
 	int finalizeMetadata(@Param("fileId") long fileId, @Param("fileSize") long fileSize,
 		@Param("uploadStatus") UploadStatus uploadStatus);
 
@@ -52,110 +52,120 @@ public interface FileMetadataJpaRepository extends JpaRepository<FileMetadata, L
 
 	@Lock(LockModeType.PESSIMISTIC_READ)
 	@Query(value = """
-			select f from FileMetadata f
-			where f.id = :fileId
-		""")
+            select f from FileMetadata f
+            where f.id = :fileId
+        """)
 	Optional<FileMetadata> findByIdForShare(@Param("fileId") long fileId);
 
 	List<FileMetadata> findByOwnerId(Long ownerId);
 
 	@Query("""
-			SELECT f
-			FROM FileMetadata f
-			WHERE f.parentFolderId = :parentId
-			ORDER BY f.id
-			LIMIT :size
-		""")
+            SELECT f
+            FROM FileMetadata f
+            WHERE f.parentFolderId = :parentId
+            ORDER BY f.id
+            LIMIT :size
+        """)
 	List<FileMetadata> findByParentFolderId(@Param("parentId") long parentId, @Param("size") int size);
 
 	@Query("""
-			SELECT f
-			FROM FileMetadata f
-			WHERE f.parentFolderId = :parentId AND f.id > :lastId
-			ORDER BY f.id
-			LIMIT :size
-		""")
+            SELECT f
+            FROM FileMetadata f
+            WHERE f.parentFolderId = :parentId AND f.id > :lastId
+            ORDER BY f.id
+            LIMIT :size
+        """)
 	List<FileMetadata> findByParentFolderIdWithLastId(@Param("parentId") long parentId, @Param("lastId") Long lastId,
 		@Param("size") int size);
 
 	@Query("""
-			SELECT SUM(f.fileSize)
-			FROM FileMetadata f
-			WHERE f.parentFolderId = :parentId
-			AND f.isDeleted = false
-		""")
+            SELECT SUM(f.fileSize)
+            FROM FileMetadata f
+            WHERE f.parentFolderId = :parentId
+            AND f.isDeleted = false
+        """)
 	Optional<Long> sumChildFileSize(@Param("parentId") long parentId);
 
 	@Query("""
-			SELECT f
-			FROM FileMetadata f
-			WHERE f.uploadStatus = 'FAIL'
-			ORDER BY f.id
-			LIMIT :size
-		""")
+            SELECT f
+            FROM FileMetadata f
+            WHERE f.uploadStatus = 'FAIL'
+            ORDER BY f.id
+            LIMIT :size
+        """)
 	List<FileMetadata> findUploadFailureList(int size);
 
 	@Query("""
-			SELECT f
-			FROM FileMetadata f
-			WHERE f.uploadStatus = 'FAIL' and f.id > :lastId
-			ORDER BY f.id
-			LIMIT :size
-		""")
+            SELECT f
+            FROM FileMetadata f
+            WHERE f.uploadStatus = 'FAIL' and f.id > :lastId
+            ORDER BY f.id
+            LIMIT :size
+        """)
 	List<FileMetadata> findUploadFailureListWithLastId(Long lastId, int size);
 
 	@Query("""
-			SELECT f
-			FROM FileMetadata f
-			WHERE f.createdAt < :timeLimit
-			ORDER BY f.createdAt, f.id
-			LIMIT :size
-		""")
+            SELECT f
+            FROM FileMetadata f
+            WHERE f.createdAt < :timeLimit
+            ORDER BY f.createdAt, f.id
+            LIMIT :size
+        """)
 	List<FileMetadata> findUploadPendingList(int size, LocalDateTime timeLimit);
 
 	@Query("""
-			SELECT f
-			FROM FileMetadata f
-			WHERE f.createdAt < :timeLimit
-			and f.id > :lastId
-			ORDER BY f.createdAt, f.id
-			LIMIT :size
-		""")
+            SELECT f
+            FROM FileMetadata f
+            WHERE f.createdAt < :timeLimit
+            and f.id > :lastId
+            ORDER BY f.createdAt, f.id
+            LIMIT :size
+        """)
 	List<FileMetadata> findUploadPendingListWithLastId(Long lastId, int size, LocalDateTime timeLimit);
 
 	@Transactional
 	@Modifying
 	@Query("""
-			UPDATE FileMetadata f SET f.isDeleted = true, f.updatedAt = NOW() WHERE f.id IN (:ids)
-		""")
+            UPDATE FileMetadata f SET f.isDeleted = true, f.updatedAt = NOW() WHERE f.id IN (:ids)
+        """)
 	void softDeleteAllByIdInBatch(@Param("ids") List<Long> batchList);
 
 	@Transactional
 	@Modifying
 	@Query("""
-			UPDATE FileMetadata f SET f.isDeleted = true, f.updatedAt = NOW() WHERE f.id = (:id)
-		""")
+            UPDATE FileMetadata f SET f.isDeleted = true, f.updatedAt = NOW() WHERE f.id = (:id)
+        """)
 	void softDelete(@Param("id") Long id);
 
 	@Query("""
-			SELECT f
-			FROM FileMetadata f
-			WHERE f.isDeleted = true
-			AND f.updatedAt < :duration
-			ORDER BY f.id
-			LIMIT :size
-		""")
+            SELECT f
+            FROM FileMetadata f
+            WHERE f.isDeleted = true
+            AND f.updatedAt < :duration
+            ORDER BY f.id
+            LIMIT :size
+        """)
 	List<FileMetadata> findSoftDeletedFile(@Param("size") int size, @Param("duration") LocalDateTime timeLimit);
 
 	@Query("""
-			SELECT f
-			FROM FileMetadata f
-			WHERE f.isDeleted = true 
-			AND f.id > :lastId
-			AND f.updatedAt < :duration
-			ORDER BY f.id
-			LIMIT :size
-		""")
+            SELECT f
+            FROM FileMetadata f
+            WHERE f.isDeleted = true 
+            AND f.id > :lastId
+            AND f.updatedAt < :duration
+            ORDER BY f.id
+            LIMIT :size
+        """)
 	List<FileMetadata> findSoftDeletedFileWithLastId(@Param("lastId") Long lastId, @Param("size") int size,
 		@Param("duration") LocalDateTime timeLimit);
+
+	@Query(value = """
+        SELECT MAX(name_path_length)
+                FROM file_metadata
+                WHERE root_id = :id
+                AND is_deleted = false
+                AND upload_status != 'FAIL'
+                AND name_full_path LIKE CONCAT(:prefix, '%')
+        """, nativeQuery = true)
+	Optional<Integer> findMaxFileNamePathLengthByPrefix(@Param("id") Long id, @Param("prefix") String prefix);
 }

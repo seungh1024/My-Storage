@@ -40,8 +40,55 @@ jobs:
           key: ${{ runner.os }}-sonar
           restore-keys: ${{ runner.os }}-sonar
 
+      - name: Ensure Docker daemon is ready
+        run: |
+          set -euo pipefail
+          for i in {1..10}; do
+            if docker info > /dev/null 2>&1; then
+              echo "Docker daemon is ready"
+              break
+            fi
+            echo "Waiting for Docker daemon... ($i/10)"
+            sleep 3
+          done
+          docker info
+          docker version
+
+      - name: Normalize Testcontainers settings
+        run: |
+          set -euo pipefail
+          # 러너 전역 설정 파일이 있으면 전략이 비정상 고정될 수 있으므로 제거
+          rm -f ~/.testcontainers.properties
+          echo "Removed ~/.testcontainers.properties (if existed)"
+
+      - name: Create application-secret.yml
+        env:
+          APPLICATION_SECRET_YML_B64: ${{ secrets.APPLICATION_SECRET_YML_B64 }}
+        run: |
+          if [ -z "$APPLICATION_SECRET_YML_B64" ]; then
+            echo "Missing secret: APPLICATION_SECRET_YML_B64"
+            exit 1
+          fi
+          mkdir -p src/main/resources
+          printf '%s' "$APPLICATION_SECRET_YML_B64" | base64 -d > src/main/resources/application-secret.yml
+
       - name: Test + JaCoCo + Sonar analyze
         env:
+          SPRING_PROFILES_ACTIVE: test,secret
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: ./gradlew test jacocoTestReport sonar --info
+        run: |
+          set -euo pipefail
+          export DOCKER_API_VERSION="$(docker version --format '{{.Server.APIVersion}}')"
+          echo "Using DOCKER_API_VERSION=${DOCKER_API_VERSION}"
+          ./gradlew --no-daemon test jacocoTestReport sonar --info \
+            -Dapi.version="${DOCKER_API_VERSION}"
+
+      - name: Upload test reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: |
+            build/reports/tests/test/**
+            build/test-results/test/**

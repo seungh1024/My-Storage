@@ -3,14 +3,12 @@ package com.woowacamp.storage.domain.message.service;
 import java.util.List;
 
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-import com.woowacamp.storage.domain.file.util.StringFormat;
-import com.woowacamp.storage.domain.folder.dto.message.FolderSizeMessageDto;
-import com.woowacamp.storage.domain.folder.service.FolderService;
-import com.woowacamp.storage.global.error.CustomException;
-import com.woowacamp.storage.global.error.ErrorCode;
+import com.woowacamp.storage.domain.folder.service.FolderMoveProcessor;
+import com.woowacamp.storage.domain.message.dto.FolderMoveMessageDto;
+import com.woowacamp.storage.domain.message.repository.MessageInfoJpaRepository;
+import com.woowacamp.storage.domain.message.util.MessageStatus;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -19,45 +17,46 @@ import lombok.extern.slf4j.Slf4j;
 @Component
 @RequiredArgsConstructor
 public class ReceiveMessageService {
-	private final FolderService folderService;
 
-	@Value("${constant.retryCnt}")
-	private int retryCnt;
+	private final FolderMoveProcessor folderMoveProcessor;
+	private final MessageInfoJpaRepository messageInfoJpaRepository;
 
-	@RabbitListener(queues = "${spring.rabbitmq.folder-size-queue}", containerFactory = "folderSizeFactory")
-	public void handleFolderSizeEvent(List<FolderSizeMessageDto> messages) {
-		messages.stream().forEach(message -> {
-			// log.info("id = {}, FOLDER METADATA ID = {}, event type = {}, size = {}", message.id(),
-			// 	message.folderMetadataId(), message.eventType(), message.size());
+	/**
+	 * 폴더 이동 메시지 처리
+	 * 트랜잭션 없음
+	 */
+	@RabbitListener(queues = "${spring.rabbitmq.folder.move.queue}", containerFactory = "folderMoveFactory")
+	public void handleFolderMoveEvent(FolderMoveMessageDto message) {
+		log.info("[ReceiveMessageService] Received FolderMoveMessage. messageId={}, folderId={}",
+			message.id(), message.parentFolderMetadataId());
 
-			// 스케줄러가 처리되지 않은 메세지는 재발행을 할 것이기 때문에 error가 발생해도 ack는 진행한다.
-			try {
-				boolean result = tryUpdateFolderSize(message);
+		// 1. 멱등성 체크 (완료된 메시지만 스킵)
+		boolean alreadyProcessed = messageInfoJpaRepository.existsByIdAndStatusIn(
+			message.id(), List.of(MessageStatus.SUCCESS));
 
-				if (!result) {
-					throw ErrorCode.CANNOT_UPDATE_SIZE.baseException(
-						StringFormat.format("3회 재시도 실패, ID = {},  FOLDER METADATA ID : {}", message.id(),
-							message.folderMetadataId()));
-				}
-			} catch (CustomException e) {
-				log.error(StringFormat.format(
-					"[ReceiveMessageService Size Event Error] Error Message : {}, DebugMessage : {}", e.getMessage(),
-					e.getDebugMessage()));
-			} catch (Exception e) {
-				log.error(String.format("[Unhandled Exception] FolderMetadataId: {}", message.folderMetadataId()), e);
-			}
-		});
-
-	}
-
-	private boolean tryUpdateFolderSize(FolderSizeMessageDto message) {
-		int cnt = retryCnt;
-		while (cnt-- > 0) {
-			int result = folderService.updateFolderSize(message.id(), message.folderMetadataId(), message.size());
-			if (result == 1) {
-				return true;
-			}
+		if (alreadyProcessed) {
+			log.info("[ReceiveMessageService] Message already processed. messageId={}", message.id());
+			return;
 		}
-		return false;
+
+		try {
+			// 2. 배치 작업 수행 - 트랜잭션 없음
+			folderMoveProcessor.processMove(message.parentFolderMetadataId());
+
+			// 3. Outbox 완료 처리 - 별도 트랜잭션
+			int updated = messageInfoJpaRepository.updateMessageInfoStatus(message.id(), MessageStatus.SUCCESS);
+			if (updated == 0) {
+				log.debug("[ReceiveMessageService] mark success skipped. messageId={}", message.id());
+			}
+
+			log.info("[ReceiveMessageService] Completed. messageId={}, folderId={}",
+				message.id(), message.parentFolderMetadataId());
+
+		} catch (Exception e) {
+			log.error("[ReceiveMessageService] Failed. messageId={}, folderId={}",
+				message.id(), message.parentFolderMetadataId(), e);
+			throw e;
+		}
 	}
+
 }

@@ -48,6 +48,9 @@ public class MessageInfo {
 	@Column(name = "created_at", nullable = false)
 	private LocalDateTime createdAt;
 
+	@Column(name = "updated_at", nullable = false)
+	private LocalDateTime updatedAt;
+
 	@Column(name = "sent_at")
 	private LocalDateTime sentAt;
 
@@ -60,6 +63,7 @@ public class MessageInfo {
 		this.payload = payload;
 		this.status = MessageStatus.PENDING;
 		this.createdAt = LocalDateTime.now();
+		this.updatedAt = LocalDateTime.now();
 		this.retryCount = 0;
 	}
 

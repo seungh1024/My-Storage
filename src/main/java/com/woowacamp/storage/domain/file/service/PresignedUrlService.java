@@ -4,6 +4,7 @@ import java.net.URL;
 import java.time.Duration;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
 import lombok.RequiredArgsConstructor;
@@ -21,7 +22,10 @@ import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignReques
 @Service
 @RequiredArgsConstructor
 public class PresignedUrlService {
+
+	@Lazy
 	private final S3Client s3Client;
+	@Lazy
 	private final S3Presigner s3Presigner;
 
 	@Value("${cloud.aws.credentials.bucketName}")
