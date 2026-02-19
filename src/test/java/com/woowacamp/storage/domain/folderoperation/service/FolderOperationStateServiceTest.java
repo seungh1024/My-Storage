@@ -198,6 +198,15 @@ class FolderOperationStateServiceTest {
 		}
 
 		@Test
+		@DisplayName("findSingleActiveMoveOperationByRootIdAndFolderIds: 입력이 비어있으면 empty")
+		void findSingleActiveMoveOperationByRootIdAndFolderIds_emptyInput() {
+			assertThat(folderOperationStateService.findSingleActiveMoveOperationByRootIdAndFolderIds(1L, null)).isEmpty();
+			assertThat(folderOperationStateService.findSingleActiveMoveOperationByRootIdAndFolderIds(1L, List.of()))
+				.isEmpty();
+			then(folderOperationStateJpaRepository).shouldHaveNoInteractions();
+		}
+
+		@Test
 		@DisplayName("findSingleActiveMoveOperationByRootIdAndFolderIds: 결과가 1건이면 반환")
 		void findSingleActiveMoveOperationByRootIdAndFolderIds_single() {
 			ActiveMoveReservationProjection projection = projection(10L, 140);

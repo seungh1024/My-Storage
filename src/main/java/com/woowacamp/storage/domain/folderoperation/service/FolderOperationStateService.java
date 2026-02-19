@@ -82,8 +82,16 @@ public class FolderOperationStateService {
 	@Transactional(readOnly = true)
 	public Optional<ActiveMoveReservationProjection> findSingleActiveMoveOperationByRootIdAndFolderIds(Long rootId,
 		List<Long> folderIds) {
-		List<ActiveMoveReservationProjection> activeMoves = findActiveMoveOperationFoldersByRootIdAndFolderIds(rootId,
-			folderIds);
+		if (folderIds == null || folderIds.isEmpty()) {
+			return Optional.empty();
+		}
+		List<ActiveMoveReservationProjection> activeMoves =
+			folderOperationStateJpaRepository.findActiveMoveReservationsByRootIdAndFolderIdsAndTypeAndState(
+				rootId,
+				folderIds,
+				FolderOperationType.MOVE,
+				FolderOperationStatus.ACTIVE
+			);
 		if (activeMoves.isEmpty()) {
 			return Optional.empty();
 		}
